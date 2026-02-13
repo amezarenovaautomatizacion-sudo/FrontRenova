@@ -1,0 +1,119 @@
+/* Importar Bootstrap */
+@import 'bootstrap/dist/css/bootstrap.min.css';
+@import 'bootstrap-icons/font/bootstrap-icons.css';
+@import '@fortawesome/fontawesome-free/css/all.min.css';
+
+/* ===============================
+   Variables personalizadas
+   =============================== */
+:root {
+  /* Paleta Renova */
+  --renova-primary: #0aac4d;
+  --renova-secondary: #3498db;
+  --renova-success: #27ae60;
+  --renova-danger: #e74c3c;
+  --renova-warning: #f39c12;
+  --renova-light: #ecf0f1;
+  --renova-dark: #1f5326;
+
+  /* Paleta verde */
+  --green-main: #27ae60;
+  --green-dark: #33724e;
+  --green-light: #2ecc71;
+  --green-soft: #eafaf1;
+
+  /* ===============================
+     Override Bootstrap PRIMARY
+     =============================== */
+  --bs-primary: #27ae5f75;
+  --bs-primary-rgb: 39, 174, 96;
+
+  --bs-link-color: var(--green-main);
+  --bs-link-hover-color: var(--green-dark);
+}
+
+/* ===============================
+   Estilos generales
+   =============================== */
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f8f9fa;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ===============================
+   Bootstrap helpers (primary)
+   =============================== */
+.bg-primary {
+  background-color: var(--bs-primary) !important;
+}
+
+.text-primary {
+  color: var(--green-dark) !important;
+}
+
+.border-primary {
+  border-color: var(--green-dark) !important;
+}
+
+/* ===============================
+   Navs
+   =============================== */
+.nav {
+  --bs-nav-link-padding-x: 1rem;
+  --bs-nav-link-padding-y: 0.5rem;
+  --bs-nav-link-font-weight: 500;
+  --bs-nav-link-color: var(--green-dark);
+  --bs-nav-link-hover-color: var(--green-main);
+  --bs-nav-link-disabled-color: #a9dfbf;
+  list-style: none;
+  background-color: var(--green-soft);
+}
+
+.nav-link {
+  font-size: var(--bs-nav-link-font-size);
+  font-weight: var(--bs-nav-link-font-weight);
+  color: var(--bs-nav-link-color);
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.nav-link:hover,
+.nav-link:focus {
+  color: #fff;
+  background-color: var(--green-main);
+  border-radius: 0.25rem;
+}
+
+.nav-link.active {
+  color: #fff;
+  background-color: var(--green-dark);
+}
+
+/* ===============================
+   Botones
+   =============================== */
+.btn-primary {
+  --bs-btn-bg: var(--green-main);
+  --bs-btn-border-color: var(--green-main);
+  --bs-btn-hover-bg: var(--green-dark);
+  --bs-btn-hover-border-color: var(--green-dark);
+  --bs-btn-active-bg: var(--green-dark);
+  --bs-btn-active-border-color: var(--green-dark);
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--green-main);
+  --bs-btn-border-color: var(--green-main);
+  --bs-btn-hover-bg: var(--green-main);
+  --bs-btn-hover-border-color: var(--green-main);
+}
+
+.nav-pills .nav-link.active, .nav-pills .show > .nav-link {
+  color: var(--green-dark);
+  background-color: var(--green-light);
+}
