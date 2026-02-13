@@ -447,6 +447,24 @@ const Notificaciones: React.FC = () => {
     isAdmin
   ]);
 
+  useEffect(() => {
+  const refrescarNotificaciones = () => {
+    console.log('🔄 Refrescando notificaciones por evento WebSocket');
+    if (activeTab === 'personales') {
+      cargarNotificaciones();
+    } else if (activeTab === 'generales') {
+      cargarNotificacionesGenerales();
+    }
+    cargarResumen();
+  };
+
+  window.addEventListener('refrescar-notificaciones', refrescarNotificaciones);
+  
+  return () => {
+    window.removeEventListener('refrescar-notificaciones', refrescarNotificaciones);
+  };
+}, [activeTab, cargarNotificaciones, cargarNotificacionesGenerales, cargarResumen]);
+
   const marcarComoVista = async (notificacionId: number) => {
     try {
       const response = await api.patch(`/notificaciones/personales/${notificacionId}/vista`);
