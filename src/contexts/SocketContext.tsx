@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import api from '../services/api';
 
 // Extraer la URL base sin '/api'
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://api-renova.vercel.app/api';
 
 // Intentar obtener la URL base de la configuración de axios
 const getBaseUrl = () => {
@@ -18,7 +18,7 @@ const getBaseUrl = () => {
   } catch (error) {
     console.error('Error obteniendo base URL:', error);
   }
-  return 'http://localhost:3000'; // Fallback
+  return 'https://api-renova.vercel.app/api'; // Fallback
 };
 
 const SOCKET_URL = getBaseUrl();
