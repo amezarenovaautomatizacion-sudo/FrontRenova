@@ -828,7 +828,7 @@ const Dashboard: React.FC = () => {
                                 className="py-3 px-0 border-bottom"
                                 action
                                 as={Link as any}
-                                to={`/solicitudes/detalle/${solicitud.ID}`}
+                                to={`/solicitudes`}
                               >
                                 <div className="d-flex justify-content-between align-items-start mb-2">
                                   <div className="d-flex align-items-center">
@@ -917,7 +917,7 @@ const Dashboard: React.FC = () => {
                                   className="py-3 px-0 border-bottom"
                                   action
                                   onClick={() => {
-                                    window.location.href = `/solicitudes?aprobar=${aprobacion.AprobacionID}`;
+                                    window.location.href = `/solicitudes`;
                                   }}
                                 >
                                   <div className="d-flex justify-content-between align-items-start mb-2">
@@ -1040,7 +1040,7 @@ const Dashboard: React.FC = () => {
                                     variant="outline-primary" 
                                     size="sm"
                                     as={Link as any}
-                                    to={`/proyectos/${proyecto.ID}`}
+                                    to={`/proyectos`}
                                   >
                                     Ver detalles
                                   </Button>

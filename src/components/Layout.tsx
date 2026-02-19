@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom'; // Asegúrate de tener Outlet importado
+import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Container,
@@ -23,8 +23,8 @@ import {
   faCalendarAlt,
   faProjectDiagram,
   faFileAlt,
-  faCogs,
-  faUserShield
+  faUserShield,
+  faChartBar
 } from '@fortawesome/free-solid-svg-icons';
 
 interface MenuItem {
@@ -78,6 +78,13 @@ const Layout: React.FC = () => {
       title: 'Notificaciones',
       icon: faBell,
       roles: ['admin', 'manager', 'employee']
+    },
+    // 👇 NUEVA OPCIÓN DE REPORTES - SOLO ADMIN Y MANAGER
+    {
+      path: '/reportes',
+      title: 'Reportes',
+      icon: faChartBar,
+      roles: ['admin', 'manager']
     }
   ];
 
@@ -146,25 +153,24 @@ const Layout: React.FC = () => {
             <small className="text-muted">Sistema HR</small>
           </div>
           
-            <div className="text-center">
-                <small className="fw-bold">
-                    {(empleado?.NombreCompleto || user?.usuario)?.toUpperCase()}
-                </small>
+          <div className="text-center">
+            <small className="fw-bold">
+              {(empleado?.NombreCompleto || user?.usuario)?.toUpperCase()}
+            </small>
 
-                <Badge
-                    bg={
-                    user?.rol === 'admin'
-                        ? 'danger'
-                        : user?.rol === 'manager'
-                        ? 'warning'
-                        : 'info'
-                    }
-                    className="ms-2"
-                >
-                    {user?.rol?.toUpperCase()}
-                </Badge>
-            </div>
-
+            <Badge
+              bg={
+                user?.rol === 'admin'
+                  ? 'danger'
+                  : user?.rol === 'manager'
+                  ? 'warning'
+                  : 'info'
+              }
+              className="ms-2"
+            >
+              {user?.rol?.toUpperCase()}
+            </Badge>
+          </div>
         </div>
 
         {/* Menú */}
@@ -295,11 +301,10 @@ const Layout: React.FC = () => {
           </Offcanvas.Body>
         </Offcanvas>
 
-        {/* Contenido de la página - CORRECCIÓN AQUÍ */}
+        {/* Contenido de la página */}
         <div className="flex-grow-1 overflow-auto">
           <Container fluid className="py-3 h-100">
-            {/* ESTA ES LA LÍNEA CRÍTICA QUE FALTA */}
-            <Outlet /> {/* Este componente renderiza las rutas hijas */}
+            <Outlet />
           </Container>
         </div>
 

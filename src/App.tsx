@@ -13,12 +13,13 @@ import Proyectos from './pages/Proyectos';
 import Notificaciones from './pages/Notificaciones';
 import Aprobadores from './pages/Aprobadores';
 import Incidencias from './pages/Incidencias';
+import ReportesEstadisticas from './pages/Reportes';
 import './index.css';
 
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <SocketProvider> {/* 👈 ENVOLVER CON SOCKET PROVIDER */}
+      <SocketProvider>
         <Router>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -37,6 +38,7 @@ const App: React.FC = () => {
               <Route path="notificaciones" element={<Notificaciones />} />
               <Route path="aprobadores" element={<Aprobadores />} />
               <Route path="incidencias" element={<Incidencias />} />
+              <Route path="reportes" element={<ReportesEstadisticas />} />
             </Route>
           </Routes>
         </Router>

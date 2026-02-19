@@ -135,7 +135,11 @@ interface AprobacionPendiente {
   EmpleadoNombre: string;
   Tipo: string;
   FechaSolicitud: string;
-  DiasHoras: string;
+  FechaInicio?: string;
+  FechaFin?: string;
+  DiasSolicitados?: number;
+  HorasSolicitadas?: number | string;
+  ConGoce?: boolean | number;
   Motivo: string;
   OrdenAprobacion: number;
   EstadoAprobacion: 'pendiente' | 'aprobado' | 'rechazado';
@@ -163,6 +167,14 @@ interface DetalleSolicitudResponse {
     rechazadas: number;
     pendientes: number;
   };
+}
+
+// Interfaz extendida para mostrar detalles completos en aprobación
+interface DetalleAprobacion extends AprobacionPendiente {
+  MotivoCompleto?: string;
+  Observaciones?: string;
+  Departamento?: string;
+  Puesto?: string;
 }
 
 const Solicitudes: React.FC = () => {
@@ -246,7 +258,7 @@ const Solicitudes: React.FC = () => {
   const [derechosVacacionales, setDerechosVacacionales] = useState<DerechosVacacionales | null>(null);
   const [selectedSolicitud, setSelectedSolicitud] = useState<Solicitud | null>(null);
   const [selectedSolicitudDetalle, setSelectedSolicitudDetalle] = useState<DetalleSolicitudResponse | null>(null);
-  const [selectedAprobacion, setSelectedAprobacion] = useState<AprobacionPendiente | null>(null);
+  const [selectedAprobacion, setSelectedAprobacion] = useState<DetalleAprobacion | null>(null);
   
   // Estados para filtros
   const [filterEstado, setFilterEstado] = useState('');
@@ -682,90 +694,90 @@ const Solicitudes: React.FC = () => {
     }
   };
   
-const handleProcesarAprobacion = async () => {
-  try {
-    setError('');
-    setSuccess('');
-    
-    if (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5) {
-      setError('Se requiere un comentario explicativo de al menos 5 caracteres');
-      return;
-    }
-    
-    console.log('Procesando aprobación:', aprobacionData);
-    
-    const estadoAPI = aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
-    
-    const response = await api.patch(
-      `/solicitudes/aprobaciones/${aprobacionData.aprobacionId}/procesar`,
-      { 
-        estado: estadoAPI, 
-        comentarios: aprobacionData.comentarios 
+  const handleProcesarAprobacion = async () => {
+    try {
+      setError('');
+      setSuccess('');
+      
+      if (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5) {
+        setError('Se requiere un comentario explicativo de al menos 5 caracteres');
+        return;
       }
-    );
-    
-    console.log('Respuesta procesar aprobación:', response.data);
-    
-    if (response.data.success) {
-      setSuccess(`Aprobación ${aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'} exitosamente`);
-      setShowApproveModal(false);
-      setAprobacionData({
-        aprobacionId: 0,
-        estado: 'aprobada',
-        comentarios: ''
-      });
-      loadSolicitudesPendientes();
-      loadSolicitudesAprobadas();
-    } else {
-      setError(response.data.message || 'Error procesando aprobación');
+      
+      console.log('Procesando aprobación:', aprobacionData);
+      
+      const estadoAPI = aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
+      
+      const response = await api.patch(
+        `/solicitudes/aprobaciones/${aprobacionData.aprobacionId}/procesar`,
+        { 
+          estado: estadoAPI, 
+          comentarios: aprobacionData.comentarios 
+        }
+      );
+      
+      console.log('Respuesta procesar aprobación:', response.data);
+      
+      if (response.data.success) {
+        setSuccess(`Aprobación ${aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'} exitosamente`);
+        setShowApproveModal(false);
+        setAprobacionData({
+          aprobacionId: 0,
+          estado: 'aprobada',
+          comentarios: ''
+        });
+        loadSolicitudesPendientes();
+        loadSolicitudesAprobadas();
+      } else {
+        setError(response.data.message || 'Error procesando aprobación');
+      }
+    } catch (error: any) {
+      console.error('Error en handleProcesarAprobacion:', error);
+      setError(error.response?.data?.message || 'Error procesando aprobación');
     }
-  } catch (error: any) {
-    console.error('Error en handleProcesarAprobacion:', error);
-    setError(error.response?.data?.message || 'Error procesando aprobación');
-  }
-};
+  };
   
-const handleEditarAprobacion = async () => {
-  try {
-    setError('');
-    setSuccess('');
-    
-    if (!editAprobacionData.comentarios || editAprobacionData.comentarios.trim().length < 10) {
-      setError('Se requiere un comentario explicativo de al menos 10 caracteres');
-      return;
-    }
-    
-    console.log('Editando aprobación:', editAprobacionData);
-    
-    const estadoAPI = editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
-    
-    const response = await api.patch(
-      `/solicitudes/aprobaciones/${editAprobacionData.aprobacionId}/editar`,
-      { 
-        estado: estadoAPI, 
-        comentarios: editAprobacionData.comentarios 
+  const handleEditarAprobacion = async () => {
+    try {
+      setError('');
+      setSuccess('');
+      
+      if (!editAprobacionData.comentarios || editAprobacionData.comentarios.trim().length < 10) {
+        setError('Se requiere un comentario explicativo de al menos 10 caracteres');
+        return;
       }
-    );
-    
-    console.log('Respuesta editar aprobación:', response.data);
-    
-    if (response.data.success) {
-      setSuccess(`Aprobación actualizada a ${editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'}`);
-      setShowEditAprobacionModal(false);
-      setEditAprobacionData({
-        aprobacionId: 0,
-        estado: 'aprobada',
-        comentarios: ''
-      });
-      loadSolicitudesPendientes();
-    } else {
-      setError(response.data.message || 'Error editando aprobación');
+      
+      console.log('Editando aprobación:', editAprobacionData);
+      
+      const estadoAPI = editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
+      
+      const response = await api.patch(
+        `/solicitudes/aprobaciones/${editAprobacionData.aprobacionId}/editar`,
+        { 
+          estado: estadoAPI, 
+          comentarios: editAprobacionData.comentarios 
+        }
+      );
+      
+      console.log('Respuesta editar aprobación:', response.data);
+      
+      if (response.data.success) {
+        setSuccess(`Aprobación actualizada a ${editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'}`);
+        setShowEditAprobacionModal(false);
+        setEditAprobacionData({
+          aprobacionId: 0,
+          estado: 'aprobada',
+          comentarios: ''
+        });
+        loadSolicitudesPendientes();
+      } else {
+        setError(response.data.message || 'Error editando aprobación');
+      }
+    } catch (error: any) {
+      console.error('Error en handleEditarAprobacion:', error);
+      setError(error.response?.data?.message || 'Error editando aprobación');
     }
-  } catch (error: any) {
-    console.error('Error en handleEditarAprobacion:', error);
-    setError(error.response?.data?.message || 'Error editando aprobación');
-  }
-};
+  };
   
   const handleCancelarSolicitud = async (solicitudId: number) => {
     if (!window.confirm('¿Estás seguro de cancelar esta solicitud?')) {
@@ -794,14 +806,50 @@ const handleEditarAprobacion = async () => {
     }
   };
   
-  const openApproveModal = (aprobacion: AprobacionPendiente) => {
-    setSelectedAprobacion(aprobacion);
-    setAprobacionData({
-      aprobacionId: aprobacion.AprobacionID,
-      estado: 'aprobada',
-      comentarios: ''
-    });
-    setShowApproveModal(true);
+  const openApproveModal = async (aprobacion: AprobacionPendiente) => {
+    try {
+      // Cargar detalles adicionales de la solicitud
+      let detallesCompletos: Partial<DetalleAprobacion> = {};
+      
+      try {
+        const response = await api.get(`/solicitudes/${aprobacion.SolicitudID}`);
+        if (response.data.success) {
+          const solicitudData = response.data.data;
+          detallesCompletos = {
+            MotivoCompleto: solicitudData.Motivo,
+            Observaciones: solicitudData.Observaciones,
+            Departamento: solicitudData.DepartamentoNombre,
+            Puesto: solicitudData.PuestoNombre
+          };
+        }
+      } catch (error) {
+        console.warn('No se pudieron cargar detalles adicionales:', error);
+      }
+      
+      // Combinar datos
+      const aprobacionCompleta: DetalleAprobacion = {
+        ...aprobacion,
+        ...detallesCompletos
+      };
+      
+      setSelectedAprobacion(aprobacionCompleta);
+      setAprobacionData({
+        aprobacionId: aprobacion.AprobacionID,
+        estado: 'aprobada',
+        comentarios: ''
+      });
+      setShowApproveModal(true);
+    } catch (error) {
+      console.error('Error cargando detalles de aprobación:', error);
+      // Si falla, usar los datos que ya tenemos
+      setSelectedAprobacion(aprobacion);
+      setAprobacionData({
+        aprobacionId: aprobacion.AprobacionID,
+        estado: 'aprobada',
+        comentarios: ''
+      });
+      setShowApproveModal(true);
+    }
   };
   
   const openEditAprobacionModal = (aprobacion: AprobacionPendiente) => {
@@ -884,6 +932,81 @@ const handleEditarAprobacion = async () => {
     } catch (error) {
       return 'Fecha inválida';
     }
+  };
+  
+  // Función para formatear el detalle de la solicitud según el tipo
+  const getDetalleSolicitud = (aprobacion: DetalleAprobacion) => {
+    if (aprobacion.Tipo === 'vacaciones') {
+      const dias = aprobacion.DiasSolicitados || 0;
+      const fechaInicio = aprobacion.FechaInicio ? formatDate(aprobacion.FechaInicio) : 'N/A';
+      const fechaFin = aprobacion.FechaFin ? formatDate(aprobacion.FechaFin) : 'N/A';
+      return (
+        <div className="mb-3 p-3 bg-light rounded">
+          <div className="d-flex align-items-center mb-2">
+            <FontAwesomeIcon icon={faCalendarDay} className="text-primary me-2" />
+            <strong className="text-primary">Detalles de Vacaciones:</strong>
+          </div>
+          <Row className="mb-2">
+            <Col xs={5} className="text-muted">Período:</Col>
+            <Col xs={7}><strong>{fechaInicio} → {fechaFin}</strong></Col>
+          </Row>
+          <Row className="mb-2">
+            <Col xs={5} className="text-muted">Días solicitados:</Col>
+            <Col xs={7}>
+              <Badge bg="primary" className="fs-6">{dias} {dias === 1 ? 'día' : 'días'}</Badge>
+            </Col>
+          </Row>
+        </div>
+      );
+    }
+    
+    if (aprobacion.Tipo === 'permiso') {
+      const conGoce = aprobacion.ConGoce ? 'Sí' : 'No';
+      const fecha = aprobacion.FechaInicio ? formatDate(aprobacion.FechaInicio) : 'N/A';
+      return (
+        <div className="mb-3 p-3 bg-light rounded">
+          <div className="d-flex align-items-center mb-2">
+            <FontAwesomeIcon icon={faCalendarCheck} className="text-info me-2" />
+            <strong className="text-info">Detalles de Permiso:</strong>
+          </div>
+          <Row className="mb-2">
+            <Col xs={5} className="text-muted">Fecha:</Col>
+            <Col xs={7}><strong>{fecha}</strong></Col>
+          </Row>
+          <Row className="mb-2">
+            <Col xs={5} className="text-muted">Con goce de sueldo:</Col>
+            <Col xs={7}>
+              <Badge bg={conGoce === 'Sí' ? 'success' : 'secondary'}>{conGoce}</Badge>
+            </Col>
+          </Row>
+        </div>
+      );
+    }
+    
+    if (aprobacion.Tipo === 'horas_extras') {
+      const horas = aprobacion.HorasSolicitadas || 0;
+      const fecha = aprobacion.FechaInicio ? formatDate(aprobacion.FechaInicio) : 'N/A';
+      return (
+        <div className="mb-3 p-3 bg-light rounded">
+          <div className="d-flex align-items-center mb-2">
+            <FontAwesomeIcon icon={faClock} className="text-warning me-2" />
+            <strong className="text-warning">Detalles de Horas Extras:</strong>
+          </div>
+          <Row className="mb-2">
+            <Col xs={5} className="text-muted">Fecha:</Col>
+            <Col xs={7}><strong>{fecha}</strong></Col>
+          </Row>
+          <Row className="mb-2">
+            <Col xs={5} className="text-muted">Horas solicitadas:</Col>
+            <Col xs={7}>
+              <Badge bg="warning" className="fs-6">{horas} {horas === 1 ? 'hora' : 'horas'}</Badge>
+            </Col>
+          </Row>
+        </div>
+      );
+    }
+    
+    return null;
   };
   
   // Calcular estadísticas
@@ -1285,7 +1408,30 @@ const handleEditarAprobacion = async () => {
                   <div className="small">{formatDateTime(aprobacion.FechaSolicitud)}</div>
                 </td>
                 <td>
-                  <div className="small">{aprobacion.DiasHoras}</div>
+                  {aprobacion.Tipo === 'vacaciones' && (
+                    <div>
+                      <div className="small">
+                        {formatDate(aprobacion.FechaInicio!)} → {formatDate(aprobacion.FechaFin!)}
+                      </div>
+                      <small className="text-muted">{aprobacion.DiasSolicitados} días</small>
+                    </div>
+                  )}
+                  {aprobacion.Tipo === 'permiso' && (
+                    <div>
+                      <div className="small">
+                        {formatDate(aprobacion.FechaInicio!)}
+                      </div>
+                      <small className="text-muted">{aprobacion.ConGoce ? 'Con goce' : 'Sin goce'}</small>
+                    </div>
+                  )}
+                  {aprobacion.Tipo === 'horas_extras' && (
+                    <div>
+                      <div className="small">
+                        {formatDate(aprobacion.FechaInicio!)}
+                      </div>
+                      <small className="text-muted">{aprobacion.HorasSolicitadas} horas</small>
+                    </div>
+                  )}
                 </td>
                 <td>
                   <div className="text-truncate" style={{ maxWidth: '200px' }} title={aprobacion.Motivo}>
@@ -1433,88 +1579,112 @@ const handleEditarAprobacion = async () => {
     );
   };
   
-  const renderHorasExtrasContent = () => {
-    if (!canViewReports) return null;
-    
-    if (loading) {
-      return (
-        <div className="text-center py-5">
-          <Spinner animation="border" variant="primary" />
-          <p className="mt-3">Cargando reporte de horas extras...</p>
-        </div>
-      );
-    }
-    
-    if (reporteHorasExtras.length === 0) {
-      return (
-        <div className="text-center py-5">
-          <FontAwesomeIcon icon={faBusinessTime} size="3x" className="text-muted mb-3" />
-          <h5>No hay horas extras registradas</h5>
-          <p className="text-muted">No hay solicitudes de horas extras en el periodo seleccionado</p>
-        </div>
-      );
-    }
-    
-    const totalHoras = reporteHorasExtras.reduce((sum, item) => sum + (item.HorasSolicitadas || 0), 0);
-    const totalAprobadas = reporteHorasExtras.filter(item => item.Estado === 'aprobada').length;
-    
+const renderHorasExtrasContent = () => {
+  if (!canViewReports) return null;
+  
+  if (loading) {
     return (
-      <>
-        <Card className="mb-3">
-          <Card.Body className="bg-light">
-            <Row>
-              <Col md={3}>
-                <div className="text-center">
-                  <h4 className="text-primary">{reporteHorasExtras.length}</h4>
-                  <small className="text-muted">Total Solicitudes</small>
-                </div>
-              </Col>
-              <Col md={3}>
-                <div className="text-center">
-                  <h4 className="text-success">{totalHoras.toFixed(1)}</h4>
-                  <small className="text-muted">Horas Totales</small>
-                </div>
-              </Col>
-              <Col md={3}>
-                <div className="text-center">
-                  <h4 className="text-success">{totalAprobadas}</h4>
-                  <small className="text-muted">Aprobadas</small>
-                </div>
-              </Col>
-              <Col md={3}>
-                <div className="text-center">
-                  <h4 className="text-warning">{reporteHorasExtras.length - totalAprobadas}</h4>
-                  <small className="text-muted">Pendientes/Rechazadas</small>
-                </div>
-              </Col>
-            </Row>
-          </Card.Body>
-        </Card>
-        
-        <div className="table-responsive">
-          <Table hover className="mb-0">
-            <thead className="bg-light">
-              <tr>
-                <th>Empleado</th>
-                <th>Fecha</th>
-                <th>Horas Solicitadas</th>
-                <th>Motivo</th>
-                <th>Estado</th>
-                <th>Solicitado Por</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reporteHorasExtras.map((item) => (
+      <div className="text-center py-5">
+        <Spinner animation="border" variant="primary" />
+        <p className="mt-3">Cargando reporte de horas extras...</p>
+      </div>
+    );
+  }
+  
+  if (reporteHorasExtras.length === 0) {
+    return (
+      <div className="text-center py-5">
+        <FontAwesomeIcon icon={faBusinessTime} size="3x" className="text-muted mb-3" />
+        <h5>No hay horas extras registradas</h5>
+        <p className="text-muted">No hay solicitudes de horas extras en el periodo seleccionado</p>
+      </div>
+    );
+  }
+  
+  // Calcular total de horas asegurándonos de convertir a número
+  const totalHoras = reporteHorasExtras.reduce((sum, item) => {
+    // Convertir HorasSolicitadas a número (puede venir como string o número)
+    const horas = typeof item.HorasSolicitadas === 'string' 
+      ? parseFloat(item.HorasSolicitadas) 
+      : (item.HorasSolicitadas || 0);
+    return sum + horas;
+  }, 0);
+  
+  const totalAprobadas = reporteHorasExtras.filter(item => item.Estado === 'aprobada').length;
+  const totalPendientes = reporteHorasExtras.filter(item => item.Estado === 'pendiente').length;
+  const totalRechazadas = reporteHorasExtras.filter(item => item.Estado === 'rechazada').length;
+  
+  return (
+    <>
+      <Card className="mb-3">
+        <Card.Body className="bg-light">
+          <Row>
+            <Col md={3}>
+              <div className="text-center">
+                <h4 className="text-primary">{reporteHorasExtras.length}</h4>
+                <small className="text-muted">Total Solicitudes</small>
+              </div>
+            </Col>
+            <Col md={3}>
+              <div className="text-center">
+                <h4 className="text-success">{totalHoras.toFixed(1)}</h4>
+                <small className="text-muted">Horas Totales</small>
+              </div>
+            </Col>
+            <Col md={2}>
+              <div className="text-center">
+                <h4 className="text-success">{totalAprobadas}</h4>
+                <small className="text-muted">Aprobadas</small>
+              </div>
+            </Col>
+            <Col md={2}>
+              <div className="text-center">
+                <h4 className="text-warning">{totalPendientes}</h4>
+                <small className="text-muted">Pendientes</small>
+              </div>
+            </Col>
+            <Col md={2}>
+              <div className="text-center">
+                <h4 className="text-danger">{totalRechazadas}</h4>
+                <small className="text-muted">Rechazadas</small>
+              </div>
+            </Col>
+          </Row>
+        </Card.Body>
+      </Card>
+      
+      <div className="table-responsive">
+        <Table hover className="mb-0">
+          <thead className="bg-light">
+            <tr>
+              <th>Empleado</th>
+              <th>Fecha</th>
+              <th>Horas Solicitadas</th>
+              <th>Motivo</th>
+              <th>Estado</th>
+              <th>Departamento</th>
+              <th>Puesto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reporteHorasExtras.map((item) => {
+              // Convertir horas a número para mostrarlas correctamente
+              const horas = typeof item.HorasSolicitadas === 'string' 
+                ? parseFloat(item.HorasSolicitadas) 
+                : (item.HorasSolicitadas || 0);
+              
+              return (
                 <tr key={item.ID}>
                   <td>
                     <div className="fw-medium">{item.EmpleadoNombre}</div>
+                    <small className="text-muted">{item.CorreoElectronico}</small>
                   </td>
                   <td>
                     <div className="small">{formatDate(item.FechaInicio)}</div>
                   </td>
                   <td>
                     <Badge bg="warning" className="fs-6">
-                      {item.HorasSolicitadas} hrs
+                      {horas.toFixed(1)} hrs
                     </Badge>
                   </td>
                   <td>
@@ -1524,16 +1694,20 @@ const handleEditarAprobacion = async () => {
                   </td>
                   <td>{getEstadoBadge(item.Estado)}</td>
                   <td>
-                    <small className="text-muted">{item.CreadoPor}</small>
+                    <small>{item.PuestoNombre || 'No asignado'}</small>
+                  </td>
+                  <td>
+                    <small className="text-muted">{item.PuestoNombre || 'No asignado'}</small>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
-        </div>
-      </>
-    );
-  };
+              );
+            })}
+          </tbody>
+        </Table>
+      </div>
+    </>
+  );
+};
 
   return (
     <Container fluid className="py-4">
@@ -1645,6 +1819,19 @@ const handleEditarAprobacion = async () => {
               </Tab>
             )}
 
+            {canViewReports && (
+              <Tab eventKey="horas-extras" title={
+                <span>
+                  <FontAwesomeIcon icon={faBusinessTime} className="me-2" />
+                  Reporte Horas Extras
+                </span>
+              }>
+                <div className="p-3">
+                  {renderFilters()}
+                  {renderTabContent()}
+                </div>
+              </Tab>
+            )}
           </Tabs>
         </Card.Body>
       </Card>
@@ -1931,118 +2118,238 @@ const handleEditarAprobacion = async () => {
       </Modal>
 
       {/* Modal de Aprobar/Rechazar */}
-      <Modal show={showApproveModal} onHide={() => setShowApproveModal(false)} centered>
-        <Modal.Header closeButton>
+      <Modal show={showApproveModal} onHide={() => setShowApproveModal(false)} size="lg" centered>
+        <Modal.Header closeButton className={aprobacionData.estado === 'aprobada' ? 'bg-success text-white' : 'bg-danger text-white'}>
           <Modal.Title>
-            <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
-            Procesar Aprobación
+            <FontAwesomeIcon icon={aprobacionData.estado === 'aprobada' ? faCheckCircle : faTimesCircle} className="me-2" />
+            {aprobacionData.estado === 'aprobada' ? 'Aprobar Solicitud' : 'Rechazar Solicitud'}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {selectedAprobacion && (
-            <div className="mb-4">
-              <h6 className="mb-2">{selectedAprobacion.EmpleadoNombre}</h6>
-              <p className="text-muted mb-2">{selectedAprobacion.Motivo}</p>
-              <div className="small text-muted">
-                <FontAwesomeIcon icon={faCalendarAlt} className="me-1" />
-                {formatDateTime(selectedAprobacion.FechaSolicitud)}
+            <>
+              {/* Encabezado del empleado */}
+              <div className="text-center mb-4">
+                <FontAwesomeIcon 
+                  icon={selectedAprobacion.Tipo === 'vacaciones' ? faCalendarDay : 
+                        selectedAprobacion.Tipo === 'permiso' ? faCalendarCheck : faClock} 
+                  size="3x" 
+                  className={`mb-3 ${
+                    selectedAprobacion.Tipo === 'vacaciones' ? 'text-primary' : 
+                    selectedAprobacion.Tipo === 'permiso' ? 'text-info' : 'text-warning'
+                  }`}
+                />
+                <h4>{selectedAprobacion.EmpleadoNombre}</h4>
+                <div className="mb-3">
+                  {getTipoBadge(selectedAprobacion.Tipo)}
+                  {' '}
+                  <Badge bg="secondary">Orden {selectedAprobacion.OrdenAprobacion}°</Badge>
+                </div>
               </div>
-              <div className="small text-muted">
-                <FontAwesomeIcon icon={faFileAlt} className="me-1" />
-                {selectedAprobacion.DiasHoras}
-              </div>
-              <div className="small text-muted">
-                <FontAwesomeIcon icon={faSortNumericUp} className="me-1" />
-                Orden de aprobación: {selectedAprobacion.OrdenAprobacion}°
-              </div>
-            </div>
+
+              {/* Detalles específicos según el tipo */}
+              {getDetalleSolicitud(selectedAprobacion)}
+
+              {/* Información general */}
+              <Card className="mb-3">
+                <Card.Header className="bg-light">
+                  <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+                  Información de la Solicitud
+                </Card.Header>
+                <Card.Body>
+                  <Row>
+                    <Col md={6} className="mb-2">
+                      <small className="text-muted d-block">Fecha de solicitud</small>
+                      <strong>{formatDateTime(selectedAprobacion.FechaSolicitud)}</strong>
+                    </Col>
+                    <Col md={6} className="mb-2">
+                      <small className="text-muted d-block">Motivo</small>
+                      <strong>{selectedAprobacion.Motivo}</strong>
+                    </Col>
+                    {selectedAprobacion.MotivoCompleto && selectedAprobacion.MotivoCompleto !== selectedAprobacion.Motivo && (
+                      <Col md={12} className="mb-2">
+                        <small className="text-muted d-block">Motivo completo</small>
+                        <p className="mb-0">{selectedAprobacion.MotivoCompleto}</p>
+                      </Col>
+                    )}
+                    {selectedAprobacion.Observaciones && (
+                      <Col md={12} className="mb-2">
+                        <small className="text-muted d-block">Observaciones adicionales</small>
+                        <p className="mb-0">{selectedAprobacion.Observaciones}</p>
+                      </Col>
+                    )}
+                    {(selectedAprobacion.Departamento || selectedAprobacion.Puesto) && (
+                      <Col md={12} className="mt-2 pt-2 border-top">
+                        <Row>
+                          {selectedAprobacion.Departamento && (
+                            <Col md={6}>
+                              <small className="text-muted d-block">
+                                <FontAwesomeIcon icon={faBuilding} className="me-1" />
+                                Departamento
+                              </small>
+                              <span>{selectedAprobacion.Departamento}</span>
+                            </Col>
+                          )}
+                          {selectedAprobacion.Puesto && (
+                            <Col md={6}>
+                              <small className="text-muted d-block">
+                                <FontAwesomeIcon icon={faBriefcase} className="me-1" />
+                                Puesto
+                              </small>
+                              <span>{selectedAprobacion.Puesto}</span>
+                            </Col>
+                          )}
+                        </Row>
+                      </Col>
+                    )}
+                  </Row>
+                </Card.Body>
+              </Card>
+
+              {/* Formulario de aprobación */}
+              <Form>
+                <Form.Group className="mb-3">
+                  <Form.Label className="fw-bold">
+                    <FontAwesomeIcon icon={faComment} className="me-2" />
+                    Comentarios {aprobacionData.estado === 'rechazado' ? '(requeridos)' : '(recomendados)'}
+                  </Form.Label>
+                  <Form.Control
+                    as="textarea"
+                    rows={4}
+                    value={aprobacionData.comentarios}
+                    onChange={(e) => setAprobacionData({...aprobacionData, comentarios: e.target.value})}
+                    placeholder={aprobacionData.estado === 'aprobada' 
+                      ? "Agrega comentarios sobre tu aprobación (opcional, pero recomendado)..." 
+                      : "Explica detalladamente el motivo del rechazo (mínimo 5 caracteres)..."}
+                    isInvalid={aprobacionData.estado === 'rechazado' && (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5)}
+                    required={aprobacionData.estado === 'rechazado'}
+                  />
+                  {aprobacionData.estado === 'rechazado' && (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5) && (
+                    <Form.Control.Feedback type="invalid">
+                      Debes explicar el motivo del rechazo (mínimo 5 caracteres)
+                    </Form.Control.Feedback>
+                  )}
+                  <Form.Text className="text-muted">
+                    {aprobacionData.estado === 'aprobada' 
+                      ? 'Puedes dejar comentarios sobre tu aprobación para el empleado.'
+                      : 'Es importante explicar el motivo del rechazo para que el empleado pueda corregir su solicitud.'}
+                  </Form.Text>
+                </Form.Group>
+              </Form>
+            </>
           )}
-          
-          <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Acción *</Form.Label>
-              <Form.Select
-                value={aprobacionData.estado}
-                onChange={(e) => setAprobacionData({...aprobacionData, estado: e.target.value})}
-              >
-                <option value="aprobada">Aprobar</option>
-                <option value="rechazado">Rechazar</option>
-              </Form.Select>
-            </Form.Group>
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Comentarios * (mínimo 5 caracteres)</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={aprobacionData.comentarios}
-                onChange={(e) => setAprobacionData({...aprobacionData, comentarios: e.target.value})}
-                placeholder="Explica tu decisión..."
-                required
-              />
-            </Form.Group>
-          </Form>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowApproveModal(false)}>
             Cancelar
           </Button>
+          <ButtonGroup>
+            <Button 
+              variant="success" 
+              onClick={() => {
+                setAprobacionData(prev => ({...prev, estado: 'aprobada'}));
+              }}
+              active={aprobacionData.estado === 'aprobada'}
+            >
+              <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
+              Aprobar
+            </Button>
+            <Button 
+              variant="danger" 
+              onClick={() => {
+                setAprobacionData(prev => ({...prev, estado: 'rechazado'}));
+              }}
+              active={aprobacionData.estado === 'rechazado'}
+            >
+              <FontAwesomeIcon icon={faTimesCircle} className="me-2" />
+              Rechazar
+            </Button>
+          </ButtonGroup>
           <Button 
             variant={aprobacionData.estado === 'aprobada' ? 'success' : 'danger'} 
             onClick={handleProcesarAprobacion}
-            disabled={!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5}
+            disabled={
+              (aprobacionData.estado === 'rechazado' && (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5)) ||
+              (aprobacionData.estado === 'aprobada' && false) // Siempre habilitado para aprobar
+            }
           >
-            <FontAwesomeIcon icon={aprobacionData.estado === 'aprobada' ? faCheckCircle : faTimesCircle} className="me-2" />
-            {aprobacionData.estado === 'aprobada' ? 'Aprobar' : 'Rechazar'}
+            <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
+            Confirmar {aprobacionData.estado === 'aprobada' ? 'Aprobación' : 'Rechazo'}
           </Button>
         </Modal.Footer>
       </Modal>
 
       {/* Modal de Editar Aprobación */}
-      <Modal show={showEditAprobacionModal} onHide={() => setShowEditAprobacionModal(false)} centered>
-        <Modal.Header closeButton>
+      <Modal show={showEditAprobacionModal} onHide={() => setShowEditAprobacionModal(false)} size="lg" centered>
+        <Modal.Header closeButton className="bg-warning text-dark">
           <Modal.Title>
             <FontAwesomeIcon icon={faEdit} className="me-2" />
-            Editar Aprobación
+            Editar Decisión de Aprobación
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Alert variant="warning" className="mb-3">
             <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
-            <strong>Advertencia:</strong> Solo puedes editar aprobaciones dentro de las primeras 24 horas.
+            <strong>Advertencia:</strong> Solo puedes editar aprobaciones dentro de las primeras 24 horas después de haberlas realizado.
           </Alert>
           
           {selectedAprobacion && (
-            <div className="mb-4">
-              <h6 className="mb-2">{selectedAprobacion.EmpleadoNombre}</h6>
-              <p className="text-muted mb-2">{selectedAprobacion.Motivo}</p>
-            </div>
+            <>
+              {/* Encabezado */}
+              <div className="text-center mb-4">
+                <h4>{selectedAprobacion.EmpleadoNombre}</h4>
+                <div className="mb-3">
+                  {getTipoBadge(selectedAprobacion.Tipo)}
+                </div>
+              </div>
+
+              {/* Detalles específicos */}
+              {getDetalleSolicitud(selectedAprobacion)}
+
+              {/* Información de la solicitud */}
+              <Card className="mb-3">
+                <Card.Body>
+                  <p className="mb-2"><strong>Motivo:</strong> {selectedAprobacion.Motivo}</p>
+                  <p className="mb-0 text-muted small">
+                    <FontAwesomeIcon icon={faCalendarAlt} className="me-1" />
+                    Solicitado el {formatDateTime(selectedAprobacion.FechaSolicitud)}
+                  </p>
+                </Card.Body>
+              </Card>
+
+              {/* Formulario de edición */}
+              <Form>
+                <Form.Group className="mb-3">
+                  <Form.Label className="fw-bold">Nueva Decisión *</Form.Label>
+                  <Form.Select
+                    value={editAprobacionData.estado}
+                    onChange={(e) => setEditAprobacionData({...editAprobacionData, estado: e.target.value})}
+                  >
+                    <option value="aprobada">Aprobar</option>
+                    <option value="rechazado">Rechazar</option>
+                  </Form.Select>
+                </Form.Group>
+                
+                <Form.Group className="mb-3">
+                  <Form.Label className="fw-bold">
+                    Comentarios * (mínimo 10 caracteres)
+                  </Form.Label>
+                  <Form.Control
+                    as="textarea"
+                    rows={4}
+                    value={editAprobacionData.comentarios}
+                    onChange={(e) => setEditAprobacionData({...editAprobacionData, comentarios: e.target.value})}
+                    placeholder="Explica por qué estás cambiando tu decisión..."
+                    isInvalid={editAprobacionData.comentarios.trim().length < 10}
+                    required
+                  />
+                  <Form.Control.Feedback type="invalid">
+                    Debes explicar el motivo del cambio (mínimo 10 caracteres)
+                  </Form.Control.Feedback>
+                </Form.Group>
+              </Form>
+            </>
           )}
-          
-          <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Nueva Decisión *</Form.Label>
-              <Form.Select
-                value={editAprobacionData.estado}
-                onChange={(e) => setEditAprobacionData({...editAprobacionData, estado: e.target.value})}
-              >
-                <option value="aprobada">Aprobar</option>
-                <option value="rechazado">Rechazar</option>
-              </Form.Select>
-            </Form.Group>
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Comentarios * (mínimo 10 caracteres)</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={editAprobacionData.comentarios}
-                onChange={(e) => setEditAprobacionData({...editAprobacionData, comentarios: e.target.value})}
-                placeholder="Explica por qué cambias tu decisión..."
-                required
-              />
-            </Form.Group>
-          </Form>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowEditAprobacionModal(false)}>
@@ -2051,7 +2358,7 @@ const handleEditarAprobacion = async () => {
           <Button 
             variant={editAprobacionData.estado === 'aprobada' ? 'success' : 'danger'} 
             onClick={handleEditarAprobacion}
-            disabled={!editAprobacionData.comentarios || editAprobacionData.comentarios.trim().length < 10}
+            disabled={editAprobacionData.comentarios.trim().length < 10}
           >
             <FontAwesomeIcon icon={faEdit} className="me-2" />
             Actualizar Decisión
