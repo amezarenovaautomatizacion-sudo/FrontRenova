@@ -79,7 +79,6 @@ const Layout: React.FC = () => {
       icon: faBell,
       roles: ['admin', 'manager', 'employee']
     },
-    // 👇 NUEVA OPCIÓN DE REPORTES - SOLO ADMIN Y MANAGER
     {
       path: '/reportes',
       title: 'Reportes',

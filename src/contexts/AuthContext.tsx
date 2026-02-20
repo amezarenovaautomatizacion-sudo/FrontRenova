@@ -81,7 +81,6 @@ useEffect(() => {
     setIsLoading(false);
   }, []);
 
-  // NUEVA FUNCIÓN: Sincronizar datos del perfil actualizados
   const syncProfileData = (empleadoData: any) => {
     try {
       // Actualizar localStorage con los nuevos datos del empleado
