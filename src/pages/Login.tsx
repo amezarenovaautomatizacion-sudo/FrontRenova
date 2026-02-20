@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 import {
   Container,
   Row,
@@ -23,6 +23,16 @@ const Login: React.FC = () => {
 
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // USAR SESSIONSTORAGE COMO FUENTE PRINCIPAL
+  const from = sessionStorage.getItem('redirectAfterLogin') || 
+               location.state?.from?.pathname || 
+               "/dashboard";
+
+  console.log('Login - from:', from);
+  console.log('Login - location.state:', location.state);
+  console.log('Login - sessionStorage:', sessionStorage.getItem('redirectAfterLogin'));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +48,20 @@ const Login: React.FC = () => {
         localStorage.removeItem('rememberedUser');
       }
       
-      navigate('/dashboard');
+      // Obtener la ruta de destino
+      const redirectTo = sessionStorage.getItem('redirectAfterLogin') || 
+                         location.state?.from?.pathname || 
+                         '/dashboard';
+      
+      console.log('Login exitoso, redirigiendo a:', redirectTo);
+      
+      // Limpiar sessionStorage
+      sessionStorage.removeItem('redirectAfterLogin');
+      
+      // Pequeño timeout para asegurar que todo esté listo
+      setTimeout(() => {
+        navigate(redirectTo, { replace: true });
+      }, 100);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Error en el login';
       setError(errorMessage);
@@ -47,8 +70,7 @@ const Login: React.FC = () => {
     }
   };
 
-  // Si ya hay usuario recordado
-  React.useEffect(() => {
+  useEffect(() => {
     const rememberedUser = localStorage.getItem('rememberedUser');
     if (rememberedUser) {
       setUsuario(rememberedUser);
@@ -62,7 +84,6 @@ const Login: React.FC = () => {
         <Col xs={12} sm={10} md={8} lg={6} xl={5}>
           <Card className="shadow-lg border-0 rounded-3">
             <Card.Body className="p-5">
-              {/* Header */}
               <div className="text-center mb-4">
                 <div className="bg-primary rounded-circle p-3 d-inline-block mb-3">
                   <FontAwesomeIcon 
@@ -75,7 +96,6 @@ const Login: React.FC = () => {
                 <p className="text-muted">Sistema de Gestión de Recursos Humanos</p>
               </div>
 
-              {/* Formulario */}
               <Form onSubmit={handleSubmit}>
                 {error && (
                   <Alert variant="danger" dismissible onClose={() => setError('')}>

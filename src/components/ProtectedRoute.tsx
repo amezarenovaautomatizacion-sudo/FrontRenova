@@ -1,30 +1,35 @@
-import React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { Spinner } from 'react-bootstrap';
+import { Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
-interface ProtectedRouteProps {
+interface Props {
   children: React.ReactNode;
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
+const ProtectedRoute = ({ children }: Props) => {
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
+  console.log('ProtectedRoute - Evaluando:', {
+    path: location.pathname,
+    isAuthenticated,
+    isLoading
+  });
+
   if (isLoading) {
-    return (
-      <div className="d-flex justify-content-center align-items-center vh-100">
-        <Spinner animation="border" variant="primary" />
-        <span className="ms-3">Cargando...</span>
-      </div>
-    );
+    return null;
   }
 
   if (!isAuthenticated) {
-    // Redirigir al login guardando la ubicación actual
+    console.log('Usuario no autenticado, redirigiendo a login desde:', location.pathname);
+    
+    // Guardar en sessionStorage SIEMPRE
+    sessionStorage.setItem('redirectAfterLogin', location.pathname);
+    console.log('Ruta guardada en sessionStorage:', location.pathname);
+    
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  console.log('Usuario autenticado, mostrando:', location.pathname);
   return <>{children}</>;
 };
 

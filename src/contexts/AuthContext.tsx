@@ -23,7 +23,6 @@ interface AuthContextType {
   logout: () => void;
   forceReauth: (usuario: string) => void;
   refreshAuth: () => Promise<boolean>;
-  // NUEVA FUNCIÓN: Sincronizar datos actualizados del perfil
   syncProfileData: (empleadoData: any) => void;
 }
 
@@ -45,32 +44,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-    const normalizeUser = (userData: any): User => {
-        return {
-        id: userData.ID || userData.id,
-        usuario: userData.Usuario || userData.usuario,
-        rol: userData.Rol || userData.rol || 'employee', // Aquí normalizamos "Rol" a "rol"
-        activo: userData.Activo || userData.activo || true
-        };
+  const normalizeUser = (userData: any): User => {
+    return {
+      id: userData.ID || userData.id,
+      usuario: userData.Usuario || userData.usuario,
+      rol: userData.Rol || userData.rol || 'employee',
+      activo: userData.Activo || userData.activo || true
     };
+  };
 
-useEffect(() => {
+  useEffect(() => {
     const token = localStorage.getItem('renova_token');
     const userData = localStorage.getItem('renova_user');
 
     if (token && userData) {
       try {
         const parsedUser = JSON.parse(userData);
-        console.log('🔍 AuthProvider - Usuario parseado:', parsedUser);
-        
-        // Normalizar el usuario
         const normalizedUser = normalizeUser(parsedUser);
-        console.log('🔍 AuthProvider - Usuario normalizado:', normalizedUser);
-        
         setUser(normalizedUser);
 
         authService.verifyToken().catch((error) => {
-          console.error('❌ Error verificando token:', error);
+          console.error('Error verificando token:', error);
           logout();
         });
       } catch {
@@ -83,16 +77,12 @@ useEffect(() => {
 
   const syncProfileData = (empleadoData: any) => {
     try {
-      // Actualizar localStorage con los nuevos datos del empleado
       localStorage.setItem('renova_empleado', JSON.stringify(empleadoData));
       
-      // También podemos actualizar el usuario si cambió el nombre
       if (empleadoData.NombreCompleto) {
         const userData = localStorage.getItem('renova_user');
         if (userData) {
           const userParsed = JSON.parse(userData);
-          // Si el nombre del usuario (que es el correo) es diferente del nombre completo
-          // Podemos guardar el nombre completo como metadata adicional
           const updatedUser = {
             ...userParsed,
             nombreCompleto: empleadoData.NombreCompleto
@@ -101,20 +91,16 @@ useEffect(() => {
           setUser(updatedUser);
         }
       }
-      
-      console.log('✅ Datos del perfil sincronizados correctamente');
     } catch (error) {
       console.error('Error al sincronizar datos del perfil:', error);
     }
   };
 
-  // Función de login original
   const login = async (usuario: string, contrasenia: string) => {
     return await loginWithUser(usuario, contrasenia);
   };
 
-  // Nueva función para login que acepta usuario explícitamente
- const loginWithUser = async (usuario: string, contrasenia: string) => {
+  const loginWithUser = async (usuario: string, contrasenia: string) => {
     try {
       setIsLoading(true);
       const response = await authService.login(usuario, contrasenia);
@@ -125,17 +111,14 @@ useEffect(() => {
 
       const { token, user: userData, empleado } = response.data;
 
-      console.log('🔍 Login - Respuesta del servidor:', userData);
-
-      // Normalizar el usuario antes de guardarlo
       const normalizedUser = normalizeUser(userData);
-      console.log('🔍 Login - Usuario normalizado:', normalizedUser);
 
       localStorage.setItem('renova_token', token);
-      localStorage.setItem('renova_user', JSON.stringify(normalizedUser)); // Guardar normalizado
+      localStorage.setItem('renova_user', JSON.stringify(normalizedUser));
       localStorage.setItem('renova_empleado', JSON.stringify(empleado));
 
       setUser(normalizedUser);
+      
       return true;
     } catch (error: any) {
       throw new Error(
@@ -146,7 +129,6 @@ useEffect(() => {
     }
   };
 
-  // Función de logout
   const logout = () => {
     localStorage.removeItem('renova_token');
     localStorage.removeItem('renova_user');
@@ -155,19 +137,16 @@ useEffect(() => {
     window.location.href = '/login';
   };
 
-  // Nueva función para forzar reautenticación
   const forceReauth = (usuario: string) => {
     localStorage.setItem('reauth_user', usuario);
     logout();
   };
 
-  // Función para refrescar token
   const refreshAuth = async (): Promise<boolean> => {
     try {
       const response = await authService.verifyToken();
 
       if (response.success) {
-        // Obtener datos actualizados del perfil
         const profileResponse = await authService.profile();
         if (profileResponse.success) {
           const { user: userData, empleado } = profileResponse.data;
@@ -193,7 +172,7 @@ useEffect(() => {
     logout,
     forceReauth,
     refreshAuth,
-    syncProfileData // Exportar nueva función
+    syncProfileData
   };
 
   return (

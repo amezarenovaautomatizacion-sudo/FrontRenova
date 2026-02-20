@@ -16,12 +16,10 @@ import Incidencias from './pages/Incidencias';
 import ReportesEstadisticas from './pages/Reportes';
 import './index.css';
 
-
-// 🔥 Componente interno para poder usar useAuth
 const AppRoutes: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth();
 
-  if (isLoading) return null; // aquí puedes poner un spinner si quieres
+  if (isLoading) return null;
 
   return (
     <Routes>
