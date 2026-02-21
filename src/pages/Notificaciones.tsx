@@ -663,7 +663,7 @@ const Notificaciones: React.FC = () => {
 
   const getColorNotificacion = (tipo: string, prioridad: string, estado: string, isGeneral: boolean = false) => {
     if (isGeneral) return 'info';
-    if (estado === 'no_vista') return 'light';
+    if (estado === 'no_vista') return '';
     
     const colores: Record<string, string> = {
       'solicitud_vacaciones_aprobada': 'success',
@@ -824,11 +824,11 @@ const Notificaciones: React.FC = () => {
               {!loading.resumen && (
                 <Row className="mb-4">
                   <Col md={3}>
-                    <Card className="shadow-sm border-0 bg-primary text-white">
+                    <Card className="shadow-sm border-0 bg-primary">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
-                            <small className="text-white-50">Total</small>
+                            <small>Total</small>
                             <h2 className="mb-0 fw-bold">{resumen.total}</h2>
                           </div>
                           <div className="bg-white bg-opacity-25 p-3 rounded-circle">
@@ -839,11 +839,11 @@ const Notificaciones: React.FC = () => {
                     </Card>
                   </Col>
                   <Col md={3}>
-                    <Card className="shadow-sm border-0 bg-danger text-white">
+                    <Card className="shadow-sm border-0 bg-danger">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
-                            <small className="text-white-50">No vistas</small>
+                            <small>No vistas</small>
                             <h2 className="mb-0 fw-bold">{resumen.no_vistas}</h2>
                           </div>
                           <div className="bg-white bg-opacity-25 p-3 rounded-circle">
@@ -866,11 +866,11 @@ const Notificaciones: React.FC = () => {
                     </Card>
                   </Col>
                   <Col md={3}>
-                    <Card className="shadow-sm border-0 bg-warning text-white">
+                    <Card className="shadow-sm border-0 bg-warning">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
-                            <small className="text-white-50">Importantes</small>
+                            <small>Importantes</small>
                             <h2 className="mb-0 fw-bold">{resumen.importantes}</h2>
                           </div>
                           <div className="bg-white bg-opacity-25 p-3 rounded-circle">
@@ -881,11 +881,11 @@ const Notificaciones: React.FC = () => {
                     </Card>
                   </Col>
                   <Col md={3}>
-                    <Card className="shadow-sm border-0 bg-info text-white">
+                    <Card className="shadow-sm border-0 bg-info">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
-                            <small className="text-white-50">No leídas</small>
+                            <small>No leídas</small>
                             <h2 className="mb-0 fw-bold">{resumen.no_leidas}</h2>
                           </div>
                           <div className="bg-white bg-opacity-25 p-3 rounded-circle">
@@ -1384,11 +1384,11 @@ const Notificaciones: React.FC = () => {
               {!loading.resumenVistas && (
                 <Row className="mb-4">
                   <Col md={3}>
-                    <Card className="shadow-sm border-0 bg-primary text-white">
+                    <Card className="shadow-sm border-0 bg-primary">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
-                            <small className="text-white-50">Total Vistas</small>
+                            <small>Total Vistas</small>
                             <h2 className="mb-0 fw-bold">{resumenVistas.total_vistas}</h2>
                           </div>
                           <div className="bg-white bg-opacity-25 p-3 rounded-circle">
@@ -1399,11 +1399,11 @@ const Notificaciones: React.FC = () => {
                     </Card>
                   </Col>
                   <Col md={3}>
-                    <Card className="shadow-sm border-0 bg-success text-white">
+                    <Card className="shadow-sm border-0 bg-success">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
-                            <small className="text-white-50">Hoy</small>
+                            <small>Hoy</small>
                             <h2 className="mb-0 fw-bold">{resumenVistas.vistas_hoy}</h2>
                           </div>
                           <div className="bg-white bg-opacity-25 p-3 rounded-circle">
@@ -1414,11 +1414,11 @@ const Notificaciones: React.FC = () => {
                     </Card>
                   </Col>
                   <Col md={3}>
-                    <Card className="shadow-sm border-0 bg-info text-white">
+                    <Card className="shadow-sm border-0 bg-info">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
-                            <small className="text-white-50">Esta Semana</small>
+                            <small>Esta Semana</small>
                             <h2 className="mb-0 fw-bold">{resumenVistas.vistas_semana}</h2>
                           </div>
                           <div className="bg-white bg-opacity-25 p-3 rounded-circle">
@@ -1429,11 +1429,11 @@ const Notificaciones: React.FC = () => {
                     </Card>
                   </Col>
                   <Col md={3}>
-                    <Card className="shadow-sm border-0 bg-warning text-white">
+                    <Card className="shadow-sm border-0 bg-warning">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
-                            <small className="text-white-50">Usuarios Activos</small>
+                            <small>Usuarios Activos</small>
                             <h2 className="mb-0 fw-bold">{resumenVistas.usuarios_activos}</h2>
                           </div>
                           <div className="bg-white bg-opacity-25 p-3 rounded-circle">
@@ -1812,7 +1812,7 @@ const Notificaciones: React.FC = () => {
       </Modal>
 
       <Modal show={showCrearGeneralModal} onHide={() => setShowCrearGeneralModal(false)} size="lg" centered>
-        <Modal.Header closeButton className="bg-success text-white">
+        <Modal.Header closeButton className="bg-success">
           <Modal.Title>
             <FontAwesomeIcon icon={faBullhorn} className="me-2" />
             Nueva Notificación General
