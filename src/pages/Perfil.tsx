@@ -19,9 +19,6 @@ import {
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faUserCircle,
-  faEdit,
-  faSave,
-  faTimes,
   faLock,
   faBuilding,
   faPhone,
@@ -105,12 +102,14 @@ const ReauthModal: React.FC<ReauthModalProps> = ({
   const [contrasenia, setContrasenia] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (show) {
       setContrasenia('');
       setError('');
       setLoading(false);
+      setShowPassword(false);
     }
   }, [show]);
 
@@ -166,14 +165,24 @@ const ReauthModal: React.FC<ReauthModalProps> = ({
               <FontAwesomeIcon icon={faLock} className="me-2" />
               Contraseña
             </Form.Label>
-            <Form.Control
-              type="password"
-              placeholder="Ingresa tu contraseña"
-              value={contrasenia}
-              onChange={(e) => setContrasenia(e.target.value)}
-              disabled={loading}
-              autoFocus
-            />
+            <div className="position-relative">
+              <Form.Control
+                type={showPassword ? "text" : "password"}
+                placeholder="Ingresa tu contraseña"
+                value={contrasenia}
+                onChange={(e) => setContrasenia(e.target.value)}
+                disabled={loading}
+                autoFocus
+              />
+              <Button
+                variant="link"
+                className="position-absolute end-0 top-50 translate-middle-y text-decoration-none"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+              >
+                <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} />
+              </Button>
+            </div>
             <Form.Text className="text-muted">
               Ingresa la contraseña de tu cuenta para continuar.
             </Form.Text>
@@ -234,34 +243,23 @@ const Perfil: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [editMode, setEditMode] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showSensitiveData, setShowSensitiveData] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showReauthModal, setShowReauthModal] = useState(false);
-  const [pendingChanges, setPendingChanges] = useState<{
-    type: 'perfil' | 'password';
-    empleadoId?: number;
-    datos?: any;
-    empleadoActual?: Empleado;
-  } | null>(null);
   const [reauthUser, setReauthUser] = useState('');
   
-  // Estados para formulario de edición
-  const [formData, setFormData] = useState({
-    nombreCompleto: '',
-    celular: '',
-    fechaNacimiento: '',
-    direccion: '',
-    telefonoEmergencia: ''
-  });
-
   // Estados para cambio de contraseña
   const [passwordData, setPasswordData] = useState({
     contraseniaActual: '',
     nuevaContrasenia: '',
     confirmarContrasenia: ''
   });
+
+  // Estados para mostrar/ocultar contraseñas en el modal
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Cache para almacenar el último estado válido del empleado
   const [empleadoCache, setEmpleadoCache] = useState<Empleado | null>(null);
@@ -283,14 +281,6 @@ const Perfil: React.FC = () => {
         setEmpleado(empleadoCompleto);
         setEmpleadoCache(empleadoCompleto); // Guardar en cache
         setReauthUser(userParsed.Usuario);
-        
-        setFormData({
-          nombreCompleto: empleadoParsed.NombreCompleto || '',
-          celular: empleadoParsed.Celular || '',
-          fechaNacimiento: empleadoParsed.FechaNacimiento?.split('T')[0] || '',
-          direccion: empleadoParsed.Direccion || '',
-          telefonoEmergencia: empleadoParsed.TelefonoEmergencia || ''
-        });
       }
     } catch (error) {
       console.error('Error al cargar perfil desde localStorage:', error);
@@ -298,227 +288,9 @@ const Perfil: React.FC = () => {
     }
   };
 
-  // Función para forzar una sincronización completa con el backend
-  const sincronizarConBackend = async (empleadoId: number) => {
-    try {
-      // OPCIÓN 1: Usar refreshAuth del AuthContext
-      const success = await refreshAuth();
-      if (success) {
-        cargarPerfilDesdeLocalStorage();
-        return true;
-      }
-      
-      // OPCIÓN 2: Si refreshAuth falla, intentar manualmente
-      const userData = localStorage.getItem('renova_user');
-      if (!userData) return false;
-      
-      const userParsed = JSON.parse(userData);
-      
-      // Hacer un login silencioso
-      try {
-        const token = localStorage.getItem('renova_token');
-        if (!token) return false;
-        
-        // En una implementación real, aquí harías una llamada a la API
-        // para obtener los datos actualizados
-        cargarPerfilDesdeLocalStorage();
-        return true;
-      } catch {
-        return false;
-      }
-    } catch (error) {
-      console.error('Error al sincronizar con backend:', error);
-      return false;
-    }
-  };
-
   useEffect(() => {
     cargarPerfilDesdeLocalStorage();
   }, []);
-
-  const handleEdit = () => {
-    setEditMode(true);
-  };
-
-  const handleCancel = () => {
-    setEditMode(false);
-    cargarPerfilDesdeLocalStorage();
-  };
-
-  const handleSave = async () => {
-    try {
-      if (!empleado || !empleado.Usuario) return;
-      
-      // Preparar datos para enviar a la API
-      const datosParaEnviar: any = {};
-      
-      // Solo enviar campos que han cambiado
-      if (formData.nombreCompleto !== empleado.NombreCompleto) {
-        datosParaEnviar.nombreCompleto = formData.nombreCompleto;
-      }
-      
-      if (formData.celular !== empleado.Celular) {
-        datosParaEnviar.celular = formData.celular || null;
-      }
-      
-      if (formData.fechaNacimiento !== (empleado.FechaNacimiento?.split('T')[0] || '')) {
-        datosParaEnviar.fechaNacimiento = formData.fechaNacimiento || null;
-      }
-      
-      if (formData.direccion !== empleado.Direccion) {
-        datosParaEnviar.direccion = formData.direccion || null;
-      }
-      
-      if (formData.telefonoEmergencia !== empleado.TelefonoEmergencia) {
-        datosParaEnviar.telefonoEmergencia = formData.telefonoEmergencia || null;
-      }
-      
-      // Si no hay cambios, no hacer nada
-      if (Object.keys(datosParaEnviar).length === 0) {
-        setEditMode(false);
-        return;
-      }
-      
-      // Guardar cambios pendientes y mostrar modal de reauth
-      // IMPORTANTE: Guardar el estado ACTUAL del empleado antes de hacer cambios
-      setPendingChanges({
-        type: 'perfil',
-        empleadoId: empleado.ID,
-        datos: datosParaEnviar,
-        empleadoActual: empleado // Guardar estado actual para posible rollback
-      });
-      setEditMode(false);
-      setShowReauthModal(true);
-      
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Error al preparar cambios';
-      setError(errorMessage);
-    }
-  };
-
-  const handleReauthSuccess = async () => {
-    setShowReauthModal(false);
-    
-    if (pendingChanges?.type === 'password') {
-      await handlePasswordChangeAfterReauth();
-    } else {
-      await handleProfileUpdateAfterReauth();
-    }
-  };
-
-  const handleProfileUpdateAfterReauth = async () => {
-    try {
-      if (!pendingChanges || !pendingChanges.empleadoId || !empleado) return;
-      
-      setLoading(true);
-      setError('');
-      
-      // ✅ PASO 1: Actualizar LOCALMENTE primero para feedback inmediato
-      const empleadoActualizadoLocalmente = {
-        ...empleado,
-        ...pendingChanges.datos,
-        FechaNacimiento: pendingChanges.datos.fechaNacimiento || empleado.FechaNacimiento
-      };
-      
-      // Actualizar estado inmediatamente
-      setEmpleado(empleadoActualizadoLocalmente);
-      setEmpleadoCache(empleadoActualizadoLocalmente);
-      
-      // ✅ PASO 2: Enviar cambios a la API
-      const response = await empleadoService.actualizarPerfil(
-        pendingChanges.empleadoId, 
-        pendingChanges.datos
-      );
-      
-      if (response.success) {
-        setSuccess('Perfil actualizado exitosamente');
-        
-        // ✅ PASO 3: Sincronizar con backend para asegurar consistencia
-        setTimeout(async () => {
-          try {
-            await sincronizarConBackend(pendingChanges.empleadoId!);
-            setSuccess('Perfil actualizado y sincronizado exitosamente');
-          } catch (syncError) {
-            console.warn('Advertencia: No se pudo sincronizar completamente', syncError);
-            // No mostramos error porque los cambios locales ya están visibles
-          }
-        }, 500);
-        
-        // ✅ PASO 4: Actualizar localStorage con la versión actualizada
-        localStorage.setItem('renova_empleado', JSON.stringify(empleadoActualizadoLocalmente));
-        
-        // ✅ PASO 5: También actualizar formData para que coincida
-        setFormData({
-          nombreCompleto: empleadoActualizadoLocalmente.NombreCompleto || '',
-          celular: empleadoActualizadoLocalmente.Celular || '',
-          fechaNacimiento: empleadoActualizadoLocalmente.FechaNacimiento?.split('T')[0] || '',
-          direccion: empleadoActualizadoLocalmente.Direccion || '',
-          telefonoEmergencia: empleadoActualizadoLocalmente.TelefonoEmergencia || ''
-        });
-        
-        // ✅ PASO 6: Si cambió el nombre completo, actualizar también en user
-        if (pendingChanges.datos.nombreCompleto) {
-          const userData = localStorage.getItem('renova_user');
-          if (userData) {
-            const userParsed = JSON.parse(userData);
-            const updatedUser = {
-              ...userParsed,
-              nombreCompleto: pendingChanges.datos.nombreCompleto
-            };
-            localStorage.setItem('renova_user', JSON.stringify(updatedUser));
-          }
-        }
-        
-        setTimeout(() => setSuccess(''), 5000);
-      } else {
-        // ✅ ROLLBACK: Si la API falla, revertir a estado anterior
-        if (pendingChanges.empleadoActual) {
-          setEmpleado(pendingChanges.empleadoActual);
-          setEmpleadoCache(pendingChanges.empleadoActual);
-          localStorage.setItem('renova_empleado', JSON.stringify(pendingChanges.empleadoActual));
-          
-          setFormData({
-            nombreCompleto: pendingChanges.empleadoActual.NombreCompleto || '',
-            celular: pendingChanges.empleadoActual.Celular || '',
-            fechaNacimiento: pendingChanges.empleadoActual.FechaNacimiento?.split('T')[0] || '',
-            direccion: pendingChanges.empleadoActual.Direccion || '',
-            telefonoEmergencia: pendingChanges.empleadoActual.TelefonoEmergencia || ''
-          });
-        }
-        
-        setError(response.message || 'Error al actualizar el perfil');
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Error al actualizar el perfil';
-      
-      // ✅ ROLLBACK: Si hay error, revertir a estado anterior
-      if (pendingChanges?.empleadoActual) {
-        setEmpleado(pendingChanges.empleadoActual);
-        setEmpleadoCache(pendingChanges.empleadoActual);
-        localStorage.setItem('renova_empleado', JSON.stringify(pendingChanges.empleadoActual));
-        
-        setFormData({
-          nombreCompleto: pendingChanges.empleadoActual.NombreCompleto || '',
-          celular: pendingChanges.empleadoActual.Celular || '',
-          fechaNacimiento: pendingChanges.empleadoActual.FechaNacimiento?.split('T')[0] || '',
-          direccion: pendingChanges.empleadoActual.Direccion || '',
-          telefonoEmergencia: pendingChanges.empleadoActual.TelefonoEmergencia || ''
-        });
-      }
-      
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-      setPendingChanges(null);
-    }
-  };
-
-  const handleReauthCancel = () => {
-    setShowReauthModal(false);
-    setPendingChanges(null);
-    cargarPerfilDesdeLocalStorage();
-    setError('Actualización cancelada. Los cambios no se guardaron.');
-  };
 
   const handlePasswordChange = async () => {
     try {
@@ -540,11 +312,6 @@ const Perfil: React.FC = () => {
         return;
       }
       
-      // Guardar datos de cambio de contraseña y mostrar modal de reauth
-      setPendingChanges({
-        type: 'password',
-        datos: passwordData
-      });
       setShowPasswordModal(false);
       setShowReauthModal(true);
       
@@ -554,9 +321,14 @@ const Perfil: React.FC = () => {
     }
   };
 
+  const handleReauthSuccess = async () => {
+    setShowReauthModal(false);
+    await handlePasswordChangeAfterReauth();
+  };
+
   const handlePasswordChangeAfterReauth = async () => {
     try {
-      if (!pendingChanges || pendingChanges.type !== 'password' || !empleado) return;
+      if (!empleado) return;
       
       setLoading(true);
       setError('');
@@ -564,11 +336,18 @@ const Perfil: React.FC = () => {
       // Llamar a la API para cambiar contraseña
       const response = await empleadoService.cambiarContrasenia(
         empleado.ID, 
-        pendingChanges.datos
+        passwordData
       );
       
       if (response.success) {
         setSuccess('Contraseña cambiada exitosamente');
+        
+        // Limpiar el formulario
+        setPasswordData({
+          contraseniaActual: '',
+          nuevaContrasenia: '',
+          confirmarContrasenia: ''
+        });
         
         // Cerrar sesión después de cambiar contraseña
         setTimeout(() => {
@@ -584,21 +363,13 @@ const Perfil: React.FC = () => {
       setError(errorMessage);
     } finally {
       setLoading(false);
-      setPendingChanges(null);
-      setPasswordData({
-        contraseniaActual: '',
-        nuevaContrasenia: '',
-        confirmarContrasenia: ''
-      });
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  const handleReauthCancel = () => {
+    setShowReauthModal(false);
+    setShowPasswordModal(true); // Volver a mostrar el modal de cambio de contraseña
+    setError('Cambio de contraseña cancelado.');
   };
 
   const handlePasswordInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -645,9 +416,9 @@ const Perfil: React.FC = () => {
       setRefreshing(true);
       setError('');
       
-      // Forzar sincronización completa
       if (empleado?.ID) {
-        await sincronizarConBackend(empleado.ID);
+        // Aquí iría la lógica de sincronización con el backend
+        cargarPerfilDesdeLocalStorage();
         setSuccess('Perfil actualizado desde el servidor');
       } else {
         cargarPerfilDesdeLocalStorage();
@@ -717,7 +488,7 @@ const Perfil: React.FC = () => {
                 <FontAwesomeIcon icon={faUserCircle} className="me-2 text-primary" />
                 Mi Perfil
               </h1>
-              <p className="text-muted mb-0">Gestiona tu información personal y profesional</p>
+              <p className="text-muted mb-0">Visualiza tu información personal y profesional</p>
             </div>
             <div className="d-flex gap-2">
               <Button 
@@ -730,38 +501,10 @@ const Perfil: React.FC = () => {
                 {refreshing ? 'Actualizando...' : 'Actualizar'}
               </Button>
               
-              {!editMode ? (
-                <>
-                  <Button variant="outline-primary" onClick={handleEdit} disabled={loading}>
-                    <FontAwesomeIcon icon={faEdit} className="me-2" />
-                    Editar Perfil
-                  </Button>
-                  <Button variant="outline-secondary" onClick={() => setShowPasswordModal(true)} disabled={loading}>
-                    <FontAwesomeIcon icon={faLock} className="me-2" />
-                    Cambiar Contraseña
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button variant="success" onClick={handleSave} disabled={loading}>
-                    {loading ? (
-                      <>
-                        <Spinner as="span" animation="border" size="sm" className="me-2" />
-                        Guardando...
-                      </>
-                    ) : (
-                      <>
-                        <FontAwesomeIcon icon={faSave} className="me-2" />
-                        Guardar Cambios
-                      </>
-                    )}
-                  </Button>
-                  <Button variant="outline-secondary" onClick={handleCancel} disabled={loading}>
-                    <FontAwesomeIcon icon={faTimes} className="me-2" />
-                    Cancelar
-                  </Button>
-                </>
-              )}
+              <Button variant="outline-primary" onClick={() => setShowPasswordModal(true)} disabled={loading}>
+                <FontAwesomeIcon icon={faLock} className="me-2" />
+                Cambiar Contraseña
+              </Button>
             </div>
           </div>
         </Col>
@@ -825,7 +568,7 @@ const Perfil: React.FC = () => {
                 <FontAwesomeIcon icon={faPhone} className="me-2" />
                 Información de Contacto
               </h6>
-              <small className="text-muted">Última actualización: Hoy</small>
+              <small className="text-muted">Solo lectura</small>
             </Card.Header>
             <ListGroup variant="flush">
               <ListGroup.Item className="d-flex align-items-center">
@@ -892,17 +635,7 @@ const Perfil: React.FC = () => {
                               <FontAwesomeIcon icon={faUserCircle} className="me-2" />
                               Nombre Completo
                             </Form.Label>
-                            {editMode ? (
-                              <Form.Control
-                                type="text"
-                                name="nombreCompleto"
-                                value={formData.nombreCompleto}
-                                onChange={handleInputChange}
-                                disabled={loading}
-                              />
-                            ) : (
-                              <Form.Control plaintext readOnly defaultValue={empleado.NombreCompleto} />
-                            )}
+                            <Form.Control plaintext readOnly defaultValue={empleado.NombreCompleto} />
                           </Form.Group>
                         </Col>
                         
@@ -925,28 +658,18 @@ const Perfil: React.FC = () => {
                               <FontAwesomeIcon icon={faBirthdayCake} className="me-2" />
                               Fecha de Nacimiento
                             </Form.Label>
-                            {editMode ? (
-                              <Form.Control
-                                type="date"
-                                name="fechaNacimiento"
-                                value={formData.fechaNacimiento}
-                                onChange={handleInputChange}
-                                disabled={loading}
-                              />
-                            ) : (
-                              <div>
-                                <Form.Control plaintext readOnly defaultValue={
-                                  empleado.FechaNacimiento 
-                                    ? new Date(empleado.FechaNacimiento).toLocaleDateString('es-ES')
-                                    : 'No registrada'
-                                } />
-                                {empleado.FechaNacimiento && (
-                                  <small className="text-muted">
-                                    Edad: {calcularEdad(empleado.FechaNacimiento)} años
-                                  </small>
-                                )}
-                              </div>
-                            )}
+                            <div>
+                              <Form.Control plaintext readOnly defaultValue={
+                                empleado.FechaNacimiento 
+                                  ? new Date(empleado.FechaNacimiento).toLocaleDateString('es-ES')
+                                  : 'No registrada'
+                              } />
+                              {empleado.FechaNacimiento && (
+                                <small className="text-muted">
+                                  Edad: {calcularEdad(empleado.FechaNacimiento)} años
+                                </small>
+                              )}
+                            </div>
                           </Form.Group>
                         </Col>
                         
@@ -956,18 +679,7 @@ const Perfil: React.FC = () => {
                               <FontAwesomeIcon icon={faPhone} className="me-2" />
                               Teléfono Celular
                             </Form.Label>
-                            {editMode ? (
-                              <Form.Control
-                                type="tel"
-                                name="celular"
-                                value={formData.celular}
-                                onChange={handleInputChange}
-                                disabled={loading}
-                                placeholder="Ej: 555-123-4567"
-                              />
-                            ) : (
-                              <Form.Control plaintext readOnly defaultValue={empleado.Celular || 'No registrado'} />
-                            )}
+                            <Form.Control plaintext readOnly defaultValue={empleado.Celular || 'No registrado'} />
                           </Form.Group>
                         </Col>
                       </Row>
@@ -977,25 +689,13 @@ const Perfil: React.FC = () => {
                           <FontAwesomeIcon icon={faMapMarkerAlt} className="me-2" />
                           Dirección
                         </Form.Label>
-                        {editMode ? (
-                          <Form.Control
-                            as="textarea"
-                            rows={2}
-                            name="direccion"
-                            value={formData.direccion}
-                            onChange={handleInputChange}
-                            disabled={loading}
-                            placeholder="Calle, Número, Colonia, Ciudad, Estado, Código Postal"
-                          />
-                        ) : (
-                          <Form.Control 
-                            as="textarea" 
-                            rows={2} 
-                            plaintext 
-                            readOnly 
-                            defaultValue={empleado.Direccion || 'No registrada'} 
-                          />
-                        )}
+                        <Form.Control 
+                          as="textarea" 
+                          rows={2} 
+                          plaintext 
+                          readOnly 
+                          defaultValue={empleado.Direccion || 'No registrada'} 
+                        />
                       </Form.Group>
 
                       <Form.Group className="mb-3">
@@ -1003,18 +703,7 @@ const Perfil: React.FC = () => {
                           <FontAwesomeIcon icon={faPhone} className="me-2" />
                           Teléfono de Emergencia
                         </Form.Label>
-                        {editMode ? (
-                          <Form.Control
-                            type="tel"
-                            name="telefonoEmergencia"
-                            value={formData.telefonoEmergencia}
-                            onChange={handleInputChange}
-                            disabled={loading}
-                            placeholder="Ej: 555-987-6543"
-                          />
-                        ) : (
-                          <Form.Control plaintext readOnly defaultValue={empleado.TelefonoEmergencia || 'No registrado'} />
-                        )}
+                        <Form.Control plaintext readOnly defaultValue={empleado.TelefonoEmergencia || 'No registrado'} />
                       </Form.Group>
                     </Form>
                   </Tab.Pane>
@@ -1239,41 +928,71 @@ const Perfil: React.FC = () => {
           <Form>
             <Form.Group className="mb-3">
               <Form.Label>Contraseña Actual *</Form.Label>
-              <Form.Control
-                type="password"
-                name="contraseniaActual"
-                value={passwordData.contraseniaActual}
-                onChange={handlePasswordInputChange}
-                placeholder="Ingresa tu contraseña actual"
-                disabled={loading}
-                required
-              />
+              <div className="position-relative">
+                <Form.Control
+                  type={showCurrentPassword ? "text" : "password"}
+                  name="contraseniaActual"
+                  value={passwordData.contraseniaActual}
+                  onChange={handlePasswordInputChange}
+                  placeholder="Ingresa tu contraseña actual"
+                  disabled={loading}
+                  required
+                />
+                <Button
+                  variant="link"
+                  className="position-absolute end-0 top-50 translate-middle-y text-decoration-none"
+                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                  tabIndex={-1}
+                >
+                  <FontAwesomeIcon icon={showCurrentPassword ? faEyeSlash : faEye} />
+                </Button>
+              </div>
             </Form.Group>
             
             <Form.Group className="mb-3">
               <Form.Label>Nueva Contraseña *</Form.Label>
-              <Form.Control
-                type="password"
-                name="nuevaContrasenia"
-                value={passwordData.nuevaContrasenia}
-                onChange={handlePasswordInputChange}
-                placeholder="Mínimo 6 caracteres"
-                disabled={loading}
-                required
-              />
+              <div className="position-relative">
+                <Form.Control
+                  type={showNewPassword ? "text" : "password"}
+                  name="nuevaContrasenia"
+                  value={passwordData.nuevaContrasenia}
+                  onChange={handlePasswordInputChange}
+                  placeholder="Mínimo 6 caracteres"
+                  disabled={loading}
+                  required
+                />
+                <Button
+                  variant="link"
+                  className="position-absolute end-0 top-50 translate-middle-y text-decoration-none"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  tabIndex={-1}
+                >
+                  <FontAwesomeIcon icon={showNewPassword ? faEyeSlash : faEye} />
+                </Button>
+              </div>
             </Form.Group>
             
             <Form.Group className="mb-3">
               <Form.Label>Confirmar Nueva Contraseña *</Form.Label>
-              <Form.Control
-                type="password"
-                name="confirmarContrasenia"
-                value={passwordData.confirmarContrasenia}
-                onChange={handlePasswordInputChange}
-                placeholder="Repite la nueva contraseña"
-                disabled={loading}
-                required
-              />
+              <div className="position-relative">
+                <Form.Control
+                  type={showConfirmPassword ? "text" : "password"}
+                  name="confirmarContrasenia"
+                  value={passwordData.confirmarContrasenia}
+                  onChange={handlePasswordInputChange}
+                  placeholder="Repite la nueva contraseña"
+                  disabled={loading}
+                  required
+                />
+                <Button
+                  variant="link"
+                  className="position-absolute end-0 top-50 translate-middle-y text-decoration-none"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  tabIndex={-1}
+                >
+                  <FontAwesomeIcon icon={showConfirmPassword ? faEyeSlash : faEye} />
+                </Button>
+              </div>
             </Form.Group>
           </Form>
           
@@ -1311,11 +1030,7 @@ const Perfil: React.FC = () => {
         onSuccess={handleReauthSuccess}
         onCancel={handleReauthCancel}
         title="Verificación de Seguridad"
-        message={
-          pendingChanges?.type === 'password' 
-            ? 'Por seguridad, verifica tu identidad antes de cambiar tu contraseña.'
-            : 'Por seguridad, verifica tu identidad antes de guardar los cambios en tu perfil.'
-        }
+        message="Por seguridad, verifica tu identidad antes de cambiar tu contraseña."
       />
     </Container>
   );

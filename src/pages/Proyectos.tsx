@@ -56,7 +56,6 @@ import {
   faExclamationTriangle,
   faCheck,
   faTimes,
-  faUserClock,
   faUserCheck,
   faUserSlash,
   faBuilding,
@@ -66,13 +65,14 @@ import {
   faUserFriends,
   faPaperPlane,
   faLock,
-  faCrown
+  faCrown,
+  faUndo,
+  faChartLine,
+  faTrophy,
+  faMedal,
+  faStar
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../services/api';
-
-// ============================================
-// INTERFACES
-// ============================================
 
 interface Proyecto {
   ID: number;
@@ -126,113 +126,50 @@ interface Tarea {
   JefeProyectoID?: number;
 }
 
-interface TareaAsignacion {
-  ID: number;
-  TareaID: number;
-  EmpleadoID: number;
-  EmpleadoNombre: string;
-  EmpleadoEmail?: string;
-  FechaAsignacion: string;
-  FechaFinalizacion?: string;
-  AsignadoPor: number;
-  AsignadoPorUsuario?: string;
-  Activo: boolean;
-  createdAt: string;
-}
-
-interface NotaTarea {
-  ID: number;
-  TareaID: number;
-  EmpleadoID: number;
-  EmpleadoNombre: string;
-  EmpleadoEmail?: string;
-  Contenido: string;
-  EsPrivada: boolean;
-  CreadoPor: number;
-  CreadorUsuario?: string;
-  createdAt: string;
-  updatedAt: string;
-  Activo: boolean;
-}
-
-interface EmpleadoProyecto {
+interface Empleado {
   ID: number;
   NombreCompleto: string;
   CorreoElectronico: string;
-  Celular?: string;
   RolApp: string;
   PuestoNombre?: string;
   DepartamentoNombre?: string;
   DepartamentoID?: number;
-  FechaAsignacion: string;
-  FechaAsignacionFormateada?: string;
-  Rol: 'jefe' | 'miembro' | 'colaborador';
-  TareasActivas?: number;
-  TareasAsignadas?: number;
-  TareasCompletadas?: number;
-  Progreso?: number;
-  estadoAsignacion: 'asignado';
-  AsignadoPorUsuario?: string;
-}
-
-interface EmpleadoDisponible {
-  ID: number;
-  NombreCompleto: string;
-  CorreoElectronico: string;
-  FechaIngreso: string;
+  FechaIngreso?: string;
   RFC?: string;
   CURP?: string;
-  RolApp: string;
-  PuestoNombre?: string;
-  DepartamentoNombre?: string;
-  DepartamentoID?: number;
-  AntiguedadAnios: number;
-  EsSubordinado: number;
-  TareasPendientes: number;
-  ProyectosActivos: number;
-  EstadoAsignacion: 'asignado' | 'no_asignado';
-  RolEnProyecto: 'jefe_proyecto' | 'empleado';
-  Activo: number;
+  UsuarioActivo?: boolean;
 }
 
-interface HistorialProyecto {
-  ID: number;
-  ProyectoID: number;
-  UsuarioID: number;
-  UsuarioNombre: string;
-  EmpleadoNombre?: string;
-  Accion: string;
-  Detalles?: string;
-  createdAt: string;
-}
-
-interface Paginacion {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
+interface EmpleadoProyecto extends Empleado {
+  Rol: string;
+  FechaAsignacion: string;
+  TareasActivas: number;
+  EstadoAsignacion: string;
+  AsignadoPorUsuario?: string;
+  tareasCompletadas?: number;
+  tareasPendientes?: number;
+  progreso?: number;
 }
 
 interface FiltrosEmpleados {
   busqueda: string;
   rol: string;
-  puesto: string;
   departamento: string;
-  modo: 'supervisados' | 'todos';
-  soloNoAsignados: boolean;
+  page: number;
+  limit: number;
 }
 
-interface FiltrosTareas {
-  estado: string;
-  prioridad: string;
-  asignadoA: string;
-  soloSinAsignar: boolean;
-  search: string;
+interface ProgresoMiembro {
+  empleadoId: number;
+  nombre: string;
+  rol: string;
+  totalTareas: number;
+  tareasCompletadas: number;
+  tareasPendientes: number;
+  tareasEnProceso: number;
+  progreso: number;
+  puesto: string;
 }
-
-// ============================================
-// COMPONENTE PRINCIPAL
-// ============================================
 
 const Proyectos: React.FC = () => {
   const { user } = useAuth();
@@ -250,18 +187,13 @@ const Proyectos: React.FC = () => {
   const canManageProyectos = isAdmin || isManager;
   const canManageTareas = isAdmin || isManager;
   
-  // ==========================================
-  // ESTADOS PRINCIPALES
-  // ==========================================
-  
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [selectedProyecto, setSelectedProyecto] = useState<Proyecto | null>(null);
   const [selectedTarea, setSelectedTarea] = useState<Tarea | null>(null);
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [empleadosProyecto, setEmpleadosProyecto] = useState<EmpleadoProyecto[]>([]);
-  const [empleadosDisponibles, setEmpleadosDisponibles] = useState<EmpleadoDisponible[]>([]);
-  const [historial, setHistorial] = useState<HistorialProyecto[]>([]);
-  const [notas, setNotas] = useState<NotaTarea[]>([]);
+  const [historial, setHistorial] = useState<any[]>([]);
+  const [notas, setNotas] = useState<any[]>([]);
   
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -269,16 +201,7 @@ const Proyectos: React.FC = () => {
   const [filterEstado, setFilterEstado] = useState('');
   const itemsPerPage = 9;
   
-  const [filtrosEmpleados, setFiltrosEmpleados] = useState<FiltrosEmpleados>({
-    busqueda: '',
-    rol: '',
-    puesto: '',
-    departamento: '',
-    modo: 'supervisados',
-    soloNoAsignados: true
-  });
-  
-  const [filtrosTareas, setFiltrosTareas] = useState<FiltrosTareas>({
+  const [filtrosTareas, setFiltrosTareas] = useState({
     estado: '',
     prioridad: '',
     asignadoA: '',
@@ -289,28 +212,59 @@ const Proyectos: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingTareas, setLoadingTareas] = useState(false);
   const [loadingEmpleados, setLoadingEmpleados] = useState(false);
-  const [loadingDisponibles, setLoadingDisponibles] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
-  const [activeTab, setActiveTab] = useState('proyectos');
-  const [tareasTab, setTareasTab] = useState('todas');
+  const [activeTab, setActiveTab] = useState('tareas');
   
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showTareaModal, setShowTareaModal] = useState(false);
-  const [showAsignarTareaModal, setShowAsignarTareaModal] = useState(false);
   const [showReasignarTareaModal, setShowReasignarTareaModal] = useState(false);
   const [showNotaModal, setShowNotaModal] = useState(false);
+  
   const [showAsignarEmpleadoModal, setShowAsignarEmpleadoModal] = useState(false);
   const [showQuitarEmpleadoModal, setShowQuitarEmpleadoModal] = useState(false);
-  const [showDetalleEmpleadoModal, setShowDetalleEmpleadoModal] = useState(false);
+  const [showSeleccionarJefeModal, setShowSeleccionarJefeModal] = useState(false);
+  
   const [isEditingTarea, setIsEditingTarea] = useState(false);
   const [selectedEmpleado, setSelectedEmpleado] = useState<EmpleadoProyecto | null>(null);
   
   const [miEmpleadoId, setMiEmpleadoId] = useState<number | null>(null);
+  
+  const [empleadosDisponibles, setEmpleadosDisponibles] = useState<Empleado[]>([]);
+  const [filtrosJefe, setFiltrosJefe] = useState<FiltrosEmpleados>({
+    busqueda: '',
+    rol: '',
+    departamento: '',
+    page: 1,
+    limit: 10
+  });
+  const [totalJefePages, setTotalJefePages] = useState(1);
+  const [loadingJefe, setLoadingJefe] = useState(false);
+  
+  const [empleadosParaAsignar, setEmpleadosParaAsignar] = useState<Empleado[]>([]);
+  const [filtrosAsignar, setFiltrosAsignar] = useState<FiltrosEmpleados>({
+    busqueda: '',
+    rol: '',
+    departamento: '',
+    page: 1,
+    limit: 10
+  });
+  const [totalAsignarPages, setTotalAsignarPages] = useState(1);
+  const [loadingAsignar, setLoadingAsignar] = useState(false);
+  const [modoSeleccion, setModoSeleccion] = useState<'supervisados' | 'todos'>('supervisados');
+  
+  const [progresoGeneral, setProgresoGeneral] = useState({
+    totalTareas: 0,
+    completadas: 0,
+    pendientes: 0,
+    enProceso: 0,
+    porcentaje: 0
+  });
+  const [progresoMiembros, setProgresoMiembros] = useState<ProgresoMiembro[]>([]);
   
   const [createData, setCreateData] = useState({
     nombre: '',
@@ -321,7 +275,8 @@ const Proyectos: React.FC = () => {
     montoAsignado: 0,
     moneda: 'MXN',
     estado: 'activo' as 'activo' | 'pausado' | 'finalizado',
-    jefeProyectoId: 0
+    jefeProyectoId: 0,
+    jefeProyectoNombre: ''
   });
   
   const [editData, setEditData] = useState({
@@ -351,10 +306,6 @@ const Proyectos: React.FC = () => {
     contenido: '',
     esPrivada: false
   });
-  
-  // ==========================================
-  // FUNCIÓN PARA OBTENER EMPLEADO ID
-  // ==========================================
   
   const obtenerEmpleadoId = useCallback(async (): Promise<number | null> => {
     if (!user) return null;
@@ -391,57 +342,41 @@ const Proyectos: React.FC = () => {
     return null;
   }, [user]);
   
-  // ==========================================
-  // FUNCIÓN PARA VERIFICAR SI SOY EL ASIGNADO
-  // ==========================================
-  
   const soyAsignadoATarea = useCallback((tarea: Tarea): boolean => {
     if (!miEmpleadoId) return false;
     return tarea.EmpleadoAsignadoID === miEmpleadoId && tarea.estadoAsignacion === 'asignado';
   }, [miEmpleadoId]);
-  
-  // ==========================================
-  // FUNCIÓN PARA VERIFICAR SI SOY JEFE DEL PROYECTO
-  // ==========================================
   
   const soyJefeDelProyecto = useCallback((): boolean => {
     if (!selectedProyecto || !miEmpleadoId) return false;
     return selectedProyecto.JefeProyectoID === miEmpleadoId;
   }, [selectedProyecto, miEmpleadoId]);
   
-  // ==========================================
-  // FUNCIONES DE CARGA
-  // ==========================================
-  
-  const loadProyectos = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError('');
-      
-      const params = new URLSearchParams({
-        page: currentPage.toString(),
-        limit: itemsPerPage.toString()
-      });
-      
-      if (searchTerm) params.append('search', searchTerm);
-      if (filterEstado) params.append('estado', filterEstado);
-      
-      if (isEmployee) {
-        params.append('soloMisProyectos', 'false');
-      }
-      
-      const response = await api.get(`/proyectos?${params}`);
-      
-      if (response.data.success) {
-        setProyectos(response.data.data.proyectos || []);
-        setTotalPages(response.data.data.pagination?.totalPages || 1);
-      }
-    } catch (error: any) {
-      setError(error.response?.data?.message || 'Error cargando proyectos');
-    } finally {
-      setLoading(false);
+const loadProyectos = useCallback(async () => {
+  try {
+    setLoading(true);
+    setError('');
+    
+    const params = new URLSearchParams({
+      page: currentPage.toString(),
+      limit: itemsPerPage.toString()
+    });
+    
+    if (searchTerm) params.append('search', searchTerm);
+    if (filterEstado) params.append('estado', filterEstado);
+    
+    const response = await api.get(`/proyectos?${params}`);
+    
+    if (response.data.success) {
+      setProyectos(response.data.data.proyectos || []);
+      setTotalPages(response.data.data.pagination?.totalPages || 1);
     }
-  }, [currentPage, searchTerm, filterEstado, isEmployee]);
+  } catch (error: any) {
+    setError(error.response?.data?.message || 'Error cargando proyectos');
+  } finally {
+    setLoading(false);
+  }
+}, [currentPage, searchTerm, filterEstado]);
 
   const loadProyecto = async (id: number) => {
     try {
@@ -454,7 +389,7 @@ const Proyectos: React.FC = () => {
     }
   };
 
-const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) => {
+const loadTareas = async (proyectoId: number, filtros?: any) => {
   try {
     setLoadingTareas(true);
     
@@ -470,10 +405,6 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
     const response = await api.get(`/proyectos/${proyectoId}/tareas?${params}`);
     
     if (response.data.success) {
-      console.log('📥 [DEBUG] Tareas recibidas:', response.data.data.tareas);
-      
-      // ✅ CORREGIDO: No filtrar por Activo porque el backend no lo envía
-      // En lugar de eso, asumimos que todas las tareas recibidas están activas
       const tareasConDatos = (response.data.data.tareas || []).map((t: any) => ({
         ...t,
         EmpleadoAsignadoID: t.EmpleadoAsignadoID || null,
@@ -482,10 +413,15 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
         Prioridad: t.Prioridad || 'media',
         Asignaciones: t.Asignaciones || [],
         Notas: t.Notas || [],
-        Activo: true // ✅ Forzar a true ya que vienen del backend con Activo=1
+        Activo: true
       }));
       
       setTareas(tareasConDatos);
+      
+      // Calcular progreso inmediatamente después de cargar tareas
+      if (empleadosProyecto.length > 0) {
+        calcularProgreso(tareasConDatos, empleadosProyecto);
+      }
     }
   } catch (error: any) {
     setError(error.response?.data?.message || 'Error cargando tareas');
@@ -495,100 +431,24 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
 };
 
   const loadEmpleadosProyecto = async (proyectoId: number) => {
-    try {
-      setLoadingEmpleados(true);
-      const response = await api.get(`/proyectos/${proyectoId}/empleados`);
-      if (response.data.success) {
-        let empleados = response.data.data || [];
-        
-        const tareasActivas = tareas.filter(t => t.Activo === true);
-        
-        if (tareasActivas.length > 0) {
-          empleados = empleados.map((emp: EmpleadoProyecto) => {
-            const tareasAsignadas = tareasActivas.filter(t => 
-              t.EmpleadoAsignadoID === emp.ID && t.estadoAsignacion === 'asignado'
-            );
-            const tareasCompletadas = tareasAsignadas.filter(t => 
-              t.Estado === 'realizada'
-            );
-            
-            return {
-              ...emp,
-              TareasAsignadas: tareasAsignadas.length,
-              TareasCompletadas: tareasCompletadas.length,
-              Progreso: tareasAsignadas.length > 0 
-                ? Math.round((tareasCompletadas.length / tareasAsignadas.length) * 100)
-                : 0
-            };
-          });
-        }
-        
-        setEmpleadosProyecto(empleados);
+  try {
+    setLoadingEmpleados(true);
+    const response = await api.get(`/proyectos/${proyectoId}/empleados`);
+    if (response.data.success) {
+      const empleados = response.data.data || [];
+      setEmpleadosProyecto(empleados);
+      
+      // Calcular progreso inmediatamente después de cargar empleados
+      if (tareas.length > 0) {
+        calcularProgreso(tareas, empleados);
       }
-    } catch (error: any) {
-      setError(error.response?.data?.message || 'Error cargando empleados');
-    } finally {
-      setLoadingEmpleados(false);
     }
-  };
-
-  const loadEmpleadosDisponibles = async (proyectoId: number, modo: 'supervisados' | 'todos' = 'supervisados') => {
-    try {
-      setLoadingDisponibles(true);
-      setError('');
-      
-      const params = new URLSearchParams();
-      params.append('modo', modo);
-      
-      if (filtrosEmpleados.busqueda) params.append('search', filtrosEmpleados.busqueda);
-      if (filtrosEmpleados.departamento) params.append('departamentoId', filtrosEmpleados.departamento);
-      if (!filtrosEmpleados.soloNoAsignados) params.append('incluirAsignados', 'true');
-      
-      const response = await api.get(`/proyectos/${proyectoId}/empleados/disponibles?${params}`);
-      
-      if (response.data.success) {
-        setEmpleadosDisponibles(response.data.data.empleados || []);
-        setFiltrosEmpleados(prev => ({ ...prev, modo }));
-      }
-    } catch (error: any) {
-      if (error.response?.status === 404) {
-        setError('La funcionalidad de empleados disponibles no está disponible en el servidor');
-      } else {
-        setError(error.response?.data?.message || 'Error cargando empleados disponibles');
-      }
-      setEmpleadosDisponibles([]);
-    } finally {
-      setLoadingDisponibles(false);
-    }
-  };
-
-  const buscarEmpleadosGenerales = async (proyectoId: number) => {
-    try {
-      setLoadingDisponibles(true);
-      setError('');
-      
-      const params = new URLSearchParams();
-      if (filtrosEmpleados.busqueda) params.append('search', filtrosEmpleados.busqueda);
-      if (filtrosEmpleados.departamento) params.append('departamentoId', filtrosEmpleados.departamento);
-      if (filtrosEmpleados.soloNoAsignados) params.append('soloNoAsignados', 'true');
-      params.append('page', '1');
-      params.append('limit', '20');
-      
-      const response = await api.get(`/proyectos/${proyectoId}/empleados/buscar?${params}`);
-      
-      if (response.data.success) {
-        setEmpleadosDisponibles(response.data.data.empleados || []);
-      }
-    } catch (error: any) {
-      if (error.response?.status === 404) {
-        await loadEmpleadosDisponibles(proyectoId, 'todos');
-      } else {
-        setError(error.response?.data?.message || 'Error en búsqueda de empleados');
-      }
-    } finally {
-      setLoadingDisponibles(false);
-    }
-  };
+  } catch (error: any) {
+    setError(error.response?.data?.message || 'Error cargando empleados');
+  } finally {
+    setLoadingEmpleados(false);
+  }
+};
 
   const loadHistorial = async (proyectoId: number) => {
     try {
@@ -611,10 +471,103 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
       setError(error.response?.data?.message || 'Error cargando notas');
     }
   };
+  
+  const calcularProgreso = (tareasList: Tarea[], empleadosList: EmpleadoProyecto[]) => {
+    const total = tareasList.length;
+    const completadas = tareasList.filter(t => t.Estado === 'realizada').length;
+    const pendientes = tareasList.filter(t => t.Estado === 'pendiente').length;
+    const enProceso = tareasList.filter(t => t.Estado === 'en_proceso').length;
+    const porcentaje = total > 0 ? Math.round((completadas / total) * 100) : 0;
+    
+    setProgresoGeneral({
+      totalTareas: total,
+      completadas,
+      pendientes,
+      enProceso,
+      porcentaje
+    });
+    
+    const progreso: ProgresoMiembro[] = [];
+    
+    empleadosList.forEach(emp => {
+      const tareasEmpleado = tareasList.filter(t => t.EmpleadoAsignadoID === emp.ID);
+      const totalEmp = tareasEmpleado.length;
+      const completadasEmp = tareasEmpleado.filter(t => t.Estado === 'realizada').length;
+      const pendientesEmp = tareasEmpleado.filter(t => t.Estado === 'pendiente').length;
+      const enProcesoEmp = tareasEmpleado.filter(t => t.Estado === 'en_proceso').length;
+      const progresoEmp = totalEmp > 0 ? Math.round((completadasEmp / totalEmp) * 100) : 0;
+      
+      progreso.push({
+        empleadoId: emp.ID,
+        nombre: emp.NombreCompleto,
+        rol: emp.Rol || emp.RolApp,
+        totalTareas: totalEmp,
+        tareasCompletadas: completadasEmp,
+        tareasPendientes: pendientesEmp,
+        tareasEnProceso: enProcesoEmp,
+        progreso: progresoEmp,
+        puesto: emp.PuestoNombre || 'Sin puesto'
+      });
+    });
+    
+    progreso.sort((a, b) => b.progreso - a.progreso);
+    setProgresoMiembros(progreso);
+  };
 
-  // ==========================================
-  // EFECTOS
-  // ==========================================
+  const loadEmpleadosParaAsignar = async (filtros?: Partial<FiltrosEmpleados>, modo: 'supervisados' | 'todos' = 'supervisados') => {
+    if (!selectedProyecto) return;
+    
+    try {
+      setLoadingAsignar(true);
+      
+      const params = new URLSearchParams();
+      const filtrosActuales = { ...filtrosAsignar, ...filtros };
+      
+      if (filtrosActuales.busqueda) params.append('search', filtrosActuales.busqueda);
+      if (filtrosActuales.rol) params.append('rol', filtrosActuales.rol);
+      if (filtrosActuales.departamento) params.append('departamentoId', filtrosActuales.departamento);
+      params.append('page', filtrosActuales.page.toString());
+      params.append('limit', filtrosActuales.limit.toString());
+      params.append('modo', modo);
+      
+      const response = await api.get(`/proyectos/${selectedProyecto.ID}/empleados/disponibles?${params}`);
+      
+      if (response.data.success) {
+        setEmpleadosParaAsignar(response.data.data.empleados || []);
+        setTotalAsignarPages(response.data.data.pagination?.totalPages || 1);
+      }
+    } catch (error: any) {
+      setError(error.response?.data?.message || 'Error cargando empleados disponibles');
+    } finally {
+      setLoadingAsignar(false);
+    }
+  };
+
+  const loadEmpleadosParaJefe = async (filtros?: Partial<FiltrosEmpleados>) => {
+    try {
+      setLoadingJefe(true);
+      
+      const params = new URLSearchParams();
+      const filtrosActuales = { ...filtrosJefe, ...filtros };
+      
+      if (filtrosActuales.busqueda) params.append('search', filtrosActuales.busqueda);
+      if (filtrosActuales.rol) params.append('rol', filtrosActuales.rol);
+      if (filtrosActuales.departamento) params.append('departamentoId', filtrosActuales.departamento);
+      params.append('page', filtrosActuales.page.toString());
+      params.append('limit', filtrosActuales.limit.toString());
+      
+      const response = await api.get(`empleados/empleados?${params}`);
+      
+      if (response.data.success) {
+        setEmpleadosDisponibles(response.data.data.empleados || []);
+        setTotalJefePages(response.data.data.pagination?.totalPages || 1);
+      }
+    } catch (error: any) {
+      setError(error.response?.data?.message || 'Error cargando empleados');
+    } finally {
+      setLoadingJefe(false);
+    }
+  };
   
   useEffect(() => {
     loadProyectos();
@@ -631,17 +584,82 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
     cargarEmpleadoId();
   }, [obtenerEmpleadoId]);
 
-  useEffect(() => {
-    if (selectedProyecto) {
-      loadTareas(selectedProyecto.ID);
-      loadEmpleadosProyecto(selectedProyecto.ID);
-      loadHistorial(selectedProyecto.ID);
-    }
-  }, [selectedProyecto, miEmpleadoId]);
+useEffect(() => {
+  if (selectedProyecto) {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        // Cargar todos los datos en paralelo
+        const [tareasRes, empleadosRes] = await Promise.all([
+          api.get(`/proyectos/${selectedProyecto.ID}/tareas`),
+          api.get(`/proyectos/${selectedProyecto.ID}/empleados`),
+          api.get(`/proyectos/${selectedProyecto.ID}/historial`)
+        ]);
+        
+        // Procesar tareas
+        if (tareasRes.data.success) {
+          const tareasConDatos = (tareasRes.data.data.tareas || []).map((t: any) => ({
+            ...t,
+            EmpleadoAsignadoID: t.EmpleadoAsignadoID || null,
+            EmpleadoAsignadoNombre: t.EmpleadoAsignadoNombre || null,
+            estadoAsignacion: t.estadoAsignacion || (t.EmpleadoAsignadoID ? 'asignado' : 'sin_asignar'),
+            Prioridad: t.Prioridad || 'media',
+            Asignaciones: t.Asignaciones || [],
+            Notas: t.Notas || [],
+            Activo: true
+          }));
+          setTareas(tareasConDatos);
+        }
+        
+        // Procesar empleados
+        let empleados = [];
+        if (empleadosRes.data.success) {
+          empleados = empleadosRes.data.data || [];
+          setEmpleadosProyecto(empleados);
+        }
+        
+        // Procesar historial
+        const historialRes = await api.get(`/proyectos/${selectedProyecto.ID}/historial`);
+        if (historialRes.data.success) {
+          setHistorial(historialRes.data.data || []);
+        }
+        
+        // Calcular progreso con los datos ya cargados
+        if (tareasRes.data.success && empleadosRes.data.success) {
+          const tareasList = (tareasRes.data.data.tareas || []).map((t: any) => ({
+            ...t,
+            EmpleadoAsignadoID: t.EmpleadoAsignadoID || null,
+            EmpleadoAsignadoNombre: t.EmpleadoAsignadoNombre || null,
+            estadoAsignacion: t.estadoAsignacion || (t.EmpleadoAsignadoID ? 'asignado' : 'sin_asignar'),
+            Prioridad: t.Prioridad || 'media',
+            Asignaciones: t.Asignaciones || [],
+            Notas: t.Notas || [],
+            Activo: true
+          }));
+          calcularProgreso(tareasList, empleados);
+        }
+      } catch (error) {
+        console.error('Error cargando datos:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }
+}, [selectedProyecto]);
 
-  // ==========================================
-  // FUNCIONES CRUD - PROYECTOS
-  // ==========================================
+  useEffect(() => {
+    if (showSeleccionarJefeModal) {
+      loadEmpleadosParaJefe();
+    }
+  }, [showSeleccionarJefeModal]);
+
+  useEffect(() => {
+    if (showAsignarEmpleadoModal && selectedProyecto) {
+      loadEmpleadosParaAsignar({}, modoSeleccion);
+    }
+  }, [showAsignarEmpleadoModal, selectedProyecto, modoSeleccion]);
   
   const handleCreateProyecto = async () => {
     try {
@@ -653,7 +671,17 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
         return;
       }
 
-      const response = await api.post('/proyectos', createData);
+      const response = await api.post('/proyectos', {
+        nombre: createData.nombre,
+        descripcion: createData.descripcion,
+        fechaInicio: createData.fechaInicio,
+        fechaFin: createData.fechaFin || null,
+        presupuesto: createData.presupuesto,
+        montoAsignado: createData.montoAsignado,
+        moneda: createData.moneda,
+        estado: createData.estado,
+        jefeProyectoId: createData.jefeProyectoId
+      });
       
       if (response.data.success) {
         setSuccess('Proyecto creado exitosamente');
@@ -678,8 +706,11 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
       if (response.data.success) {
         setSuccess('Proyecto actualizado exitosamente');
         setShowEditModal(false);
+        await loadProyecto(selectedProyecto.ID);
+        await loadTareas(selectedProyecto.ID);
+        await loadEmpleadosProyecto(selectedProyecto.ID);
+        await loadHistorial(selectedProyecto.ID);
         loadProyectos();
-        loadProyecto(selectedProyecto.ID);
       }
     } catch (error: any) {
       setError(error.response?.data?.message || 'Error actualizando proyecto');
@@ -728,74 +759,68 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
         setSuccess(`Estado del proyecto cambiado a: ${estado}`);
         loadProyectos();
         if (selectedProyecto?.ID === proyectoId) {
-          loadProyecto(proyectoId);
+          await loadProyecto(proyectoId);
+          await loadTareas(proyectoId);
+          await loadEmpleadosProyecto(proyectoId);
+          await loadHistorial(proyectoId);
         }
       }
     } catch (error: any) {
       setError(error.response?.data?.message || 'Error cambiando estado');
     }
   };
-
-  // ==========================================
-  // FUNCIONES CRUD - EMPLEADOS
-  // ==========================================
   
-  const handleAsignarEmpleado = async (proyectoId: number, empleadoId: number) => {
+  const handleAsignarEmpleado = async (empleadoId: number) => {
+    if (!selectedProyecto) return;
+    
     try {
-      setError('');
-      setSuccess('');
+      setLoading(true);
       
-      const response = await api.post(`/proyectos/${proyectoId}/empleados`, { empleadoId });
+      const response = await api.post(`/proyectos/${selectedProyecto.ID}/empleados`, {
+        empleadoId
+      });
       
       if (response.data.success) {
-        setSuccess(`Empleado asignado exitosamente al proyecto`);
-        await Promise.all([
-          loadEmpleadosProyecto(proyectoId),
-          loadEmpleadosDisponibles(proyectoId, filtrosEmpleados.modo)
-        ]);
+        setSuccess('Empleado asignado al proyecto exitosamente');
         setShowAsignarEmpleadoModal(false);
+        
+        await Promise.all([
+          loadEmpleadosProyecto(selectedProyecto.ID),
+          loadTareas(selectedProyecto.ID)
+        ]);
       }
     } catch (error: any) {
       setError(error.response?.data?.message || 'Error asignando empleado');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleQuitarEmpleado = async (proyectoId: number, empleado: EmpleadoProyecto) => {
-    const empleadoId = await obtenerEmpleadoId();
-    if (!empleadoId) {
-      setError('No se pudo verificar tu identidad');
-      return;
-    }
-    
-    const esJefeProyecto = selectedProyecto?.JefeProyectoID === empleadoId;
-    
-    if (!isAdmin && !esJefeProyecto) {
-      setError('Solo el administrador o el jefe del proyecto pueden quitar empleados');
-      return;
-    }
+  const handleQuitarEmpleado = async () => {
+    if (!selectedProyecto || !selectedEmpleado) return;
     
     try {
-      setError('');
-      setSuccess('');
+      setLoading(true);
       
-      const response = await api.delete(`/proyectos/${proyectoId}/empleados/${empleado.ID}`);
+      const response = await api.delete(`/proyectos/${selectedProyecto.ID}/empleados/${selectedEmpleado.ID}`);
       
       if (response.data.success) {
-        setSuccess(`Empleado ${empleado.NombreCompleto} removido exitosamente`);
-        await Promise.all([
-          loadEmpleadosProyecto(proyectoId),
-          loadEmpleadosDisponibles(proyectoId, filtrosEmpleados.modo)
-        ]);
+        setSuccess('Empleado removido del proyecto exitosamente');
         setShowQuitarEmpleadoModal(false);
+        
+        await Promise.all([
+          loadEmpleadosProyecto(selectedProyecto.ID),
+          loadTareas(selectedProyecto.ID)
+        ]);
+        
+        setSelectedEmpleado(null);
       }
     } catch (error: any) {
       setError(error.response?.data?.message || 'Error removiendo empleado');
+    } finally {
+      setLoading(false);
     }
   };
-
-  // ==========================================
-  // FUNCIONES CRUD - TAREAS
-  // ==========================================
   
   const handleCrearTarea = async () => {
     if (!selectedProyecto) return;
@@ -1010,10 +1035,6 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
       setLoading(false);
     }
   };
-
-  // ==========================================
-  // FUNCIONES CRUD - NOTAS
-  // ==========================================
   
   const handleCrearNota = async (tareaId: number) => {
     if (!selectedProyecto || !selectedTarea) return;
@@ -1041,10 +1062,6 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
       setError(error.response?.data?.message || 'Error creando nota');
     }
   };
-
-  // ==========================================
-  // FUNCIONES DE UTILIDAD
-  // ==========================================
   
   const resetCreateForm = () => {
     setCreateData({
@@ -1056,7 +1073,8 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
       montoAsignado: 0,
       moneda: 'MXN',
       estado: 'activo',
-      jefeProyectoId: 0
+      jefeProyectoId: 0,
+      jefeProyectoNombre: ''
     });
   };
 
@@ -1078,44 +1096,40 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
     });
   };
 
-  const resetFiltrosEmpleados = () => {
-    setFiltrosEmpleados({
+  const resetFiltrosJefe = () => {
+    setFiltrosJefe({
       busqueda: '',
       rol: '',
-      puesto: '',
       departamento: '',
-      modo: 'supervisados',
-      soloNoAsignados: true
+      page: 1,
+      limit: 10
     });
   };
 
-  const resetFiltrosTareas = () => {
-    setFiltrosTareas({
-      estado: '',
-      prioridad: '',
-      asignadoA: '',
-      soloSinAsignar: false,
-      search: ''
+  const resetFiltrosAsignar = () => {
+    setFiltrosAsignar({
+      busqueda: '',
+      rol: '',
+      departamento: '',
+      page: 1,
+      limit: 10
     });
   };
 
-  const openProyecto = async (proyecto: Proyecto) => {
-    setSelectedProyecto(proyecto);
-    resetFiltrosTareas();
-    await loadTareas(proyecto.ID);
-    await loadEmpleadosProyecto(proyecto.ID);
-    await loadHistorial(proyecto.ID);
-    setShowViewModal(true);
-    setActiveTab('tareas');
-  };
+const openProyecto = async (proyecto: Proyecto) => {
+  setSelectedProyecto(proyecto);
+  setShowViewModal(true);
+  setActiveTab('tareas');
+};
 
   const openEditProyecto = (proyecto: Proyecto) => {
     setSelectedProyecto(proyecto);
+    
     setEditData({
       nombre: proyecto.Nombre,
       descripcion: proyecto.Descripcion || '',
-      fechaInicio: proyecto.FechaInicio,
-      fechaFin: proyecto.FechaFin || '',
+      fechaInicio: proyecto.FechaInicio ? new Date(proyecto.FechaInicio).toISOString().split('T')[0] : '',
+      fechaFin: proyecto.FechaFin ? new Date(proyecto.FechaFin).toISOString().split('T')[0] : '',
       presupuesto: proyecto.Presupuesto,
       montoAsignado: proyecto.MontoAsignado,
       estado: proyecto.Estado
@@ -1128,17 +1142,51 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
     setShowDeleteModal(true);
   };
 
-  const openAsignarEmpleadoModal = async (proyecto: Proyecto, modo: 'supervisados' | 'todos' = 'supervisados') => {
-    setSelectedProyecto(proyecto);
-    resetFiltrosEmpleados();
-    setFiltrosEmpleados(prev => ({ ...prev, modo }));
-    await loadEmpleadosDisponibles(proyecto.ID, modo);
+  const openSeleccionarJefeModal = () => {
+    resetFiltrosJefe();
+    loadEmpleadosParaJefe();
+    setShowSeleccionarJefeModal(true);
+  };
+
+  const seleccionarJefe = (empleado: Empleado) => {
+    setCreateData({
+      ...createData,
+      jefeProyectoId: empleado.ID,
+      jefeProyectoNombre: empleado.NombreCompleto
+    });
+    setShowSeleccionarJefeModal(false);
+  };
+
+  const openAsignarEmpleadoModal = (modo: 'supervisados' | 'todos' = 'supervisados') => {
+    resetFiltrosAsignar();
+    setModoSeleccion(modo);
+    loadEmpleadosParaAsignar({}, modo);
     setShowAsignarEmpleadoModal(true);
   };
 
   const openQuitarEmpleadoModal = (empleado: EmpleadoProyecto) => {
     setSelectedEmpleado(empleado);
     setShowQuitarEmpleadoModal(true);
+  };
+
+  const aplicarFiltrosJefe = () => {
+    setFiltrosJefe(prev => ({ ...prev, page: 1 }));
+    loadEmpleadosParaJefe({ ...filtrosJefe, page: 1 });
+  };
+
+  const cambiarPaginaJefe = (nuevaPagina: number) => {
+    setFiltrosJefe(prev => ({ ...prev, page: nuevaPagina }));
+    loadEmpleadosParaJefe({ page: nuevaPagina });
+  };
+
+  const aplicarFiltrosAsignar = () => {
+    setFiltrosAsignar(prev => ({ ...prev, page: 1 }));
+    loadEmpleadosParaAsignar({ ...filtrosAsignar, page: 1 }, modoSeleccion);
+  };
+
+  const cambiarPaginaAsignar = (nuevaPagina: number) => {
+    setFiltrosAsignar(prev => ({ ...prev, page: nuevaPagina }));
+    loadEmpleadosParaAsignar({ page: nuevaPagina }, modoSeleccion);
   };
 
   const openCrearTareaModal = () => {
@@ -1179,29 +1227,10 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
     }
   };
 
-  const cambiarModoEmpleados = async (modo: 'supervisados' | 'todos') => {
-    if (!selectedProyecto) return;
-    setFiltrosEmpleados(prev => ({ ...prev, modo, busqueda: '', rol: '', puesto: '', departamento: '' }));
-    await loadEmpleadosDisponibles(selectedProyecto.ID, modo);
-  };
-
-  const aplicarFiltrosEmpleados = async () => {
-    if (!selectedProyecto) return;
-    if (filtrosEmpleados.modo === 'todos' && filtrosEmpleados.soloNoAsignados) {
-      await buscarEmpleadosGenerales(selectedProyecto.ID);
-    } else {
-      await loadEmpleadosDisponibles(selectedProyecto.ID, filtrosEmpleados.modo);
-    }
-  };
-
   const aplicarFiltrosTareas = async () => {
     if (!selectedProyecto) return;
     await loadTareas(selectedProyecto.ID, filtrosTareas);
   };
-
-  // ==========================================
-  // FUNCIONES DE RENDERIZADO
-  // ==========================================
   
   const getPrioridadBadge = (prioridad: string) => {
     const config: Record<string, { bg: string; icon: any; label: string }> = {
@@ -1219,236 +1248,53 @@ const loadTareas = async (proyectoId: number, filtros?: Partial<FiltrosTareas>) 
     );
   };
 
-const getEstadoBadge = (estado: string) => {
-  const config: Record<string, { bg: string; icon: any; label: string }> = {
-    pendiente: { bg: 'secondary', icon: faClock, label: 'PENDIENTE' },
-    en_proceso: { bg: 'primary', icon: faPlayCircle, label: 'EN PROCESO' },
-    realizada: { bg: 'success', icon: faCheckCircle, label: 'FINALIZADA' },
-    activo: { bg: 'success', icon: faPlayCircle, label: 'ACTIVO' },
-    pausado: { bg: 'warning', icon: faPauseCircle, label: 'PAUSADO' },
-    finalizado: { bg: 'danger', icon: faStopCircle, label: 'FINALIZADO' }
+  const getEstadoBadge = (estado: string) => {
+    const config: Record<string, { bg: string; icon: any; label: string }> = {
+      pendiente: { bg: 'secondary', icon: faClock, label: 'PENDIENTE' },
+      en_proceso: { bg: 'primary', icon: faPlayCircle, label: 'EN PROCESO' },
+      realizada: { bg: 'success', icon: faCheckCircle, label: 'FINALIZADA' },
+      activo: { bg: 'success', icon: faPlayCircle, label: 'ACTIVO' },
+      pausado: { bg: 'warning', icon: faPauseCircle, label: 'PAUSADO' },
+      finalizado: { bg: 'danger', icon: faStopCircle, label: 'FINALIZADO' }
+    };
+    const cfg = config[estado] || { bg: 'secondary', icon: faClock, label: estado.toUpperCase() };
+    return (
+      <Badge bg={cfg.bg} className="d-flex align-items-center" style={{ padding: '0.4rem 0.6rem' }}>
+        <FontAwesomeIcon icon={cfg.icon} className="me-1" size="sm" />
+        {cfg.label}
+      </Badge>
+    );
   };
-  const cfg = config[estado] || { bg: 'secondary', icon: faClock, label: estado.toUpperCase() };
-  return (
-    <Badge bg={cfg.bg} className="d-flex align-items-center" style={{ padding: '0.4rem 0.6rem' }}>
-      <FontAwesomeIcon icon={cfg.icon} className="me-1" size="sm" />
-      {cfg.label}
-    </Badge>
-  );
-};
 
   const getRolBadge = (rol: string) => {
-    const config: Record<string, { bg: string; label: string }> = {
-      admin: { bg: 'danger', label: 'ADMIN' },
-      manager: { bg: 'warning', label: 'MANAGER' },
-      employee: { bg: 'info', label: 'EMPLEADO' }
+    const config: Record<string, { bg: string; icon: any; label: string }> = {
+      admin: { bg: 'danger', icon: faCrown, label: 'ADMIN' },
+      manager: { bg: 'warning', icon: faUserTie, label: 'MANAGER' },
+      employee: { bg: 'info', icon: faUser, label: 'EMPLEADO' }
     };
-    const cfg = config[rol] || { bg: 'secondary', label: rol?.toUpperCase() || 'SIN ROL' };
-    return <Badge bg={cfg.bg}>{cfg.label}</Badge>;
+    const cfg = config[rol] || { bg: 'secondary', icon: faUser, label: rol?.toUpperCase() || 'SIN ROL' };
+    return (
+      <Badge bg={cfg.bg} className="d-flex align-items-center">
+        <FontAwesomeIcon icon={cfg.icon} className="me-1" size="sm" />
+        {cfg.label}
+      </Badge>
+    );
   };
 
-  // ==========================================
-  // COMPONENTES INTERNOS
-  // ==========================================
+  const getProgresoColor = (porcentaje: number) => {
+    if (porcentaje >= 75) return 'success';
+    if (porcentaje >= 50) return 'info';
+    if (porcentaje >= 25) return 'warning';
+    return 'danger';
+  };
+
+  const getProgresoIcon = (porcentaje: number) => {
+    if (porcentaje >= 75) return faTrophy;
+    if (porcentaje >= 50) return faMedal;
+    if (porcentaje >= 25) return faStar;
+    return faClock;
+  };
   
-  const TarjetaEmpleado: React.FC<{ 
-    empleado: EmpleadoProyecto; 
-    proyectoId: number;
-  }> = ({ empleado, proyectoId }) => {
-    const [isHovered, setIsHovered] = useState(false);
-    const esJefe = empleado.ID === selectedProyecto?.JefeProyectoID;
-    const esMiUsuario = miEmpleadoId === empleado.ID;
-    
-    return (
-      <Card 
-        className={`h-100 shadow-sm border-0 ${esMiUsuario ? 'border-success border-2' : ''}`}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        style={{ 
-          transition: 'all 0.2s',
-          transform: isHovered ? 'translateY(-2px)' : 'none',
-          boxShadow: isHovered ? '0 0.5rem 1rem rgba(0,0,0,0.15)' : '0 0.125rem 0.25rem rgba(0,0,0,0.075)'
-        }}
-      >
-        <Card.Body className="p-3">
-          <div className="d-flex justify-content-between align-items-start">
-            <div className="d-flex align-items-center">
-              <div 
-                className={`rounded-circle d-flex align-items-center justify-content-center me-3 ${
-                  esJefe ? 'bg-warning' : 
-                  esMiUsuario ? 'bg-success' : 'bg-primary'
-                }`}
-                style={{ width: '48px', height: '48px' }}
-              >
-                <FontAwesomeIcon icon={faUserCircle} className="text-white" size="lg" />
-              </div>
-              <div>
-                <h6 className="mb-1 d-flex align-items-center">
-                  {empleado.NombreCompleto}
-                  {esJefe && (
-                    <Badge bg="warning" text="dark" className="ms-2">
-                      <FontAwesomeIcon icon={faCrown} className="me-1" size="sm" />
-                      JEFE
-                    </Badge>
-                  )}
-                  {esMiUsuario && !esJefe && (
-                    <Badge bg="success" className="ms-2">
-                      <FontAwesomeIcon icon={faUserCheck} className="me-1" size="sm" />
-                      TÚ
-                    </Badge>
-                  )}
-                </h6>
-                <small className="text-muted d-block">{empleado.CorreoElectronico}</small>
-                <div className="mt-1 d-flex flex-wrap gap-1">
-                  {getRolBadge(empleado.RolApp)}
-                  {empleado.PuestoNombre && (
-                    <Badge bg="light" text="dark">
-                      <FontAwesomeIcon icon={faBriefcase} className="me-1" size="sm" />
-                      {empleado.PuestoNombre}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            {canManage && !esJefe && (
-              <Button
-                variant={isHovered ? "danger" : "link"}
-                className={isHovered ? "" : "text-muted p-0"}
-                onClick={() => openQuitarEmpleadoModal(empleado)}
-                size="sm"
-              >
-                <FontAwesomeIcon icon={faUserMinus} />
-              </Button>
-            )}
-          </div>
-          
-          <div className="mt-3">
-            <div className="d-flex justify-content-between align-items-center mb-2">
-              <small className="text-muted">
-                <FontAwesomeIcon icon={faCalendar} className="me-1" />
-                {empleado.FechaAsignacionFormateada || new Date(empleado.FechaAsignacion).toLocaleDateString()}
-              </small>
-              <OverlayTrigger
-                placement="top"
-                overlay={<Tooltip>Tareas asignadas / completadas</Tooltip>}
-              >
-                <Badge bg="info" className="d-flex align-items-center">
-                  <FontAwesomeIcon icon={faTasks} className="me-1" size="sm" />
-                  {empleado.TareasAsignadas || 0}/{empleado.TareasCompletadas || 0}
-                </Badge>
-              </OverlayTrigger>
-            </div>
-            
-            {(empleado.TareasAsignadas || 0) > 0 ? (
-              <div>
-                <div className="d-flex justify-content-between align-items-center mb-1">
-                  <small className="text-muted">Progreso</small>
-                  <small className="text-muted">{empleado.Progreso || 0}%</small>
-                </div>
-                <ProgressBar 
-                  now={empleado.Progreso || 0} 
-                  variant="success"
-                  style={{ height: '6px' }}
-                />
-              </div>
-            ) : (
-              <small className="text-muted fst-italic">Sin tareas asignadas</small>
-            )}
-          </div>
-        </Card.Body>
-      </Card>
-    );
-  };
-
-  const TarjetaEmpleadoDisponible: React.FC<{ 
-    empleado: EmpleadoDisponible; 
-    proyectoId: number;
-    onAsignar: () => void;
-  }> = ({ empleado, onAsignar }) => {
-    return (
-      <ListGroup.Item 
-        action
-        className="py-3 px-3"
-      >
-        <div className="d-flex justify-content-between align-items-center">
-          <div className="d-flex align-items-start">
-            <div 
-              className={`rounded-circle d-flex align-items-center justify-content-center me-3 ${
-                empleado.RolApp === 'admin' ? 'bg-danger' :
-                empleado.RolApp === 'manager' ? 'bg-warning' : 'bg-info'
-              }`}
-              style={{ width: '40px', height: '40px' }}
-            >
-              <FontAwesomeIcon icon={faUserCircle} className="text-white" />
-            </div>
-            <div>
-              <div className="d-flex align-items-center flex-wrap gap-2 mb-1">
-                <strong>{empleado.NombreCompleto}</strong>
-                {getRolBadge(empleado.RolApp)}
-                {empleado.EsSubordinado === 1 && (
-                  <Badge bg="primary">
-                    <FontAwesomeIcon icon={faUserClock} className="me-1" size="sm" />
-                    BAJO SUPERVISIÓN
-                  </Badge>
-                )}
-                {empleado.EstadoAsignacion === 'asignado' && (
-                  <Badge bg="success">YA ASIGNADO</Badge>
-                )}
-              </div>
-              
-              <small className="text-muted d-block">
-                <FontAwesomeIcon icon={faEnvelope} className="me-1" size="sm" />
-                {empleado.CorreoElectronico}
-              </small>
-              
-              <div className="d-flex flex-wrap gap-2 mt-1">
-                {empleado.PuestoNombre && (
-                  <small className="text-muted">
-                    <FontAwesomeIcon icon={faBriefcase} className="me-1" size="sm" />
-                    {empleado.PuestoNombre}
-                  </small>
-                )}
-                {empleado.DepartamentoNombre && (
-                  <small className="text-muted">
-                    <FontAwesomeIcon icon={faBuilding} className="me-1" size="sm" />
-                    {empleado.DepartamentoNombre}
-                  </small>
-                )}
-                <small className="text-muted">
-                  <FontAwesomeIcon icon={faCalendar} className="me-1" size="sm" />
-                  {empleado.AntiguedadAnios} años
-                </small>
-              </div>
-              
-              <div className="d-flex gap-3 mt-1">
-                <small className="text-muted">
-                  <FontAwesomeIcon icon={faTasks} className="me-1" size="sm" />
-                  {empleado.TareasPendientes} tareas pendientes
-                </small>
-                <small className="text-muted">
-                  <FontAwesomeIcon icon={faProjectDiagram} className="me-1" size="sm" />
-                  {empleado.ProyectosActivos} proyectos activos
-                </small>
-              </div>
-            </div>
-          </div>
-          
-          <Button 
-            variant="outline-primary" 
-            size="sm"
-            onClick={onAsignar}
-            disabled={empleado.EstadoAsignacion === 'asignado'}
-            className="d-flex align-items-center"
-          >
-            <FontAwesomeIcon icon={faUserPlus} className="me-1" />
-            Asignar
-          </Button>
-        </div>
-      </ListGroup.Item>
-    );
-  };
-
   const KanbanBoard: React.FC<{ tareas: Tarea[] }> = ({ tareas }) => {
     const [draggedTask, setDraggedTask] = useState<Tarea | null>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -1459,17 +1305,9 @@ const getEstadoBadge = (estado: string) => {
       { id: 'realizada', titulo: 'Finalizada', icon: faCheckCircle, color: 'success', bg: '#e8f5e9' }
     ];
 
-  const getTareasByEstado = (estado: string) => {
-    let tareasFiltradas = tareas.filter(t => t.Estado === estado);
-    if (tareasTab === 'mis-tareas') {
-      if (miEmpleadoId) {
-        tareasFiltradas = tareasFiltradas.filter(t => 
-          t.EmpleadoAsignadoID === miEmpleadoId
-        );
-      }
-    }
-    return tareasFiltradas;
-  };
+    const getTareasByEstado = (estado: string) => {
+      return tareas.filter(t => t.Estado === estado);
+    };
 
     const handleDragStart = (e: React.DragEvent, tarea: Tarea) => {
       const esJefe = soyJefeDelProyecto();
@@ -1563,7 +1401,12 @@ const getEstadoBadge = (estado: string) => {
                     const esAsignado = soyAsignadoATarea(tarea);
                     const tareaSinAsignar = !tarea.EmpleadoAsignadoID;
                     const puedeArrastrar = isAdmin || esJefe || esAsignado || tareaSinAsignar;
-                    const puedeEditar = isAdmin || esJefe || esAsignado || tareaSinAsignar;
+                    
+                    const estadosMap = {
+                      pendiente: { icon: faClock, color: 'secondary', label: 'Pendiente' },
+                      en_proceso: { icon: faPlayCircle, color: 'primary', label: 'En Proceso' },
+                      realizada: { icon: faCheckCircle, color: 'success', label: 'Finalizada' }
+                    };
                     
                     return (
                       <Card
@@ -1589,7 +1432,7 @@ const getEstadoBadge = (estado: string) => {
                               {puedeArrastrar && (
                                 <FontAwesomeIcon 
                                   icon={faGripVertical} 
-                                  className="text-muted me-2" 
+                                  className="text-muted me-2 d-none d-md-inline" 
                                 />
                               )}
                               <strong className="small">{tarea.Titulo}</strong>
@@ -1601,6 +1444,53 @@ const getEstadoBadge = (estado: string) => {
                               )}
                             </div>
                             {getPrioridadBadge(tarea.Prioridad)}
+                          </div>
+                          
+                          <div className="d-md-none mb-2">
+                            <Dropdown>
+                              <Dropdown.Toggle 
+                                variant="outline-secondary" 
+                                size="sm" 
+                                className="w-100 d-flex align-items-center justify-content-between"
+                              >
+                                <span className="d-flex align-items-center">
+                                  <FontAwesomeIcon 
+                                    icon={estadosMap[tarea.Estado].icon} 
+                                    className={`me-2 text-${estadosMap[tarea.Estado].color}`} 
+                                  />
+                                  {estadosMap[tarea.Estado].label}
+                                </span>
+                              </Dropdown.Toggle>
+                              <Dropdown.Menu>
+                                <Dropdown.Item 
+                                  onClick={() => handleCambiarEstadoTarea(tarea.ID, 'pendiente')}
+                                  disabled={tarea.Estado === 'pendiente'}
+                                  className={tarea.Estado === 'pendiente' ? 'bg-light' : ''}
+                                >
+                                  <FontAwesomeIcon icon={faClock} className="me-2 text-secondary" />
+                                  Pendiente
+                                  {tarea.Estado === 'pendiente' && ' ✓'}
+                                </Dropdown.Item>
+                                <Dropdown.Item 
+                                  onClick={() => handleCambiarEstadoTarea(tarea.ID, 'en_proceso')}
+                                  disabled={tarea.Estado === 'en_proceso'}
+                                  className={tarea.Estado === 'en_proceso' ? 'bg-light' : ''}
+                                >
+                                  <FontAwesomeIcon icon={faPlayCircle} className="me-2 text-primary" />
+                                  En Proceso
+                                  {tarea.Estado === 'en_proceso' && ' ✓'}
+                                </Dropdown.Item>
+                                <Dropdown.Item 
+                                  onClick={() => handleCambiarEstadoTarea(tarea.ID, 'realizada')}
+                                  disabled={tarea.Estado === 'realizada'}
+                                  className={tarea.Estado === 'realizada' ? 'bg-light' : ''}
+                                >
+                                  <FontAwesomeIcon icon={faCheckCircle} className="me-2 text-success" />
+                                  Finalizada
+                                  {tarea.Estado === 'realizada' && ' ✓'}
+                                </Dropdown.Item>
+                              </Dropdown.Menu>
+                            </Dropdown>
                           </div>
                           
                           {tarea.Descripcion && (
@@ -1728,15 +1618,7 @@ const getEstadoBadge = (estado: string) => {
   };
 
   const ListaTareasView: React.FC<{ tareas: Tarea[] }> = ({ tareas }) => {
-    let tareasFiltradas = [...tareas].filter(t => t.Activo === true);
-
-    if (tareasTab === 'mis-tareas') {
-      if (miEmpleadoId) {
-        tareasFiltradas = tareasFiltradas.filter(t => 
-          t.EmpleadoAsignadoID === miEmpleadoId
-        );
-      }
-    }
+    const tareasFiltradas = [...tareas].filter(t => t.Activo === true);
 
     if (loadingTareas) {
       return (
@@ -1746,6 +1628,12 @@ const getEstadoBadge = (estado: string) => {
         </div>
       );
     }
+
+    const estadosMap = {
+      pendiente: { icon: faClock, color: 'secondary', label: 'Pendiente' },
+      en_proceso: { icon: faPlayCircle, color: 'primary', label: 'En Proceso' },
+      realizada: { icon: faCheckCircle, color: 'success', label: 'Finalizada' }
+    };
 
     return (
       <div>
@@ -1761,9 +1649,7 @@ const getEstadoBadge = (estado: string) => {
               <FontAwesomeIcon icon={faTasks} size="3x" className="text-muted mb-3 opacity-50" />
               <h6 className="text-muted">No hay tareas que mostrar</h6>
               <p className="text-muted small mb-0">
-                {tareasTab === 'mis-tareas' 
-                  ? 'No tienes tareas asignadas' 
-                  : 'Intenta con otros filtros'}
+                Intenta con otros filtros
               </p>
             </Card.Body>
           </Card>
@@ -1778,7 +1664,7 @@ const getEstadoBadge = (estado: string) => {
                 <Card.Body className="p-3">
                   <div className="d-flex justify-content-between align-items-start">
                     <div className="flex-grow-1">
-                      <div className="d-flex align-items-center gap-2 mb-2">
+                      <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
                         <h6 className="mb-0">{tarea.Titulo}</h6>
                         {getEstadoBadge(tarea.Estado)}
                         {getPrioridadBadge(tarea.Prioridad)}
@@ -1794,6 +1680,53 @@ const getEstadoBadge = (estado: string) => {
                             MI TAREA
                           </Badge>
                         )}
+                      </div>
+                      
+                      <div className="d-md-none mb-3">
+                        <Dropdown>
+                          <Dropdown.Toggle 
+                            variant="outline-secondary" 
+                            size="sm" 
+                            className="w-100 d-flex align-items-center justify-content-between"
+                          >
+                            <span className="d-flex align-items-center">
+                              <FontAwesomeIcon 
+                                icon={estadosMap[tarea.Estado].icon} 
+                                className={`me-2 text-${estadosMap[tarea.Estado].color}`} 
+                              />
+                              {estadosMap[tarea.Estado].label}
+                            </span>
+                          </Dropdown.Toggle>
+                          <Dropdown.Menu>
+                            <Dropdown.Item 
+                              onClick={() => handleCambiarEstadoTarea(tarea.ID, 'pendiente')}
+                              disabled={tarea.Estado === 'pendiente'}
+                              className={tarea.Estado === 'pendiente' ? 'bg-light' : ''}
+                            >
+                              <FontAwesomeIcon icon={faClock} className="me-2 text-secondary" />
+                              Pendiente
+                              {tarea.Estado === 'pendiente' && ' ✓'}
+                            </Dropdown.Item>
+                            <Dropdown.Item 
+                              onClick={() => handleCambiarEstadoTarea(tarea.ID, 'en_proceso')}
+                              disabled={tarea.Estado === 'en_proceso'}
+                              className={tarea.Estado === 'en_proceso' ? 'bg-light' : ''}
+                            >
+                              <FontAwesomeIcon icon={faPlayCircle} className="me-2 text-primary" />
+                              En Proceso
+                              {tarea.Estado === 'en_proceso' && ' ✓'}
+                            </Dropdown.Item>
+                            <Dropdown.Item 
+                              onClick={() => handleCambiarEstadoTarea(tarea.ID, 'realizada')}
+                              disabled={tarea.Estado === 'realizada'}
+                              className={tarea.Estado === 'realizada' ? 'bg-light' : ''}
+                            >
+                              <FontAwesomeIcon icon={faCheckCircle} className="me-2 text-success" />
+                              Finalizada
+                              {tarea.Estado === 'realizada' && ' ✓'}
+                            </Dropdown.Item>
+                          </Dropdown.Menu>
+                        </Dropdown>
                       </div>
                       
                       {tarea.Descripcion && (
@@ -1836,32 +1769,37 @@ const getEstadoBadge = (estado: string) => {
                         <FontAwesomeIcon icon={faChevronDown} />
                       </Dropdown.Toggle>
                       <Dropdown.Menu>
-                        {(isAdmin || esJefe || esAsignado || tareaSinAsignar) && (
-                          <>
-                            <Dropdown.Item 
-                              onClick={() => handleCambiarEstadoTarea(tarea.ID, 'pendiente')}
-                              disabled={tarea.Estado === 'pendiente'}
-                            >
-                              <FontAwesomeIcon icon={faClock} className="me-2 text-secondary" />
-                              Mover a Pendiente
-                            </Dropdown.Item>
-                            <Dropdown.Item 
-                              onClick={() => handleCambiarEstadoTarea(tarea.ID, 'en_proceso')}
-                              disabled={tarea.Estado === 'en_proceso'}
-                            >
-                              <FontAwesomeIcon icon={faPlayCircle} className="me-2 text-primary" />
-                              Mover a En Proceso
-                            </Dropdown.Item>
-                            <Dropdown.Item 
-                              onClick={() => handleCambiarEstadoTarea(tarea.ID, 'realizada')}
-                              disabled={tarea.Estado === 'realizada'}
-                            >
-                              <FontAwesomeIcon icon={faCheckCircle} className="me-2 text-success" />
-                              Mover a Finalizada
-                            </Dropdown.Item>
-                            <Dropdown.Divider />
-                          </>
-                        )}
+                        <div className="d-none d-md-block">
+                          {(isAdmin || esJefe || esAsignado || tareaSinAsignar) && (
+                            <>
+                              <Dropdown.Item 
+                                onClick={() => handleCambiarEstadoTarea(tarea.ID, 'pendiente')}
+                                disabled={tarea.Estado === 'pendiente'}
+                              >
+                                <FontAwesomeIcon icon={faClock} className="me-2 text-secondary" />
+                                Mover a Pendiente
+                                {tarea.Estado === 'pendiente' && ' ✓'}
+                              </Dropdown.Item>
+                              <Dropdown.Item 
+                                onClick={() => handleCambiarEstadoTarea(tarea.ID, 'en_proceso')}
+                                disabled={tarea.Estado === 'en_proceso'}
+                              >
+                                <FontAwesomeIcon icon={faPlayCircle} className="me-2 text-primary" />
+                                Mover a En Proceso
+                                {tarea.Estado === 'en_proceso' && ' ✓'}
+                              </Dropdown.Item>
+                              <Dropdown.Item 
+                                onClick={() => handleCambiarEstadoTarea(tarea.ID, 'realizada')}
+                                disabled={tarea.Estado === 'realizada'}
+                              >
+                                <FontAwesomeIcon icon={faCheckCircle} className="me-2 text-success" />
+                                Mover a Finalizada
+                                {tarea.Estado === 'realizada' && ' ✓'}
+                              </Dropdown.Item>
+                              <Dropdown.Divider />
+                            </>
+                          )}
+                        </div>
                         
                         <Dropdown.Item onClick={() => openNotaModal(tarea)}>
                           <FontAwesomeIcon icon={faComment} className="me-2 text-info" />
@@ -1905,9 +1843,178 @@ const getEstadoBadge = (estado: string) => {
     );
   };
 
-  // ==========================================
-  // RENDERIZADO PRINCIPAL
-  // ==========================================
+  const ProgresoView: React.FC = () => {
+    return (
+      <div>
+        <Card className="mb-4 border-0 shadow-sm">
+          <Card.Header className="bg-primary text-white py-3">
+            <h6 className="mb-0 d-flex align-items-center">
+              <FontAwesomeIcon icon={faChartLine} className="me-2" />
+              Progreso General del Proyecto
+            </h6>
+          </Card.Header>
+          <Card.Body>
+            {progresoGeneral.totalTareas === 0 ? (
+              <div className="text-center py-4">
+                <FontAwesomeIcon icon={faTasks} size="2x" className="text-muted mb-2 opacity-50" />
+                <p className="text-muted mb-0">No hay tareas en el proyecto</p>
+              </div>
+            ) : (
+              <div className="mb-4">
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <span className="fw-bold">Avance total</span>
+                  <span className={`text-${getProgresoColor(progresoGeneral.porcentaje)} fw-bold`}>
+                    <FontAwesomeIcon icon={getProgresoIcon(progresoGeneral.porcentaje)} className="me-2" />
+                    {progresoGeneral.porcentaje}%
+                  </span>
+                </div>
+                <ProgressBar 
+                  now={progresoGeneral.porcentaje} 
+                  variant={getProgresoColor(progresoGeneral.porcentaje)}
+                  className="mb-3"
+                  style={{ height: '20px' }}
+                />
+                
+                <Row className="text-center g-2">
+                  <Col xs={6} md={3}>
+                    <Card className="border-0 bg-light">
+                      <Card.Body className="py-2">
+                        <h5>{progresoGeneral.totalTareas}</h5>
+                        <small className="text-muted">Total tareas</small>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col xs={6} md={3}>
+                    <Card className="border-0 bg-light">
+                      <Card.Body className="py-2">
+                        <h5 className="text-success">{progresoGeneral.completadas}</h5>
+                        <small className="text-muted">Completadas</small>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col xs={6} md={3}>
+                    <Card className="border-0 bg-light">
+                      <Card.Body className="py-2">
+                        <h5 className="text-warning">{progresoGeneral.pendientes}</h5>
+                        <small className="text-muted">Pendientes</small>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col xs={6} md={3}>
+                    <Card className="border-0 bg-light">
+                      <Card.Body className="py-2">
+                        <h5 className="text-info">{progresoGeneral.enProceso}</h5>
+                        <small className="text-muted">En proceso</small>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                </Row>
+              </div>
+            )}
+          </Card.Body>
+        </Card>
+
+        <Card className="mb-4 border-0 shadow-sm">
+          <Card.Header className="bg-info text-white py-3">
+            <h6 className="mb-0 d-flex align-items-center">
+              <FontAwesomeIcon icon={faUsers} className="me-2" />
+              Progreso por Miembro del Equipo
+            </h6>
+          </Card.Header>
+          <Card.Body>
+            {empleadosProyecto.length === 0 ? (
+              <div className="text-center py-4">
+                <FontAwesomeIcon icon={faUsers} size="2x" className="text-muted mb-2 opacity-50" />
+                <p className="text-muted mb-0">No hay miembros asignados</p>
+              </div>
+            ) : progresoMiembros.length === 0 ? (
+              <div className="text-center py-4">
+                <FontAwesomeIcon icon={faTasks} size="2x" className="text-muted mb-2 opacity-50" />
+                <p className="text-muted mb-0">Hay miembros pero no tienen tareas asignadas</p>
+              </div>
+            ) : (
+              <Row>
+                {progresoMiembros.map((miembro, index) => (
+                  <Col md={6} lg={4} key={miembro.empleadoId} className="mb-3">
+                    <Card className="h-100 border-0 shadow-sm">
+                      <Card.Body>
+                        <div className="d-flex align-items-center mb-3">
+                          <div 
+                            className={`rounded-circle d-flex align-items-center justify-content-center me-3 ${
+                              miembro.rol === 'jefe' ? 'bg-warning' : 
+                              miembro.rol === 'admin' ? 'bg-danger' :
+                              miembro.rol === 'manager' ? 'bg-warning' : 'bg-info'
+                            }`}
+                            style={{ width: '48px', height: '48px' }}
+                          >
+                            <FontAwesomeIcon 
+                              icon={
+                                miembro.rol === 'jefe' ? faCrown :
+                                miembro.rol === 'admin' ? faCrown :
+                                miembro.rol === 'manager' ? faUserTie :
+                                faUser
+                              } 
+                              className="text-white" 
+                            />
+                          </div>
+                          <div>
+                            <h6 className="mb-1">{miembro.nombre}</h6>
+                            <small className="text-muted">{miembro.puesto}</small>
+                            {miembro.rol === 'jefe' && (
+                              <Badge bg="warning" text="dark" className="ms-2">JEFE</Badge>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {miembro.totalTareas > 0 ? (
+                          <>
+                            <div className="mb-2">
+                              <div className="d-flex justify-content-between align-items-center small">
+                                <span>Progreso</span>
+                                <span className={`text-${getProgresoColor(miembro.progreso)} fw-bold`}>
+                                  {miembro.progreso}%
+                                </span>
+                              </div>
+                              <ProgressBar 
+                                now={miembro.progreso} 
+                                variant={getProgresoColor(miembro.progreso)}
+                                style={{ height: '8px' }}
+                              />
+                            </div>
+                            
+                            <div className="d-flex justify-content-between mt-2 small">
+                              <div>
+                                <Badge bg="success" className="me-1">
+                                  {miembro.tareasCompletadas}
+                                </Badge>
+                                Completadas
+                              </div>
+                              <div>
+                                <Badge bg="secondary" className="me-1">
+                                  {miembro.totalTareas}
+                                </Badge>
+                                Total
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-center py-2">
+                            <Badge bg="light" text="dark" className="px-3 py-2">
+                              Sin tareas asignadas
+                            </Badge>
+                          </div>
+                        )}
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                ))}
+              </Row>
+            )}
+          </Card.Body>
+        </Card>
+      </div>
+    );
+  };
   
   if (!isAdmin && !isManager && !isEmployee) {
     return (
@@ -1920,6 +2027,7 @@ const getEstadoBadge = (estado: string) => {
               No tienes permisos para acceder a la gestión de proyectos.
             </p>
             <Badge bg="secondary" className="fs-6 p-2">
+              <FontAwesomeIcon icon={faUser} className="me-2" />
               Rol: {userRol?.toUpperCase() || 'NO DEFINIDO'}
             </Badge>
           </Card.Body>
@@ -1930,8 +2038,6 @@ const getEstadoBadge = (estado: string) => {
 
   return (
     <Container fluid className="py-4">
-
-      {/* HEADER */}
       <Row className="mb-4">
         <Col>
           <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
@@ -1941,11 +2047,10 @@ const getEstadoBadge = (estado: string) => {
                 Gestión de Proyectos
               </h2>
               <p className="text-muted mb-0 d-flex align-items-center">
-                {isAdmin && 'Administrador - Gestión completa'}
-                {isManager && 'Manager - Administra tus proyectos'}
-                {isEmployee && 'Empleado - Visualiza tus tareas asignadas'}
+                {isAdmin && <><FontAwesomeIcon icon={faCrown} className="me-2 text-danger" />Administrador - Gestión completa</>}
+                {isManager && <><FontAwesomeIcon icon={faUserTie} className="me-2 text-warning" />Manager - Administra tus proyectos</>}
+                {isEmployee && <><FontAwesomeIcon icon={faUser} className="me-2 text-info" />Empleado - Visualiza tus tareas asignadas</>}
                 {miEmpleadoId && ` (ID: ${miEmpleadoId})`}
-                {selectedProyecto && soyJefeDelProyecto()}
               </p>
             </div>
             
@@ -1977,7 +2082,6 @@ const getEstadoBadge = (estado: string) => {
         </Col>
       </Row>
 
-      {/* ALERTAS */}
       {error && (
         <Alert variant="danger" dismissible onClose={() => setError('')} className="mb-4">
           <div className="d-flex align-items-center">
@@ -1996,248 +2100,431 @@ const getEstadoBadge = (estado: string) => {
         </Alert>
       )}
 
-      {/* TABS PRINCIPALES */}
-      <Tabs
-        activeKey={activeTab}
-        onSelect={(k) => setActiveTab(k || 'proyectos')}
-        className="mb-4"
-        fill
+      <Card className="mb-4 shadow-sm border-0">
+        <Card.Body className="p-3">
+          <Row className="g-2">
+            <Col xs={12} md={6}>
+              <InputGroup>
+                <InputGroup.Text className="bg-light border-0">
+                  <FontAwesomeIcon icon={faSearch} />
+                </InputGroup.Text>
+                <Form.Control
+                  type="text"
+                  placeholder="Buscar proyecto por nombre..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="border-0 bg-light"
+                />
+                {searchTerm && (
+                  <Button 
+                    variant="outline-secondary" 
+                    onClick={() => setSearchTerm('')}
+                    className="border-0"
+                  >
+                    <FontAwesomeIcon icon={faTimes} />
+                  </Button>
+                )}
+              </InputGroup>
+            </Col>
+            
+            <Col xs={12} md={6}>
+              <Form.Select
+                value={filterEstado}
+                onChange={(e) => setFilterEstado(e.target.value)}
+                className="bg-light border-0"
+              >
+                <option value="">Todos los estados</option>
+                <option value="activo"><FontAwesomeIcon icon={faPlayCircle} className="me-2 text-success" />Activos</option>
+                <option value="pausado"><FontAwesomeIcon icon={faPauseCircle} className="me-2 text-warning" />Pausados</option>
+                <option value="finalizado"><FontAwesomeIcon icon={faStopCircle} className="me-2 text-danger" />Finalizados</option>
+              </Form.Select>
+            </Col>
+          </Row>
+        </Card.Body>
+      </Card>
+
+      {loading ? (
+        <div className="text-center py-5">
+          <Spinner animation="border" variant="primary" />
+          <p className="mt-3 text-muted">Cargando proyectos...</p>
+        </div>
+      ) : proyectos.length === 0 ? (
+        <Card className="text-center py-5 shadow-sm border-0">
+          <Card.Body>
+            <FontAwesomeIcon icon={faProjectDiagram} size="3x" className="text-muted mb-3 opacity-50" />
+            <h5>No hay proyectos registrados</h5>
+            <p className="text-muted">
+              {searchTerm || filterEstado 
+                ? 'Intenta con otros filtros de búsqueda' 
+                : 'Comienza creando un nuevo proyecto'}
+            </p>
+            {canManageProyectos && (
+              <Button 
+                variant="primary" 
+                onClick={() => setShowCreateModal(true)} 
+                className="mt-3 d-flex align-items-center mx-auto"
+                style={{ width: 'fit-content' }}
+              >
+                <FontAwesomeIcon icon={faPlus} className="me-2" />
+                Crear Primer Proyecto
+              </Button>
+            )}
+          </Card.Body>
+        </Card>
+      ) : (
+        <>
+          <Row className="g-4">
+            {proyectos.map(proyecto => {
+              const soyJefeDeEsteProyecto = miEmpleadoId === proyecto.JefeProyectoID;
+              
+              return (
+                <Col key={proyecto.ID} xs={12} md={6} lg={4}>
+                  <Card className={`h-100 shadow-sm border-0 ${soyJefeDeEsteProyecto ? 'border-warning border-2' : ''}`}>
+                    <Card.Body className="d-flex flex-column p-4">
+                      <div className="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                          <h5 className="mb-2 d-flex align-items-center">
+                            {proyecto.Nombre}
+                            {soyJefeDeEsteProyecto && (
+                              <Badge bg="warning" text="dark" className="ms-2">
+                                <FontAwesomeIcon icon={faCrown} className="me-1" size="sm" />
+                                MI PROYECTO
+                              </Badge>
+                            )}
+                          </h5>
+                          <div className="mb-2">
+                            {getEstadoBadge(proyecto.Estado)}
+                          </div>
+                        </div>
+                        <Dropdown>
+                          <Dropdown.Toggle variant="link" className="p-0 text-muted">
+                            <FontAwesomeIcon icon={faChevronDown} />
+                          </Dropdown.Toggle>
+                          <Dropdown.Menu align="end">
+                            <Dropdown.Item onClick={() => openProyecto(proyecto)}>
+                              <FontAwesomeIcon icon={faEye} className="me-2 text-info" />
+                              Ver detalles
+                            </Dropdown.Item>
+                            {canManageProyectos && (
+                              <>
+                                <Dropdown.Item onClick={() => openEditProyecto(proyecto)}>
+                                  <FontAwesomeIcon icon={faEdit} className="me-2 text-warning" />
+                                  Editar
+                                </Dropdown.Item>
+                                <Dropdown.Divider />
+                                <Dropdown.Item 
+                                  onClick={() => handleCambiarEstadoProyecto(proyecto.ID, 'activo')}
+                                  disabled={proyecto.Estado === 'activo'}
+                                >
+                                  <FontAwesomeIcon icon={faPlayCircle} className="me-2 text-success" />
+                                  Activar
+                                </Dropdown.Item>
+                                <Dropdown.Item 
+                                  onClick={() => handleCambiarEstadoProyecto(proyecto.ID, 'pausado')}
+                                  disabled={proyecto.Estado === 'pausado'}
+                                >
+                                  <FontAwesomeIcon icon={faPauseCircle} className="me-2 text-warning" />
+                                  Pausar
+                                </Dropdown.Item>
+                                <Dropdown.Item 
+                                  onClick={() => handleCambiarEstadoProyecto(proyecto.ID, 'finalizado')}
+                                  disabled={proyecto.Estado === 'finalizado'}
+                                >
+                                  <FontAwesomeIcon icon={faStopCircle} className="me-2 text-danger" />
+                                  Finalizar
+                                </Dropdown.Item>
+                                <Dropdown.Divider />
+                                <Dropdown.Item 
+                                  onClick={() => openDeleteProyecto(proyecto)}
+                                  className="text-danger"
+                                >
+                                  <FontAwesomeIcon icon={faTrash} className="me-2" />
+                                  Eliminar
+                                </Dropdown.Item>
+                              </>
+                            )}
+                          </Dropdown.Menu>
+                        </Dropdown>
+                      </div>
+                      
+                      <p className="text-muted small mb-3">
+                        {proyecto.Descripcion && (
+                          <>
+                            {proyecto.Descripcion.length > 100 
+                              ? `${proyecto.Descripcion.substring(0, 100)}...` 
+                              : proyecto.Descripcion}
+                          </>
+                        )}
+                        {!proyecto.Descripcion && (
+                          <span className="fst-italic">Sin descripción</span>
+                        )}
+                      </p>
+                      
+                      <div className="mt-auto">
+                        <div className="d-flex justify-content-between align-items-center mb-3">
+                          <small className="text-muted">
+                            <FontAwesomeIcon icon={faCalendar} className="me-1" />
+                            Inicio: {new Date(proyecto.FechaInicio).toLocaleDateString()}
+                          </small>
+                          <small className="text-muted">
+                            <FontAwesomeIcon icon={faFlag} className="me-1" />
+                            ${proyecto.Presupuesto.toLocaleString()}
+                          </small>
+                        </div>
+                        
+                        <div className="d-flex align-items-center justify-content-between pt-2 border-top">
+                          <div className="d-flex align-items-center">
+                            <FontAwesomeIcon icon={faUserTie} className="text-primary me-2" />
+                            <small className="text-muted">
+                              {proyecto.JefeProyectoNombre || 'Sin jefe'}
+                            </small>
+                          </div>
+                          
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            onClick={() => openProyecto(proyecto)}
+                            className="d-flex align-items-center"
+                          >
+                            <FontAwesomeIcon icon={faArrowRight} className="me-1" />
+                            Ver tareas
+                          </Button>
+                        </div>
+                      </div>
+                    </Card.Body>
+                  </Card>
+                </Col>
+              );
+            })}
+          </Row>
+
+          {totalPages > 1 && (
+            <div className="d-flex justify-content-center mt-4">
+              <Pagination>
+                <Pagination.First 
+                  onClick={() => setCurrentPage(1)} 
+                  disabled={currentPage === 1} 
+                />
+                <Pagination.Prev 
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} 
+                  disabled={currentPage === 1} 
+                />
+                {[...Array(Math.min(5, totalPages))].map((_, idx) => {
+                  const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + idx;
+                  if (page <= totalPages) {
+                    return (
+                      <Pagination.Item
+                        key={page}
+                        active={page === currentPage}
+                        onClick={() => setCurrentPage(page)}
+                      >
+                        {page}
+                      </Pagination.Item>
+                    );
+                  }
+                  return null;
+                })}
+                <Pagination.Next 
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} 
+                  disabled={currentPage === totalPages} 
+                />
+                <Pagination.Last 
+                  onClick={() => setCurrentPage(totalPages)} 
+                  disabled={currentPage === totalPages} 
+                />
+              </Pagination>
+            </div>
+          )}
+        </>
+      )}
+
+      <Modal 
+        show={showSeleccionarJefeModal} 
+        onHide={() => setShowSeleccionarJefeModal(false)} 
+        size="lg"
+        centered
+        scrollable
       >
-        <Tab 
-          eventKey="proyectos" 
-          title={
-            <span className="d-flex align-items-center justify-content-center gap-2">
-              <FontAwesomeIcon icon={faProjectDiagram} />
-              <span>Proyectos</span>
-              <Badge bg="secondary" pill>{proyectos.length}</Badge>
-            </span>
-          }
-        >
-          {/* FILTROS DE PROYECTOS */}
-          <Card className="mb-4 shadow-sm border-0">
+        <Modal.Header closeButton className="bg-primary text-white">
+          <Modal.Title className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faUserTie} className="me-2" />
+            Seleccionar Jefe de Proyecto
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Card className="mb-3 border-0 bg-light">
             <Card.Body className="p-3">
               <Row className="g-2">
-                <Col xs={12} md={6}>
-                  <InputGroup>
-                    <InputGroup.Text className="bg-light border-0">
+                <Col md={5}>
+                  <InputGroup size="sm">
+                    <InputGroup.Text className="bg-white border-0">
                       <FontAwesomeIcon icon={faSearch} />
                     </InputGroup.Text>
                     <Form.Control
-                      type="text"
-                      placeholder="Buscar proyecto por nombre..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="border-0 bg-light"
+                      placeholder="Buscar por nombre o email..."
+                      value={filtrosJefe.busqueda}
+                      onChange={(e) => setFiltrosJefe(prev => ({ ...prev, busqueda: e.target.value }))}
+                      className="border-0 bg-white"
                     />
-                    {searchTerm && (
-                      <Button 
-                        variant="outline-secondary" 
-                        onClick={() => setSearchTerm('')}
-                        className="border-0"
-                      >
-                        <FontAwesomeIcon icon={faTimes} />
-                      </Button>
-                    )}
                   </InputGroup>
                 </Col>
-                
-                <Col xs={12} md={6}>
+                <Col md={3}>
                   <Form.Select
-                    value={filterEstado}
-                    onChange={(e) => setFilterEstado(e.target.value)}
-                    className="bg-light border-0"
+                    size="sm"
+                    value={filtrosJefe.rol}
+                    onChange={(e) => setFiltrosJefe(prev => ({ ...prev, rol: e.target.value }))}
+                    className="bg-white border-0"
                   >
-                    <option value="">Todos los estados</option>
-                    <option value="activo">✅ Activos</option>
-                    <option value="pausado">⏸️ Pausados</option>
-                    <option value="finalizado">🏁 Finalizados</option>
+                    <option value="">Todos los roles</option>
+                    <option value="admin">Administrador</option>
+                    <option value="manager">Manager</option>
+                    <option value="employee">Empleado</option>
                   </Form.Select>
                 </Col>
+                <Col md={3}>
+                  <Form.Select
+                    size="sm"
+                    value={filtrosJefe.departamento}
+                    onChange={(e) => setFiltrosJefe(prev => ({ ...prev, departamento: e.target.value }))}
+                    className="bg-white border-0"
+                  >
+                    <option value="">Todos los departamentos</option>
+                    <option value="1">Desarrollo</option>
+                    <option value="2">Ventas</option>
+                    <option value="3">Marketing</option>
+                    <option value="4">Recursos Humanos</option>
+                    <option value="5">Finanzas</option>
+                  </Form.Select>
+                </Col>
+                <Col md={1}>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={aplicarFiltrosJefe}
+                    className="w-100 d-flex align-items-center justify-content-center"
+                  >
+                    <FontAwesomeIcon icon={faSearch} />
+                  </Button>
+                </Col>
               </Row>
+              
+              <div className="d-flex justify-content-end mt-2">
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  onClick={() => {
+                    resetFiltrosJefe();
+                    loadEmpleadosParaJefe({ busqueda: '', rol: '', departamento: '', page: 1 });
+                  }}
+                  className="d-flex align-items-center"
+                >
+                  <FontAwesomeIcon icon={faUndo} className="me-2" />
+                  Limpiar filtros
+                </Button>
+              </div>
             </Card.Body>
           </Card>
 
-          {/* LISTA DE PROYECTOS */}
-          {loading ? (
-            <div className="text-center py-5">
+          {loadingJefe ? (
+            <div className="text-center py-4">
               <Spinner animation="border" variant="primary" />
-              <p className="mt-3 text-muted">Cargando proyectos...</p>
+              <p className="mt-2 text-muted">Cargando empleados...</p>
             </div>
-          ) : proyectos.length === 0 ? (
-            <Card className="text-center py-5 shadow-sm border-0">
+          ) : empleadosDisponibles.length === 0 ? (
+            <Card className="text-center py-5 border-0 bg-light">
               <Card.Body>
-                <FontAwesomeIcon icon={faProjectDiagram} size="3x" className="text-muted mb-3 opacity-50" />
-                <h5>No hay proyectos registrados</h5>
-                <p className="text-muted">
-                  {searchTerm || filterEstado 
-                    ? 'Intenta con otros filtros de búsqueda' 
-                    : 'Comienza creando un nuevo proyecto'}
+                <FontAwesomeIcon icon={faUsers} size="3x" className="text-muted mb-3 opacity-50" />
+                <h6 className="text-muted">No se encontraron empleados</h6>
+                <p className="text-muted mb-0">
+                  Intenta con otros filtros de búsqueda
                 </p>
-                {canManageProyectos && (
-                  <Button 
-                    variant="primary" 
-                    onClick={() => setShowCreateModal(true)} 
-                    className="mt-3 d-flex align-items-center mx-auto"
-                    style={{ width: 'fit-content' }}
-                  >
-                    <FontAwesomeIcon icon={faPlus} className="me-2" />
-                    Crear Primer Proyecto
-                  </Button>
-                )}
               </Card.Body>
             </Card>
           ) : (
             <>
-              <Row className="g-4">
-                {proyectos.map(proyecto => {
-                  const soyJefeDeEsteProyecto = miEmpleadoId === proyecto.JefeProyectoID;
-                  
-                  return (
-                    <Col key={proyecto.ID} xs={12} md={6} lg={4}>
-                      <Card className={`h-100 shadow-sm border-0 ${soyJefeDeEsteProyecto ? 'border-warning border-2' : ''}`}>
-                        <Card.Body className="d-flex flex-column p-4">
-                          <div className="d-flex justify-content-between align-items-start mb-3">
-                            <div>
-                              <h5 className="mb-2 d-flex align-items-center">
-                                {proyecto.Nombre}
-                                {soyJefeDeEsteProyecto && (
-                                  <Badge bg="warning" text="dark" className="ms-2">
-                                    <FontAwesomeIcon icon={faCrown} className="me-1" size="sm" />
-                                    MI PROYECTO
-                                  </Badge>
-                                )}
-                              </h5>
-                              <div className="mb-2">
-                                {getEstadoBadge(proyecto.Estado)}
-                              </div>
-                            </div>
-                            <Dropdown>
-                              <Dropdown.Toggle variant="link" className="p-0 text-muted">
-                                <FontAwesomeIcon icon={faChevronDown} />
-                              </Dropdown.Toggle>
-                              <Dropdown.Menu align="end">
-                                <Dropdown.Item onClick={() => openProyecto(proyecto)}>
-                                  <FontAwesomeIcon icon={faEye} className="me-2 text-info" />
-                                  Ver detalles
-                                </Dropdown.Item>
-                                {canManageProyectos && (
-                                  <>
-                                    <Dropdown.Item onClick={() => openEditProyecto(proyecto)}>
-                                      <FontAwesomeIcon icon={faEdit} className="me-2 text-warning" />
-                                      Editar
-                                    </Dropdown.Item>
-                                    <Dropdown.Item onClick={() => openAsignarEmpleadoModal(proyecto, 'supervisados')}>
-                                      <FontAwesomeIcon icon={faUserPlus} className="me-2 text-primary" />
-                                      Asignar Empleado
-                                    </Dropdown.Item>
-                                    <Dropdown.Divider />
-                                    <Dropdown.Item 
-                                      onClick={() => handleCambiarEstadoProyecto(proyecto.ID, 'activo')}
-                                      disabled={proyecto.Estado === 'activo'}
-                                    >
-                                      <FontAwesomeIcon icon={faPlayCircle} className="me-2 text-success" />
-                                      Activar
-                                    </Dropdown.Item>
-                                    <Dropdown.Item 
-                                      onClick={() => handleCambiarEstadoProyecto(proyecto.ID, 'pausado')}
-                                      disabled={proyecto.Estado === 'pausado'}
-                                    >
-                                      <FontAwesomeIcon icon={faPauseCircle} className="me-2 text-warning" />
-                                      Pausar
-                                    </Dropdown.Item>
-                                    <Dropdown.Item 
-                                      onClick={() => handleCambiarEstadoProyecto(proyecto.ID, 'finalizado')}
-                                      disabled={proyecto.Estado === 'finalizado'}
-                                    >
-                                      <FontAwesomeIcon icon={faStopCircle} className="me-2 text-danger" />
-                                      Finalizar
-                                    </Dropdown.Item>
-                                    <Dropdown.Divider />
-                                    <Dropdown.Item 
-                                      onClick={() => openDeleteProyecto(proyecto)}
-                                      className="text-danger"
-                                    >
-                                      <FontAwesomeIcon icon={faTrash} className="me-2" />
-                                      Eliminar
-                                    </Dropdown.Item>
-                                  </>
-                                )}
-                              </Dropdown.Menu>
-                            </Dropdown>
+              <p className="text-muted small mb-3 d-flex align-items-center">
+                <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+                Mostrando {empleadosDisponibles.length} empleados
+              </p>
+              <ListGroup variant="flush" className="border rounded">
+                {empleadosDisponibles.map(emp => (
+                  <ListGroup.Item 
+                    key={emp.ID}
+                    action
+                    onClick={() => seleccionarJefe(emp)}
+                    className="py-3 px-3"
+                  >
+                    <div className="d-flex justify-content-between align-items-center">
+                      <div className="d-flex align-items-start">
+                        <div 
+                          className={`rounded-circle d-flex align-items-center justify-content-center me-3 ${
+                            emp.RolApp === 'admin' ? 'bg-danger' :
+                            emp.RolApp === 'manager' ? 'bg-warning' : 'bg-info'
+                          }`}
+                          style={{ width: '48px', height: '48px' }}
+                        >
+                          <FontAwesomeIcon icon={
+                            emp.RolApp === 'admin' ? faCrown :
+                            emp.RolApp === 'manager' ? faUserTie :
+                            faUser
+                          } className="text-white" />
+                        </div>
+                        <div>
+                          <div className="d-flex align-items-center flex-wrap gap-2 mb-1">
+                            <strong>{emp.NombreCompleto}</strong>
+                            {getRolBadge(emp.RolApp)}
                           </div>
                           
-                          <p className="text-muted small mb-3">
-                            {proyecto.Descripcion && (
-                              <>
-                                {proyecto.Descripcion.length > 100 
-                                  ? `${proyecto.Descripcion.substring(0, 100)}...` 
-                                  : proyecto.Descripcion}
-                              </>
-                            )}
-                            {!proyecto.Descripcion && (
-                              <span className="fst-italic">Sin descripción</span>
-                            )}
-                          </p>
+                          <small className="text-muted d-block">
+                            <FontAwesomeIcon icon={faEnvelope} className="me-1" size="sm" />
+                            {emp.CorreoElectronico}
+                          </small>
                           
-                          <div className="mt-auto">
-                            <div className="d-flex justify-content-between align-items-center mb-3">
+                          <div className="d-flex flex-wrap gap-2 mt-1">
+                            {emp.PuestoNombre && (
                               <small className="text-muted">
-                                <FontAwesomeIcon icon={faCalendar} className="me-1" />
-                                Inicio: {new Date(proyecto.FechaInicio).toLocaleDateString()}
+                                <FontAwesomeIcon icon={faBriefcase} className="me-1" size="sm" />
+                                {emp.PuestoNombre}
                               </small>
+                            )}
+                            {emp.DepartamentoNombre && (
                               <small className="text-muted">
-                                <FontAwesomeIcon icon={faFlag} className="me-1" />
-                                ${proyecto.Presupuesto.toLocaleString()}
+                                <FontAwesomeIcon icon={faBuilding} className="me-1" size="sm" />
+                                {emp.DepartamentoNombre}
                               </small>
-                            </div>
-                            
-                            <div className="d-flex align-items-center justify-content-between pt-2 border-top">
-                              <div className="d-flex align-items-center">
-                                <FontAwesomeIcon icon={faUserTie} className="text-primary me-2" />
-                                <small className="text-muted">
-                                  {proyecto.JefeProyectoNombre || 'Sin jefe'}
-                                  {soyJefeDeEsteProyecto}
-                                </small>
-                              </div>
-                              
-                              <Button
-                                variant="outline-primary"
-                                size="sm"
-                                onClick={() => openProyecto(proyecto)}
-                                className="d-flex align-items-center"
-                              >
-                                <FontAwesomeIcon icon={faArrowRight} className="me-1" />
-                                Ver tareas
-                              </Button>
-                            </div>
+                            )}
                           </div>
-                        </Card.Body>
-                      </Card>
-                    </Col>
-                  );
-                })}
-              </Row>
+                        </div>
+                      </div>
+                      
+                      <Button 
+                        variant="outline-primary" 
+                        size="sm"
+                        className="d-flex align-items-center"
+                      >
+                        <FontAwesomeIcon icon={faUserCheck} className="me-1" />
+                        Seleccionar
+                      </Button>
+                    </div>
+                  </ListGroup.Item>
+                ))}
+              </ListGroup>
 
-              {/* PAGINACIÓN */}
-              {totalPages > 1 && (
-                <div className="d-flex justify-content-center mt-4">
-                  <Pagination>
-                    <Pagination.First 
-                      onClick={() => setCurrentPage(1)} 
-                      disabled={currentPage === 1} 
-                    />
+              {totalJefePages > 1 && (
+                <div className="d-flex justify-content-center mt-3">
+                  <Pagination size="sm">
                     <Pagination.Prev 
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} 
-                      disabled={currentPage === 1} 
+                      onClick={() => cambiarPaginaJefe(filtrosJefe.page - 1)} 
+                      disabled={filtrosJefe.page === 1} 
                     />
-                    {[...Array(Math.min(5, totalPages))].map((_, idx) => {
-                      const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + idx;
-                      if (page <= totalPages) {
+                    {[...Array(Math.min(5, totalJefePages))].map((_, idx) => {
+                      const page = Math.max(1, Math.min(totalJefePages - 4, filtrosJefe.page - 2)) + idx;
+                      if (page <= totalJefePages) {
                         return (
                           <Pagination.Item
                             key={page}
-                            active={page === currentPage}
-                            onClick={() => setCurrentPage(page)}
+                            active={page === filtrosJefe.page}
+                            onClick={() => cambiarPaginaJefe(page)}
                           >
                             {page}
                           </Pagination.Item>
@@ -2246,26 +2533,476 @@ const getEstadoBadge = (estado: string) => {
                       return null;
                     })}
                     <Pagination.Next 
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} 
-                      disabled={currentPage === totalPages} 
-                    />
-                    <Pagination.Last 
-                      onClick={() => setCurrentPage(totalPages)} 
-                      disabled={currentPage === totalPages} 
+                      onClick={() => cambiarPaginaJefe(filtrosJefe.page + 1)} 
+                      disabled={filtrosJefe.page === totalJefePages} 
                     />
                   </Pagination>
                 </div>
               )}
             </>
           )}
-        </Tab>
-      </Tabs>
+        </Modal.Body>
+        <Modal.Footer className="border-0">
+          <Button variant="secondary" onClick={() => setShowSeleccionarJefeModal(false)}>
+            Cancelar
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
-      {/* ======================================== */}
-      {/* MODALES */}
-      {/* ======================================== */}
+      <Modal 
+        show={showAsignarEmpleadoModal} 
+        onHide={() => setShowAsignarEmpleadoModal(false)} 
+        size="lg"
+        centered
+        scrollable
+      >
+        <Modal.Header closeButton className="bg-success text-white">
+          <Modal.Title className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faUserPlus} className="me-2" />
+            Asignar Miembros al Equipo
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Card className="mb-3 border-0 bg-light">
+            <Card.Body className="p-3">
+              <Row className="g-2">
+                <Col md={12}>
+                  <Form.Label className="fw-bold">Modo de selección</Form.Label>
+                  <ButtonGroup className="w-100">
+                    <Button
+                      variant={modoSeleccion === 'supervisados' ? 'primary' : 'outline-primary'}
+                      onClick={() => {
+                        setModoSeleccion('supervisados');
+                        loadEmpleadosParaAsignar({ page: 1 }, 'supervisados');
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faUserFriends} className="me-2" />
+                      Subordinados
+                    </Button>
+                    <Button
+                      variant={modoSeleccion === 'todos' ? 'primary' : 'outline-primary'}
+                      onClick={() => {
+                        setModoSeleccion('todos');
+                        loadEmpleadosParaAsignar({ page: 1 }, 'todos');
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faBuilding} className="me-2" />
+                      Todos los empleados
+                    </Button>
+                  </ButtonGroup>
+                </Col>
+              </Row>
+            </Card.Body>
+          </Card>
 
-      {/* MODAL DE VISUALIZACIÓN DE PROYECTO */}
+          <Card className="mb-3 border-0 bg-light">
+            <Card.Body className="p-3">
+              <Row className="g-2">
+                <Col md={5}>
+                  <InputGroup size="sm">
+                    <InputGroup.Text className="bg-white border-0">
+                      <FontAwesomeIcon icon={faSearch} />
+                    </InputGroup.Text>
+                    <Form.Control
+                      placeholder="Buscar por nombre o email..."
+                      value={filtrosAsignar.busqueda}
+                      onChange={(e) => setFiltrosAsignar(prev => ({ ...prev, busqueda: e.target.value }))}
+                      className="border-0 bg-white"
+                    />
+                  </InputGroup>
+                </Col>
+                <Col md={3}>
+                  <Form.Select
+                    size="sm"
+                    value={filtrosAsignar.rol}
+                    onChange={(e) => setFiltrosAsignar(prev => ({ ...prev, rol: e.target.value }))}
+                    className="bg-white border-0"
+                  >
+                    <option value="">Todos los roles</option>
+                    <option value="admin">Administrador</option>
+                    <option value="manager">Manager</option>
+                    <option value="employee">Empleado</option>
+                  </Form.Select>
+                </Col>
+                <Col md={3}>
+                  <Form.Select
+                    size="sm"
+                    value={filtrosAsignar.departamento}
+                    onChange={(e) => setFiltrosAsignar(prev => ({ ...prev, departamento: e.target.value }))}
+                    className="bg-white border-0"
+                  >
+                    <option value="">Todos los departamentos</option>
+                    <option value="1">Desarrollo</option>
+                    <option value="2">Ventas</option>
+                    <option value="3">Marketing</option>
+                    <option value="4">Recursos Humanos</option>
+                    <option value="5">Finanzas</option>
+                  </Form.Select>
+                </Col>
+                <Col md={1}>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={aplicarFiltrosAsignar}
+                    className="w-100 d-flex align-items-center justify-content-center"
+                  >
+                    <FontAwesomeIcon icon={faSearch} />
+                  </Button>
+                </Col>
+              </Row>
+              
+              <div className="d-flex justify-content-end mt-2">
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  onClick={() => {
+                    resetFiltrosAsignar();
+                    loadEmpleadosParaAsignar({ busqueda: '', rol: '', departamento: '', page: 1 }, modoSeleccion);
+                  }}
+                  className="d-flex align-items-center"
+                >
+                  <FontAwesomeIcon icon={faUndo} className="me-2" />
+                  Limpiar filtros
+                </Button>
+              </div>
+            </Card.Body>
+          </Card>
+
+          {loadingAsignar ? (
+            <div className="text-center py-4">
+              <Spinner animation="border" variant="primary" />
+              <p className="mt-2 text-muted">Cargando empleados disponibles...</p>
+            </div>
+          ) : empleadosParaAsignar.length === 0 ? (
+            <Card className="text-center py-5 border-0 bg-light">
+              <Card.Body>
+                <FontAwesomeIcon icon={faUsers} size="3x" className="text-muted mb-3 opacity-50" />
+                <h6 className="text-muted">No hay empleados disponibles para asignar</h6>
+                <p className="text-muted mb-0">
+                  {modoSeleccion === 'supervisados' 
+                    ? 'No tienes subordinados disponibles o ya están asignados'
+                    : 'No hay empleados disponibles en la empresa'}
+                </p>
+              </Card.Body>
+            </Card>
+          ) : (
+            <>
+              <p className="text-muted small mb-3 d-flex align-items-center">
+                <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+                Mostrando {empleadosParaAsignar.length} empleados disponibles
+              </p>
+              <ListGroup variant="flush" className="border rounded">
+                {empleadosParaAsignar.map(emp => (
+                  <ListGroup.Item 
+                    key={emp.ID}
+                    className="py-3 px-3"
+                  >
+                    <div className="d-flex justify-content-between align-items-center">
+                      <div className="d-flex align-items-start">
+                        <div 
+                          className={`rounded-circle d-flex align-items-center justify-content-center me-3 ${
+                            emp.RolApp === 'admin' ? 'bg-danger' :
+                            emp.RolApp === 'manager' ? 'bg-warning' : 'bg-info'
+                          }`}
+                          style={{ width: '48px', height: '48px' }}
+                        >
+                          <FontAwesomeIcon icon={
+                            emp.RolApp === 'admin' ? faCrown :
+                            emp.RolApp === 'manager' ? faUserTie :
+                            faUser
+                          } className="text-white" />
+                        </div>
+                        <div>
+                          <div className="d-flex align-items-center flex-wrap gap-2 mb-1">
+                            <strong>{emp.NombreCompleto}</strong>
+                            {getRolBadge(emp.RolApp)}
+                          </div>
+                          
+                          <small className="text-muted d-block">
+                            <FontAwesomeIcon icon={faEnvelope} className="me-1" size="sm" />
+                            {emp.CorreoElectronico}
+                          </small>
+                          
+                          <div className="d-flex flex-wrap gap-2 mt-1">
+                            {emp.PuestoNombre && (
+                              <small className="text-muted">
+                                <FontAwesomeIcon icon={faBriefcase} className="me-1" size="sm" />
+                                {emp.PuestoNombre}
+                              </small>
+                            )}
+                            {emp.DepartamentoNombre && (
+                              <small className="text-muted">
+                                <FontAwesomeIcon icon={faBuilding} className="me-1" size="sm" />
+                                {emp.DepartamentoNombre}
+                              </small>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <Button 
+                        variant="success" 
+                        size="sm"
+                        onClick={() => handleAsignarEmpleado(emp.ID)}
+                        className="d-flex align-items-center"
+                      >
+                        <FontAwesomeIcon icon={faUserPlus} className="me-1" />
+                        Asignar
+                      </Button>
+                    </div>
+                  </ListGroup.Item>
+                ))}
+              </ListGroup>
+
+              {totalAsignarPages > 1 && (
+                <div className="d-flex justify-content-center mt-3">
+                  <Pagination size="sm">
+                    <Pagination.Prev 
+                      onClick={() => cambiarPaginaAsignar(filtrosAsignar.page - 1)} 
+                      disabled={filtrosAsignar.page === 1} 
+                    />
+                    {[...Array(Math.min(5, totalAsignarPages))].map((_, idx) => {
+                      const page = Math.max(1, Math.min(totalAsignarPages - 4, filtrosAsignar.page - 2)) + idx;
+                      if (page <= totalAsignarPages) {
+                        return (
+                          <Pagination.Item
+                            key={page}
+                            active={page === filtrosAsignar.page}
+                            onClick={() => cambiarPaginaAsignar(page)}
+                          >
+                            {page}
+                          </Pagination.Item>
+                        );
+                      }
+                      return null;
+                    })}
+                    <Pagination.Next 
+                      onClick={() => cambiarPaginaAsignar(filtrosAsignar.page + 1)} 
+                      disabled={filtrosAsignar.page === totalAsignarPages} 
+                    />
+                  </Pagination>
+                </div>
+              )}
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer className="border-0">
+          <Button variant="secondary" onClick={() => setShowAsignarEmpleadoModal(false)}>
+            Cancelar
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal 
+        show={showQuitarEmpleadoModal} 
+        onHide={() => {
+          setShowQuitarEmpleadoModal(false);
+          setSelectedEmpleado(null);
+        }} 
+        centered
+      >
+        <Modal.Header closeButton className="bg-danger text-white">
+          <Modal.Title className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faUserMinus} className="me-2" />
+            Quitar Miembro del Equipo
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {selectedEmpleado && (
+            <>
+              <p>¿Estás seguro de quitar a <strong>{selectedEmpleado.NombreCompleto}</strong> del proyecto?</p>
+              <Alert variant="warning" className="mb-0">
+                <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                Este empleado tiene <strong>{selectedEmpleado.TareasActivas}</strong> tareas activas asignadas. 
+                Al quitarlo, las tareas quedarán sin asignar.
+              </Alert>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button 
+            variant="secondary" 
+            onClick={() => {
+              setShowQuitarEmpleadoModal(false);
+              setSelectedEmpleado(null);
+            }}
+          >
+            Cancelar
+          </Button>
+          <Button variant="danger" onClick={handleQuitarEmpleado}>
+            <FontAwesomeIcon icon={faTrash} className="me-2" />
+            Quitar del Proyecto
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal 
+        show={showCreateModal} 
+        onHide={() => {
+          setShowCreateModal(false);
+          resetCreateForm();
+        }} 
+        size="lg"
+        centered
+      >
+        <Modal.Header closeButton className="bg-primary text-white">
+          <Modal.Title className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faPlus} className="me-2" />
+            Nuevo Proyecto
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form>
+            <Form.Group className="mb-3">
+              <Form.Label className="fw-bold">Nombre del Proyecto *</Form.Label>
+              <Form.Control
+                type="text"
+                value={createData.nombre}
+                onChange={(e) => setCreateData({...createData, nombre: e.target.value})}
+                placeholder="Ej: Sistema de Gestión RENOVA"
+                className="bg-light border-0"
+              />
+            </Form.Group>
+            
+            <Form.Group className="mb-3">
+              <Form.Label className="fw-bold">Descripción</Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={3}
+                value={createData.descripcion}
+                onChange={(e) => setCreateData({...createData, descripcion: e.target.value})}
+                placeholder="Descripción del proyecto..."
+                className="bg-light border-0"
+              />
+            </Form.Group>
+            
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label className="fw-bold">Fecha de Inicio *</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={createData.fechaInicio}
+                    onChange={(e) => setCreateData({...createData, fechaInicio: e.target.value})}
+                    className="bg-light border-0"
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label className="fw-bold">Fecha de Fin</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={createData.fechaFin}
+                    onChange={(e) => setCreateData({...createData, fechaFin: e.target.value})}
+                    className="bg-light border-0"
+                  />
+                </Form.Group>
+              </Col>
+            </Row>
+            
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label className="fw-bold">Presupuesto *</Form.Label>
+                  <InputGroup>
+                    <InputGroup.Text className="bg-light border-0">$</InputGroup.Text>
+                    <Form.Control
+                      type="number"
+                      value={createData.presupuesto}
+                      onChange={(e) => setCreateData({...createData, presupuesto: parseFloat(e.target.value) || 0})}
+                      placeholder="0.00"
+                      min="0"
+                      step="0.01"
+                      className="bg-light border-0"
+                    />
+                    <Form.Select
+                      value={createData.moneda}
+                      onChange={(e) => setCreateData({...createData, moneda: e.target.value})}
+                      style={{ maxWidth: '100px' }}
+                      className="bg-light border-0"
+                    >
+                      <option value="MXN">MXN</option>
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                    </Form.Select>
+                  </InputGroup>
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label className="fw-bold">Monto Asignado</Form.Label>
+                  <InputGroup>
+                    <InputGroup.Text className="bg-light border-0">$</InputGroup.Text>
+                    <Form.Control
+                      type="number"
+                      value={createData.montoAsignado}
+                      onChange={(e) => setCreateData({...createData, montoAsignado: parseFloat(e.target.value) || 0})}
+                      placeholder="0.00"
+                      min="0"
+                      step="0.01"
+                      className="bg-light border-0"
+                    />
+                  </InputGroup>
+                </Form.Group>
+              </Col>
+            </Row>
+            
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label className="fw-bold">Jefe de Proyecto *</Form.Label>
+                  <InputGroup>
+                    <Form.Control
+                      type="text"
+                      value={createData.jefeProyectoNombre}
+                      placeholder="Selecciona un jefe de proyecto"
+                      readOnly
+                      className="bg-light border-0"
+                    />
+                    <Button
+                      variant="outline-primary"
+                      onClick={openSeleccionarJefeModal}
+                    >
+                      <FontAwesomeIcon icon={faSearch} />
+                    </Button>
+                  </InputGroup>
+                  <Form.Text className="text-muted">
+                    Debe ser un empleado con rol de administrador o manager
+                  </Form.Text>
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label className="fw-bold">Estado</Form.Label>
+                  <Form.Select
+                    value={createData.estado}
+                    onChange={(e) => setCreateData({...createData, estado: e.target.value as any})}
+                    className="bg-light border-0"
+                  >
+                    <option value="activo"><FontAwesomeIcon icon={faPlayCircle} className="me-2 text-success" />Activo</option>
+                    <option value="pausado"><FontAwesomeIcon icon={faPauseCircle} className="me-2 text-warning" />Pausado</option>
+                    <option value="finalizado"><FontAwesomeIcon icon={faStopCircle} className="me-2 text-danger" />Finalizado</option>
+                  </Form.Select>
+                </Form.Group>
+              </Col>
+            </Row>
+          </Form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => {
+            setShowCreateModal(false);
+            resetCreateForm();
+          }}>
+            Cancelar
+          </Button>
+          <Button variant="primary" onClick={handleCreateProyecto}>
+            <FontAwesomeIcon icon={faSave} className="me-2" />
+            Crear Proyecto
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
       <Modal 
         show={showViewModal} 
         onHide={() => setShowViewModal(false)} 
@@ -2289,7 +3026,6 @@ const getEstadoBadge = (estado: string) => {
         <Modal.Body className="p-4">
           {selectedProyecto && (
             <div>
-              {/* HEADER DEL PROYECTO */}
               <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
                 <div>
                   <div className="d-flex gap-2 mb-2">
@@ -2312,7 +3048,6 @@ const getEstadoBadge = (estado: string) => {
                       variant="light" 
                       size="sm"
                       onClick={() => {
-                        setShowViewModal(false);
                         openEditProyecto(selectedProyecto);
                       }}
                       className="d-flex align-items-center"
@@ -2345,7 +3080,6 @@ const getEstadoBadge = (estado: string) => {
                 )}
               </div>
 
-              {/* DESCRIPCIÓN */}
               {selectedProyecto.Descripcion && (
                 <Card className="mb-4 border-0 bg-light">
                   <Card.Body>
@@ -2358,7 +3092,6 @@ const getEstadoBadge = (estado: string) => {
                 </Card>
               )}
 
-              {/* TABS DEL PROYECTO */}
               <Tabs
                 activeKey={activeTab}
                 onSelect={(k) => setActiveTab(k || 'tareas')}
@@ -2371,11 +3104,10 @@ const getEstadoBadge = (estado: string) => {
                     <Badge bg="secondary" pill>{tareas.length}</Badge>
                   </span>
                 }>
-                  {/* FILTROS DE TAREAS */}
                   <Card className="mb-4 border-0 bg-light">
                     <Card.Body className="p-3">
                       <Row className="g-2">
-                        <Col md={4}>
+                        <Col md={3}>
                           <InputGroup size="sm">
                             <InputGroup.Text className="bg-white border-0">
                               <FontAwesomeIcon icon={faSearch} />
@@ -2424,7 +3156,7 @@ const getEstadoBadge = (estado: string) => {
                             <option value="urgente">Urgente</option>
                           </Form.Select>
                         </Col>
-                        <Col md={2}>
+                        <Col md={3}>
                           <Form.Select
                             size="sm"
                             value={filtrosTareas.asignadoA}
@@ -2436,20 +3168,25 @@ const getEstadoBadge = (estado: string) => {
                           >
                             <option value="">Todos los asignados</option>
                             {empleadosProyecto.map(emp => (
-                              <option key={emp.ID} value={emp.ID}>
-                                {emp.NombreCompleto}
-                              </option>
+                              <option key={emp.ID} value={emp.ID}>{emp.NombreCompleto}</option>
                             ))}
                           </Form.Select>
                         </Col>
                         <Col md={2}>
-
+                          <Form.Check
+                            type="switch"
+                            label="Sin asignar"
+                            checked={filtrosTareas.soloSinAsignar}
+                            onChange={(e) => {
+                              setFiltrosTareas(prev => ({ ...prev, soloSinAsignar: e.target.checked }));
+                              aplicarFiltrosTareas();
+                            }}
+                          />
                         </Col>
                       </Row>
                     </Card.Body>
                   </Card>
 
-                  {/* HEADER DE TAREAS */}
                   <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
                     <div className="d-flex gap-2 mb-3 mb-md-0">
                       <ButtonGroup>
@@ -2473,22 +3210,31 @@ const getEstadoBadge = (estado: string) => {
                     </div>
                     
                     <div className="d-flex gap-2 w-100 w-md-auto">
-                      
-                      {canManageTareas && (
-                        <Button
-                          variant="success"
-                          size="sm"
-                          onClick={openCrearTareaModal}
-                          className="d-flex align-items-center"
-                        >
-                          <FontAwesomeIcon icon={faPlus} className="me-2" />
-                          Nueva Tarea
-                        </Button>
+                      {(isAdmin || soyJefeDelProyecto()) && (
+                        <>
+                          <Button
+                            variant="success"
+                            size="sm"
+                            onClick={() => openAsignarEmpleadoModal('supervisados')}
+                            className="d-flex align-items-center"
+                          >
+                            <FontAwesomeIcon icon={faUserPlus} className="me-2" />
+                            Asignar Miembro
+                          </Button>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={openCrearTareaModal}
+                            className="d-flex align-items-center"
+                          >
+                            <FontAwesomeIcon icon={faPlus} className="me-2" />
+                            Nueva Tarea
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
 
-                  {/* KANBAN / LISTA DE TAREAS */}
                   {viewMode === 'kanban' ? (
                     <KanbanBoard tareas={tareas} />
                   ) : (
@@ -2503,83 +3249,121 @@ const getEstadoBadge = (estado: string) => {
                     <Badge bg="secondary" pill>{empleadosProyecto.length}</Badge>
                   </span>
                 }>
-                  <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
-                    <h6 className="mb-3 mb-md-0 d-flex align-items-center">
-                      <FontAwesomeIcon icon={faUsers} className="me-2 text-primary" />
-                      Miembros del equipo ({empleadosProyecto.length})
-                    </h6>
-                    
-                    {canManage && (
-                      <div className="d-flex gap-2">
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          onClick={() => openAsignarEmpleadoModal(selectedProyecto, 'supervisados')}
-                          className="d-flex align-items-center"
-                        >
-                          <FontAwesomeIcon icon={faUserClock} className="me-2" />
-                          Asignar supervisados
-                        </Button>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => openAsignarEmpleadoModal(selectedProyecto, 'todos')}
-                          className="d-flex align-items-center"
-                        >
-                          <FontAwesomeIcon icon={faUserPlus} className="me-2" />
-                          Asignar de toda la empresa
-                        </Button>
-                      </div>
+                  <div className="mb-4">
+                    <div className="d-flex justify-content-between align-items-center mb-3">
+                      <h6 className="mb-0">Miembros del Equipo</h6>
+                      {(isAdmin || soyJefeDelProyecto()) && (
+                        <Dropdown>
+                          <Dropdown.Toggle variant="success" size="sm">
+                            <FontAwesomeIcon icon={faUserPlus} className="me-2" />
+                            Agregar Miembro
+                          </Dropdown.Toggle>
+                          <Dropdown.Menu>
+                            <Dropdown.Item onClick={() => openAsignarEmpleadoModal('supervisados')}>
+                              <FontAwesomeIcon icon={faUserFriends} className="me-2 text-primary" />
+                              Subordinados
+                            </Dropdown.Item>
+                            <Dropdown.Item onClick={() => openAsignarEmpleadoModal('todos')}>
+                              <FontAwesomeIcon icon={faBuilding} className="me-2 text-info" />
+                              Todos los empleados
+                            </Dropdown.Item>
+                          </Dropdown.Menu>
+                        </Dropdown>
+                      )}
+                    </div>
+
+                    {empleadosProyecto.length === 0 ? (
+                      <Card className="text-center py-5 border-0 bg-light">
+                        <Card.Body>
+                          <FontAwesomeIcon icon={faUsers} size="3x" className="text-muted mb-3 opacity-50" />
+                          <h6 className="text-muted">No hay miembros en el equipo</h6>
+                          <p className="text-muted mb-0">
+                            Asigna miembros para comenzar a trabajar
+                          </p>
+                        </Card.Body>
+                      </Card>
+                    ) : (
+                      <Row>
+                        {empleadosProyecto.map(emp => (
+                          <Col md={6} lg={4} key={emp.ID} className="mb-3">
+                            <Card className="h-100 border-0 shadow-sm">
+                              <Card.Body>
+                                <div className="d-flex justify-content-between align-items-start mb-3">
+                                  <div className="d-flex align-items-center">
+                                    <div 
+                                      className={`rounded-circle d-flex align-items-center justify-content-center me-3 ${
+                                        emp.Rol === 'jefe' ? 'bg-warning' : 
+                                        emp.RolApp === 'admin' ? 'bg-danger' :
+                                        emp.RolApp === 'manager' ? 'bg-warning' : 'bg-info'
+                                      }`}
+                                      style={{ width: '48px', height: '48px' }}
+                                    >
+                                      <FontAwesomeIcon icon={
+                                        emp.Rol === 'jefe' ? faCrown :
+                                        emp.RolApp === 'admin' ? faCrown :
+                                        emp.RolApp === 'manager' ? faUserTie :
+                                        faUser
+                                      } className="text-white" />
+                                    </div>
+                                    <div>
+                                      <h6 className="mb-1">{emp.NombreCompleto}</h6>
+                                      <small className="text-muted">{emp.PuestoNombre || 'Sin puesto'}</small>
+                                    </div>
+                                  </div>
+                                  {emp.Rol === 'jefe' && (
+                                    <Badge bg="warning" text="dark">JEFE</Badge>
+                                  )}
+                                </div>
+
+                                <div className="mb-3">
+                                  <div className="d-flex justify-content-between mb-1 small">
+                                    <span>Tareas activas</span>
+                                    <span className="fw-bold">{emp.TareasActivas || 0}</span>
+                                  </div>
+                                </div>
+
+                                <div className="d-flex flex-wrap gap-2 mb-3">
+                                  <small className="text-muted">
+                                    <FontAwesomeIcon icon={faEnvelope} className="me-1" />
+                                    {emp.CorreoElectronico}
+                                  </small>
+                                  {emp.DepartamentoNombre && (
+                                    <small className="text-muted d-block">
+                                      <FontAwesomeIcon icon={faBuilding} className="me-1" />
+                                      {emp.DepartamentoNombre}
+                                    </small>
+                                  )}
+                                </div>
+
+                                {(isAdmin || soyJefeDelProyecto()) && emp.Rol !== 'jefe' && (
+                                  <div className="d-flex justify-content-end border-top pt-2">
+                                    <Button
+                                      variant="outline-danger"
+                                      size="sm"
+                                      onClick={() => openQuitarEmpleadoModal(emp)}
+                                      className="d-flex align-items-center"
+                                    >
+                                      <FontAwesomeIcon icon={faUserMinus} className="me-1" />
+                                      Quitar
+                                    </Button>
+                                  </div>
+                                )}
+                              </Card.Body>
+                            </Card>
+                          </Col>
+                        ))}
+                      </Row>
                     )}
                   </div>
-                  
-                  {loadingEmpleados ? (
-                    <div className="text-center py-4">
-                      <Spinner animation="border" variant="primary" size="sm" />
-                      <p className="text-muted mt-2">Cargando empleados...</p>
-                    </div>
-                  ) : empleadosProyecto.length === 0 ? (
-                    <Card className="text-center py-5 border-0 bg-light">
-                      <Card.Body>
-                        <FontAwesomeIcon icon={faUsers} size="3x" className="text-muted mb-3 opacity-50" />
-                        <h6 className="text-muted">No hay empleados asignados</h6>
-                        <p className="text-muted mb-3">
-                          Este proyecto no tiene miembros asignados.
-                        </p>
-                        {canManage && (
-                          <div className="d-flex gap-2 justify-content-center">
-                            <Button
-                              variant="outline-primary"
-                              size="sm"
-                              onClick={() => openAsignarEmpleadoModal(selectedProyecto, 'supervisados')}
-                            >
-                              <FontAwesomeIcon icon={faUserClock} className="me-2" />
-                              Asignar supervisados
-                            </Button>
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              onClick={() => openAsignarEmpleadoModal(selectedProyecto, 'todos')}
-                            >
-                              <FontAwesomeIcon icon={faUserPlus} className="me-2" />
-                              Asignar primer empleado
-                            </Button>
-                          </div>
-                        )}
-                      </Card.Body>
-                    </Card>
-                  ) : (
-                    <Row className="g-3">
-                      {empleadosProyecto.map(empleado => (
-                        <Col key={empleado.ID} xs={12} md={6} lg={4}>
-                          <TarjetaEmpleado 
-                            empleado={empleado}
-                            proyectoId={selectedProyecto.ID}
-                          />
-                        </Col>
-                      ))}
-                    </Row>
-                  )}
+                </Tab>
+
+                <Tab eventKey="progreso" title={
+                  <span className="d-flex align-items-center gap-2">
+                    <FontAwesomeIcon icon={faChartLine} />
+                    Progreso
+                  </span>
+                }>
+                  <ProgresoView />
                 </Tab>
 
                 <Tab eventKey="historial" title={
@@ -2599,19 +3383,17 @@ const getEstadoBadge = (estado: string) => {
                       </Card>
                     ) : (
                       <div className="timeline">
-                        {historial.map((item, index) => (
+                        {historial.map((item: any, index) => (
                           <div key={item.ID} className="timeline-item">
                             <div className="timeline-badge">
-                              {item.Accion.includes('creado') && '🆕'}
-                              {item.Accion.includes('actualizado') && '✏️'}
-                              {item.Accion.includes('asignado') && '👤'}
-                              {item.Accion.includes('removido') && '❌'}
-                              {item.Accion.includes('eliminado') && '🗑️'}
-                              {!item.Accion.includes('creado') && 
-                               !item.Accion.includes('actualizado') && 
-                               !item.Accion.includes('asignado') && 
-                               !item.Accion.includes('removido') && 
-                               !item.Accion.includes('eliminado') && '📝'}
+                              <FontAwesomeIcon icon={
+                                item.Accion.includes('creado') ? faPlus :
+                                item.Accion.includes('actualizado') ? faEdit :
+                                item.Accion.includes('asignado') ? faUserPlus :
+                                item.Accion.includes('removido') ? faUserMinus :
+                                item.Accion.includes('eliminado') ? faTrash :
+                                faHistory
+                              } size="sm" />
                             </div>
                             <Card className="mb-3 border-0 shadow-sm">
                               <Card.Body>
@@ -2651,716 +3433,6 @@ const getEstadoBadge = (estado: string) => {
         </Modal.Footer>
       </Modal>
 
-      {/* MODAL DE ASIGNAR EMPLEADO A PROYECTO */}
-      <Modal 
-        show={showAsignarEmpleadoModal} 
-        onHide={() => setShowAsignarEmpleadoModal(false)} 
-        size="lg"
-        centered
-        scrollable
-      >
-        <Modal.Header closeButton className={`text-white ${
-          filtrosEmpleados.modo === 'supervisados' ? 'bg-primary' : 'bg-success'
-        }`}>
-          <Modal.Title className="d-flex align-items-center">
-            <FontAwesomeIcon 
-              icon={filtrosEmpleados.modo === 'supervisados' ? faUserClock : faUserPlus} 
-              className="me-2" 
-            />
-            {filtrosEmpleados.modo === 'supervisados' 
-              ? 'Asignar Empleado bajo Supervisión' 
-              : 'Asignar Empleado de toda la Empresa'}
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {/* SELECTOR DE MODO */}
-          <Card className="mb-3 border-0 bg-light">
-            <Card.Body className="p-3">
-              <div className="d-flex justify-content-between align-items-center">
-                <span className="fw-bold">Modo de búsqueda:</span>
-                <div className="d-flex gap-2">
-                  <Button
-                    variant={filtrosEmpleados.modo === 'supervisados' ? 'primary' : 'outline-primary'}
-                    size="sm"
-                    onClick={() => cambiarModoEmpleados('supervisados')}
-                    className="d-flex align-items-center"
-                  >
-                    <FontAwesomeIcon icon={faUserClock} className="me-2" />
-                    Solo supervisados
-                  </Button>
-                  <Button
-                    variant={filtrosEmpleados.modo === 'todos' ? 'success' : 'outline-success'}
-                    size="sm"
-                    onClick={() => cambiarModoEmpleados('todos')}
-                    className="d-flex align-items-center"
-                  >
-                    <FontAwesomeIcon icon={faBuilding} className="me-2" />
-                    Toda la empresa
-                  </Button>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-
-          {/* FILTROS */}
-          <Card className="mb-3 border-0 bg-light">
-            <Card.Body className="p-3">
-              <Row className="g-2">
-                <Col md={6}>
-                  <InputGroup size="sm">
-                    <InputGroup.Text className="bg-white border-0">
-                      <FontAwesomeIcon icon={faSearch} />
-                    </InputGroup.Text>
-                    <Form.Control
-                      placeholder="Buscar por nombre o email..."
-                      value={filtrosEmpleados.busqueda}
-                      onChange={(e) => {
-                        setFiltrosEmpleados(prev => ({ ...prev, busqueda: e.target.value }));
-                      }}
-                      className="border-0 bg-white"
-                    />
-                  </InputGroup>
-                </Col>
-                <Col md={3}>
-                  <Form.Select
-                    size="sm"
-                    value={filtrosEmpleados.rol}
-                    onChange={(e) => setFiltrosEmpleados(prev => ({ ...prev, rol: e.target.value }))}
-                    className="bg-white border-0"
-                  >
-                    <option value="">Todos los roles</option>
-                    <option value="admin">Admin</option>
-                    <option value="manager">Manager</option>
-                    <option value="employee">Employee</option>
-                  </Form.Select>
-                </Col>
-                <Col md={3}>
-                  <Form.Select
-                    size="sm"
-                    value={filtrosEmpleados.departamento}
-                    onChange={(e) => setFiltrosEmpleados(prev => ({ ...prev, departamento: e.target.value }))}
-                    className="bg-white border-0"
-                  >
-                    <option value="">Todos los deptos</option>
-                  </Form.Select>
-                </Col>
-              </Row>
-              
-              {filtrosEmpleados.modo === 'todos' && (
-                <Row className="mt-2">
-                  <Col>
-                    <Form.Check
-                      type="checkbox"
-                      label="Mostrar solo empleados no asignados"
-                      checked={filtrosEmpleados.soloNoAsignados}
-                      onChange={(e) => {
-                        setFiltrosEmpleados(prev => ({ ...prev, soloNoAsignados: e.target.checked }));
-                      }}
-                    />
-                  </Col>
-                </Row>
-              )}
-
-              <div className="d-flex justify-content-end mt-2">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={aplicarFiltrosEmpleados}
-                  className="d-flex align-items-center"
-                >
-                  <FontAwesomeIcon icon={faSearch} className="me-2" />
-                  Aplicar filtros
-                </Button>
-              </div>
-            </Card.Body>
-          </Card>
-
-          {/* RESULTADOS */}
-          {loadingDisponibles ? (
-            <div className="text-center py-4">
-              <Spinner animation="border" variant="primary" />
-              <p className="mt-2 text-muted">Buscando empleados...</p>
-            </div>
-          ) : error ? (
-            <Alert variant="warning" className="mb-0">
-              <div className="d-flex align-items-center">
-                <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
-                <div>
-                  {error}
-                  <Button 
-                    variant="outline-primary" 
-                    size="sm" 
-                    className="mt-2"
-                    onClick={() => selectedProyecto && loadEmpleadosDisponibles(selectedProyecto.ID, filtrosEmpleados.modo)}
-                  >
-                    <FontAwesomeIcon icon={faSync} className="me-2" />
-                    Reintentar
-                  </Button>
-                </div>
-              </div>
-            </Alert>
-          ) : empleadosDisponibles.length === 0 ? (
-            <Card className="text-center py-5 border-0 bg-light">
-              <Card.Body>
-                <FontAwesomeIcon icon={faUsers} size="3x" className="text-muted mb-3 opacity-50" />
-                <h6 className="text-muted">No hay empleados disponibles</h6>
-                <p className="text-muted mb-0">
-                  {filtrosEmpleados.modo === 'supervisados'
-                    ? 'No hay más empleados bajo tu supervisión para asignar'
-                    : 'Todos los empleados ya están asignados a este proyecto'}
-                </p>
-              </Card.Body>
-            </Card>
-          ) : (
-            <>
-              <p className="text-muted small mb-3 d-flex align-items-center">
-                <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-                Mostrando {empleadosDisponibles.length} empleados disponibles
-              </p>
-              <ListGroup variant="flush" className="border rounded">
-                {empleadosDisponibles.map(emp => (
-                  <TarjetaEmpleadoDisponible 
-                    key={emp.ID}
-                    empleado={emp}
-                    proyectoId={selectedProyecto!.ID}
-                    onAsignar={() => handleAsignarEmpleado(selectedProyecto!.ID, emp.ID)}
-                  />
-                ))}
-              </ListGroup>
-            </>
-          )}
-        </Modal.Body>
-        <Modal.Footer className="border-0">
-          <Button variant="secondary" onClick={() => setShowAsignarEmpleadoModal(false)}>
-            Cerrar
-          </Button>
-        </Modal.Footer>
-      </Modal>
-
-      {/* MODAL DE QUITAR EMPLEADO */}
-      <Modal 
-        show={showQuitarEmpleadoModal} 
-        onHide={() => setShowQuitarEmpleadoModal(false)} 
-        centered
-      >
-        <Modal.Header closeButton className="bg-danger text-white">
-          <Modal.Title className="d-flex align-items-center">
-            <FontAwesomeIcon icon={faUserMinus} className="me-2" />
-            Quitar Empleado
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {selectedEmpleado && (
-            <>
-              <p>¿Estás seguro de quitar a <strong>{selectedEmpleado.NombreCompleto}</strong> del proyecto?</p>
-              <Alert variant="warning" className="mb-0">
-                <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
-                Este empleado tiene <strong>{selectedEmpleado.TareasAsignadas || 0} tareas asignadas</strong>.
-                {selectedEmpleado.TareasAsignadas ? ' Se desasignarán automáticamente.' : ''}
-              </Alert>
-            </>
-          )}
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowQuitarEmpleadoModal(false)}>
-            Cancelar
-          </Button>
-          <Button 
-            variant="danger" 
-            onClick={() => selectedProyecto && selectedEmpleado && 
-              handleQuitarEmpleado(selectedProyecto.ID, selectedEmpleado)
-            }
-          >
-            <FontAwesomeIcon icon={faTrash} className="me-2" />
-            Quitar Empleado
-          </Button>
-        </Modal.Footer>
-      </Modal>
-
-      {/* MODAL DE CREAR/EDITAR TAREA */}
-      <Modal 
-        show={showTareaModal} 
-        onHide={() => {
-          setShowTareaModal(false);
-          resetTareaForm();
-          setIsEditingTarea(false);
-          setSelectedTarea(null);
-        }} 
-        centered
-      >
-        <Modal.Header closeButton className={isEditingTarea ? 'bg-warning' : 'bg-success'}>
-          <Modal.Title className="d-flex align-items-center text-white">
-            <FontAwesomeIcon icon={isEditingTarea ? faEdit : faPlus} className="me-2" />
-            {isEditingTarea ? 'Editar Tarea' : 'Nueva Tarea'}
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Form>
-            <Form.Group className="mb-3">
-              <Form.Label className="fw-bold">Título *</Form.Label>
-              <Form.Control
-                type="text"
-                value={tareaData.titulo}
-                onChange={(e) => setTareaData({...tareaData, titulo: e.target.value})}
-                placeholder="Ej: Diseñar interfaz de usuario"
-                className="bg-light border-0"
-              />
-            </Form.Group>
-            
-            <Form.Group className="mb-3">
-              <Form.Label className="fw-bold">Descripción</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={tareaData.descripcion}
-                onChange={(e) => setTareaData({...tareaData, descripcion: e.target.value})}
-                placeholder="Descripción detallada de la tarea..."
-                className="bg-light border-0"
-              />
-            </Form.Group>
-            
-            <Row>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label className="fw-bold">Prioridad</Form.Label>
-                  <Form.Select
-                    value={tareaData.prioridad}
-                    onChange={(e) => setTareaData({...tareaData, prioridad: e.target.value as any})}
-                    className="bg-light border-0"
-                  >
-                    <option value="baja">🟢 Baja</option>
-                    <option value="media">🔵 Media</option>
-                    <option value="alta">🟠 Alta</option>
-                    <option value="urgente">🔴 Urgente</option>
-                  </Form.Select>
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label className="fw-bold">Fecha Límite</Form.Label>
-                  <Form.Control
-                    type="date"
-                    value={tareaData.fechaVencimiento}
-                    onChange={(e) => setTareaData({...tareaData, fechaVencimiento: e.target.value})}
-                    className="bg-light border-0"
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
-
-            {!isEditingTarea && (
-              <Form.Group className="mb-3">
-                <Form.Label className="fw-bold">Asignar a empleado (opcional)</Form.Label>
-                <Form.Select
-                  value={tareaData.empleadoId || ''}
-                  onChange={(e) => setTareaData({...tareaData, empleadoId: e.target.value ? parseInt(e.target.value) : null})}
-                  className="bg-light border-0"
-                >
-                  <option value="">-- Sin asignar --</option>
-                  {empleadosProyecto.map(emp => (
-                    <option key={emp.ID} value={emp.ID}>
-                      {emp.NombreCompleto} ({emp.RolApp})
-                      {emp.ID === miEmpleadoId}
-                      {emp.ID === selectedProyecto?.JefeProyectoID}
-                    </option>
-                  ))}
-                </Form.Select>
-                <Form.Text className="text-muted">
-                  * Puedes asignar la tarea después de crearla
-                </Form.Text>
-              </Form.Group>
-            )}
-
-            {isEditingTarea && selectedTarea?.EmpleadoAsignadoID && (
-              <Alert variant="light" className="mb-0">
-                <small>
-                  <FontAwesomeIcon icon={faUserCheck} className="me-1 text-success" />
-                  <strong>Asignado actualmente:</strong> {selectedTarea.EmpleadoAsignadoNombre}
-                  {selectedTarea.EmpleadoAsignadoID === miEmpleadoId && ' (tú)'}
-                </small>
-                <br />
-                <small className="text-muted">
-                  Para cambiar la asignación, usa la opción "Reasignar" en el menú de la tarea.
-                </small>
-              </Alert>
-            )}
-          </Form>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => {
-            setShowTareaModal(false);
-            resetTareaForm();
-            setIsEditingTarea(false);
-            setSelectedTarea(null);
-          }}>
-            Cancelar
-          </Button>
-          <Button 
-            variant={isEditingTarea ? "warning" : "success"} 
-            onClick={isEditingTarea ? handleActualizarTarea : handleCrearTarea}
-            className="text-white"
-          >
-            <FontAwesomeIcon icon={faSave} className="me-2" />
-            {isEditingTarea ? 'Actualizar' : 'Crear'} Tarea
-          </Button>
-        </Modal.Footer>
-      </Modal>
-
-      {/* MODAL DE REASIGNAR TAREA */}
-      <Modal 
-        show={showReasignarTareaModal} 
-        onHide={() => {
-          setShowReasignarTareaModal(false);
-          setReasignarData({ empleadoId: null });
-          setSelectedTarea(null);
-        }} 
-        centered
-      >
-        <Modal.Header closeButton className="bg-info text-white">
-          <Modal.Title className="d-flex align-items-center">
-            <FontAwesomeIcon icon={faUserFriends} className="me-2" />
-            Reasignar Tarea
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {selectedTarea && selectedProyecto ? (
-            <>
-              <Form.Group className="mb-3">
-                <Form.Label className="fw-bold">Asignar a:</Form.Label>
-                <Form.Select
-                  value={reasignarData.empleadoId || ''}
-                  onChange={(e) => setReasignarData({ 
-                    empleadoId: e.target.value ? parseInt(e.target.value) : null 
-                  })}
-                  className="bg-light border-0"
-                >
-                  <option value="">-- Sin asignar --</option>
-                  {empleadosProyecto
-                    .filter(emp => emp.Activo !== false)
-                    .map(emp => (
-                      <option key={emp.ID} value={emp.ID}>
-                        {emp.NombreCompleto} ({emp.RolApp})
-                        {emp.ID === selectedProyecto.JefeProyectoID && ' 👑'}
-                        {emp.ID === miEmpleadoId && ' (tú)'}
-                        {emp.ID === selectedTarea.EmpleadoAsignadoID && ' (actual)'}
-                      </option>
-                    ))}
-                </Form.Select>
-                <Form.Text className="text-muted">
-                  * Selecciona "Sin asignar" para desasignar la tarea
-                </Form.Text>
-              </Form.Group>
-            </>
-          ) : (
-            <Alert variant="warning">
-              No se pudo cargar la información de la tarea
-            </Alert>
-          )}
-        </Modal.Body>
-        <Modal.Footer>
-          <Button 
-            variant="secondary" 
-            onClick={() => {
-              setShowReasignarTareaModal(false);
-              setReasignarData({ empleadoId: null });
-              setSelectedTarea(null);
-            }}
-          >
-            Cancelar
-          </Button>
-          <Button 
-            variant="info" 
-            onClick={handleReasignarTarea}
-            className="text-white"
-            disabled={!selectedTarea || !selectedProyecto}
-          >
-            <FontAwesomeIcon icon={faSave} className="me-2" />
-            {reasignarData.empleadoId ? 'Reasignar' : 'Desasignar'}
-          </Button>
-        </Modal.Footer>
-      </Modal>
-
-      {/* MODAL DE NOTAS */}
-      <Modal 
-        show={showNotaModal} 
-        onHide={() => setShowNotaModal(false)} 
-        size="lg"
-        centered
-        scrollable
-      >
-        <Modal.Header closeButton className="bg-info text-white">
-          <Modal.Title className="d-flex align-items-center">
-            <FontAwesomeIcon icon={faComment} className="me-2" />
-            Notas - {selectedTarea?.Titulo}
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {selectedTarea && (
-            <>
-              {canManage && (
-                <Card className="mb-4 border-0 bg-light">
-                  <Card.Body>
-                    <h6 className="mb-3">Agregar Nueva Nota</h6>
-                    <Form.Group className="mb-3">
-                      <Form.Control
-                        as="textarea"
-                        rows={3}
-                        value={notaData.contenido}
-                        onChange={(e) => setNotaData({...notaData, contenido: e.target.value})}
-                        placeholder="Escribe tu nota aquí..."
-                        className="bg-white border-0"
-                      />
-                    </Form.Group>
-                    <Form.Check
-                      type="checkbox"
-                      label="Nota privada (solo visible para administradores)"
-                      checked={notaData.esPrivada}
-                      onChange={(e) => setNotaData({...notaData, esPrivada: e.target.checked})}
-                      className="mb-3"
-                    />
-                    <Button
-                      variant="primary"
-                      onClick={() => handleCrearNota(selectedTarea.ID)}
-                      disabled={!notaData.contenido.trim()}
-                      className="d-flex align-items-center"
-                    >
-                      <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
-                      Agregar Nota
-                    </Button>
-                  </Card.Body>
-                </Card>
-              )}
-
-              <h6 className="mb-3 d-flex align-items-center">
-                <FontAwesomeIcon icon={faHistory} className="me-2" />
-                Notas Anteriores ({notas.length})
-              </h6>
-              
-              {notas.length === 0 ? (
-                <Card className="text-center py-4 border-0 bg-light">
-                  <Card.Body>
-                    <FontAwesomeIcon icon={faComment} size="2x" className="text-muted mb-2 opacity-50" />
-                    <p className="text-muted mb-0">No hay notas para esta tarea</p>
-                  </Card.Body>
-                </Card>
-              ) : (
-                notas.map(nota => {
-                  if (nota.EsPrivada && !isAdmin) return null;
-                  return (
-                    <Card key={nota.ID} className="mb-3 border-0 shadow-sm">
-                      <Card.Body>
-                        <div className="d-flex justify-content-between align-items-start mb-2">
-                          <div className="d-flex align-items-center">
-                            <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center me-2" 
-                                 style={{ width: '32px', height: '32px' }}>
-                              <FontAwesomeIcon icon={faUserCircle} className="text-white" size="sm" />
-                            </div>
-                            <div>
-                              <strong className="d-block">{nota.EmpleadoNombre}</strong>
-                              <small className="text-muted">
-                                {new Date(nota.createdAt).toLocaleString('es-MX', {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </small>
-                            </div>
-                          </div>
-                          {nota.EsPrivada && (
-                            <Badge bg="warning" text="dark">
-                              <FontAwesomeIcon icon={faLock} className="me-1" />
-                              Privada
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="mb-0 mt-2 ps-4">{nota.Contenido}</p>
-                      </Card.Body>
-                    </Card>
-                  );
-                })
-              )}
-            </>
-          )}
-        </Modal.Body>
-        <Modal.Footer className="border-0">
-          <Button variant="secondary" onClick={() => setShowNotaModal(false)}>
-            Cerrar
-          </Button>
-        </Modal.Footer>
-      </Modal>
-
-      {/* MODAL DE CREAR PROYECTO */}
-      <Modal 
-  show={showCreateModal} 
-  onHide={() => setShowCreateModal(false)} 
-  size="lg"
-  centered
->
-  <Modal.Header closeButton className="bg-primary text-white">
-    <Modal.Title className="d-flex align-items-center">
-      <FontAwesomeIcon icon={faPlus} className="me-2" />
-      Nuevo Proyecto
-    </Modal.Title>
-  </Modal.Header>
-  <Modal.Body>
-    <Form>
-      <Form.Group className="mb-3">
-        <Form.Label className="fw-bold">Nombre del Proyecto *</Form.Label>
-        <Form.Control
-          type="text"
-          value={createData.nombre}
-          onChange={(e) => setCreateData({...createData, nombre: e.target.value})}
-          placeholder="Ej: Sistema de Gestión RENOVA"
-          className="bg-light border-0"
-        />
-      </Form.Group>
-      
-      <Form.Group className="mb-3">
-        <Form.Label className="fw-bold">Descripción</Form.Label>
-        <Form.Control
-          as="textarea"
-          rows={3}
-          value={createData.descripcion}
-          onChange={(e) => setCreateData({...createData, descripcion: e.target.value})}
-          placeholder="Descripción del proyecto..."
-          className="bg-light border-0"
-        />
-      </Form.Group>
-      
-      <Row>
-        <Col md={6}>
-          <Form.Group className="mb-3">
-            <Form.Label className="fw-bold">Fecha de Inicio *</Form.Label>
-            <Form.Control
-              type="date"
-              value={createData.fechaInicio}
-              onChange={(e) => setCreateData({...createData, fechaInicio: e.target.value})}
-              className="bg-light border-0"
-            />
-          </Form.Group>
-        </Col>
-        <Col md={6}>
-          <Form.Group className="mb-3">
-            <Form.Label className="fw-bold">Fecha de Fin</Form.Label>
-            <Form.Control
-              type="date"
-              value={createData.fechaFin}
-              onChange={(e) => setCreateData({...createData, fechaFin: e.target.value})}
-              className="bg-light border-0"
-            />
-          </Form.Group>
-        </Col>
-      </Row>
-      
-      <Row>
-        <Col md={6}>
-          <Form.Group className="mb-3">
-            <Form.Label className="fw-bold">Presupuesto *</Form.Label>
-            <InputGroup>
-              <InputGroup.Text className="bg-light border-0">$</InputGroup.Text>
-              <Form.Control
-                type="number"
-                value={createData.presupuesto}
-                onChange={(e) => setCreateData({...createData, presupuesto: parseFloat(e.target.value) || 0})}
-                placeholder="0.00"
-                min="0"
-                step="0.01"
-                className="bg-light border-0"
-              />
-              <Form.Select
-                value={createData.moneda}
-                onChange={(e) => setCreateData({...createData, moneda: e.target.value})}
-                style={{ maxWidth: '100px' }}
-                className="bg-light border-0"
-              >
-                <option value="MXN">MXN</option>
-                <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-              </Form.Select>
-            </InputGroup>
-          </Form.Group>
-        </Col>
-        <Col md={6}>
-          <Form.Group className="mb-3">
-            <Form.Label className="fw-bold">Monto Asignado</Form.Label>
-            <InputGroup>
-              <InputGroup.Text className="bg-light border-0">$</InputGroup.Text>
-              <Form.Control
-                type="number"
-                value={createData.montoAsignado}
-                onChange={(e) => setCreateData({...createData, montoAsignado: parseFloat(e.target.value) || 0})}
-                placeholder="0.00"
-                min="0"
-                step="0.01"
-                className="bg-light border-0"
-              />
-            </InputGroup>
-          </Form.Group>
-        </Col>
-      </Row>
-      
-      <Row>
-        <Col md={6}>
-          <Form.Group className="mb-3">
-            <Form.Label className="fw-bold">Jefe de Proyecto *</Form.Label>
-            <Form.Control
-              type="number"
-              value={createData.jefeProyectoId}
-              onChange={(e) => setCreateData({...createData, jefeProyectoId: parseInt(e.target.value) || 0})}
-              placeholder="ID del empleado"
-              className="bg-light border-0"
-            />
-            <Form.Text className="text-muted">
-              Debe ser un empleado con rol de manager
-            </Form.Text>
-          </Form.Group>
-        </Col>
-        <Col md={6}>
-          <Form.Group className="mb-3">
-            <Form.Label className="fw-bold">Estado</Form.Label>
-            <Form.Select
-              value={createData.estado}
-              onChange={(e) => setCreateData({...createData, estado: e.target.value as any})}
-              className="bg-light border-0"
-            >
-              <option value="activo" className="d-flex align-items-center">
-                <span className="d-flex align-items-center gap-2">
-                  <FontAwesomeIcon icon={faPlayCircle} className="text-success me-2" />
-                  Activo
-                </span>
-              </option>
-              <option value="pausado" className="d-flex align-items-center">
-                <span className="d-flex align-items-center gap-2">
-                  <FontAwesomeIcon icon={faPauseCircle} className="text-warning me-2" />
-                  Pausado
-                </span>
-              </option>
-              <option value="finalizado" className="d-flex align-items-center">
-                <span className="d-flex align-items-center gap-2">
-                  <FontAwesomeIcon icon={faStopCircle} className="text-danger me-2" />
-                  Finalizado
-                </span>
-              </option>
-            </Form.Select>
-          </Form.Group>
-        </Col>
-      </Row>
-    </Form>
-  </Modal.Body>
-  <Modal.Footer>
-    <Button variant="secondary" onClick={() => setShowCreateModal(false)}>
-      Cancelar
-    </Button>
-    <Button variant="primary" onClick={handleCreateProyecto}>
-      <FontAwesomeIcon icon={faSave} className="me-2" />
-      Crear Proyecto
-    </Button>
-  </Modal.Footer>
-</Modal>
-
-      {/* MODAL DE EDITAR PROYECTO */}
       <Modal 
         show={showEditModal} 
         onHide={() => setShowEditModal(false)} 
@@ -3465,24 +3537,9 @@ const getEstadoBadge = (estado: string) => {
                     onChange={(e) => setEditData({...editData, estado: e.target.value as any})}
                     className="bg-light border-0"
                   >
-                    <option value="activo" className="d-flex align-items-center">
-                      <span className="d-flex align-items-center gap-2">
-                        <FontAwesomeIcon icon={faPlayCircle} className="text-success me-2" />
-                        Activo
-                      </span>
-                    </option>
-                    <option value="pausado" className="d-flex align-items-center">
-                      <span className="d-flex align-items-center gap-2">
-                        <FontAwesomeIcon icon={faPauseCircle} className="text-warning me-2" />
-                        Pausado
-                      </span>
-                    </option>
-                    <option value="finalizado" className="d-flex align-items-center">
-                      <span className="d-flex align-items-center gap-2">
-                        <FontAwesomeIcon icon={faStopCircle} className="text-danger me-2" />
-                        Finalizado
-                      </span>
-                    </option>
+                    <option value="activo"><FontAwesomeIcon icon={faPlayCircle} className="me-2 text-success" />Activo</option>
+                    <option value="pausado"><FontAwesomeIcon icon={faPauseCircle} className="me-2 text-warning" />Pausado</option>
+                    <option value="finalizado"><FontAwesomeIcon icon={faStopCircle} className="me-2 text-danger" />Finalizado</option>
                   </Form.Select>
                 </Form.Group>
               </Col>
@@ -3500,7 +3557,6 @@ const getEstadoBadge = (estado: string) => {
         </Modal.Footer>
       </Modal>
 
-      {/* MODAL DE ELIMINAR PROYECTO */}
       <Modal 
         show={showDeleteModal} 
         onHide={() => setShowDeleteModal(false)} 
@@ -3534,7 +3590,306 @@ const getEstadoBadge = (estado: string) => {
         </Modal.Footer>
       </Modal>
 
-      {/* ESTILOS ADICIONALES */}
+      <Modal 
+        show={showTareaModal} 
+        onHide={() => {
+          setShowTareaModal(false);
+          resetTareaForm();
+          setIsEditingTarea(false);
+          setSelectedTarea(null);
+        }} 
+        centered
+      >
+        <Modal.Header closeButton className={isEditingTarea ? 'bg-warning' : 'bg-success'}>
+          <Modal.Title className="d-flex align-items-center text-white">
+            <FontAwesomeIcon icon={isEditingTarea ? faEdit : faPlus} className="me-2" />
+            {isEditingTarea ? 'Editar Tarea' : 'Nueva Tarea'}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form>
+            <Form.Group className="mb-3">
+              <Form.Label className="fw-bold">Título *</Form.Label>
+              <Form.Control
+                type="text"
+                value={tareaData.titulo}
+                onChange={(e) => setTareaData({...tareaData, titulo: e.target.value})}
+                placeholder="Ej: Diseñar interfaz de usuario"
+                className="bg-light border-0"
+              />
+            </Form.Group>
+            
+            <Form.Group className="mb-3">
+              <Form.Label className="fw-bold">Descripción</Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={3}
+                value={tareaData.descripcion}
+                onChange={(e) => setTareaData({...tareaData, descripcion: e.target.value})}
+                placeholder="Descripción detallada de la tarea..."
+                className="bg-light border-0"
+              />
+            </Form.Group>
+            
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label className="fw-bold">Prioridad</Form.Label>
+                  <Form.Select
+                    value={tareaData.prioridad}
+                    onChange={(e) => setTareaData({...tareaData, prioridad: e.target.value as any})}
+                    className="bg-light border-0"
+                  >
+                    <option value="baja"><FontAwesomeIcon icon={faFlag} className="me-2 text-success" />Baja</option>
+                    <option value="media"><FontAwesomeIcon icon={faFlag} className="me-2 text-info" />Media</option>
+                    <option value="alta"><FontAwesomeIcon icon={faFlag} className="me-2 text-warning" />Alta</option>
+                    <option value="urgente"><FontAwesomeIcon icon={faExclamationTriangle} className="me-2 text-danger" />Urgente</option>
+                  </Form.Select>
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label className="fw-bold">Fecha Límite</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={tareaData.fechaVencimiento}
+                    onChange={(e) => setTareaData({...tareaData, fechaVencimiento: e.target.value})}
+                    className="bg-light border-0"
+                  />
+                </Form.Group>
+              </Col>
+            </Row>
+
+            {!isEditingTarea && (
+              <Form.Group className="mb-3">
+                <Form.Label className="fw-bold">Asignar a empleado (opcional)</Form.Label>
+                <Form.Select
+                  value={tareaData.empleadoId || ''}
+                  onChange={(e) => setTareaData({...tareaData, empleadoId: e.target.value ? parseInt(e.target.value) : null})}
+                  className="bg-light border-0"
+                >
+                  <option value="">-- Sin asignar --</option>
+                  {empleadosProyecto.map(emp => (
+                    <option key={emp.ID} value={emp.ID}>{emp.NombreCompleto}</option>
+                  ))}
+                </Form.Select>
+                <Form.Text className="text-muted">
+                  * Puedes asignar la tarea después de crearla
+                </Form.Text>
+              </Form.Group>
+            )}
+
+            {isEditingTarea && selectedTarea?.EmpleadoAsignadoID && (
+              <Alert variant="light" className="mb-0">
+                <small>
+                  <FontAwesomeIcon icon={faUserCheck} className="me-1 text-success" />
+                  <strong>Asignado actualmente:</strong> {selectedTarea.EmpleadoAsignadoNombre}
+                  {selectedTarea.EmpleadoAsignadoID === miEmpleadoId && ' (tú)'}
+                </small>
+                <br />
+                <small className="text-muted">
+                  Para cambiar la asignación, usa la opción "Reasignar" en el menú de la tarea.
+                </small>
+              </Alert>
+            )}
+          </Form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => {
+            setShowTareaModal(false);
+            resetTareaForm();
+            setIsEditingTarea(false);
+            setSelectedTarea(null);
+          }}>
+            Cancelar
+          </Button>
+          <Button 
+            variant={isEditingTarea ? "warning" : "success"} 
+            onClick={isEditingTarea ? handleActualizarTarea : handleCrearTarea}
+            className="text-white"
+          >
+            <FontAwesomeIcon icon={faSave} className="me-2" />
+            {isEditingTarea ? 'Actualizar' : 'Crear'} Tarea
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal 
+        show={showReasignarTareaModal} 
+        onHide={() => {
+          setShowReasignarTareaModal(false);
+          setReasignarData({ empleadoId: null });
+          setSelectedTarea(null);
+        }} 
+        centered
+      >
+        <Modal.Header closeButton className="bg-info text-white">
+          <Modal.Title className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faUserFriends} className="me-2" />
+            Reasignar Tarea
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {selectedTarea && selectedProyecto ? (
+            <>
+              <Form.Group className="mb-3">
+                <Form.Label className="fw-bold">Asignar a:</Form.Label>
+                <Form.Select
+                  value={reasignarData.empleadoId || ''}
+                  onChange={(e) => setReasignarData({ 
+                    empleadoId: e.target.value ? parseInt(e.target.value) : null 
+                  })}
+                  className="bg-light border-0"
+                >
+                  <option value="">-- Sin asignar --</option>
+                  {empleadosProyecto.map(emp => (
+                    <option key={emp.ID} value={emp.ID}>{emp.NombreCompleto}</option>
+                  ))}
+                </Form.Select>
+                <Form.Text className="text-muted">
+                  * Selecciona "Sin asignar" para desasignar la tarea
+                </Form.Text>
+              </Form.Group>
+            </>
+          ) : (
+            <Alert variant="warning">
+              No se pudo cargar la información de la tarea
+            </Alert>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button 
+            variant="secondary" 
+            onClick={() => {
+              setShowReasignarTareaModal(false);
+              setReasignarData({ empleadoId: null });
+              setSelectedTarea(null);
+            }}
+          >
+            Cancelar
+          </Button>
+          <Button 
+            variant="info" 
+            onClick={handleReasignarTarea}
+            className="text-white"
+            disabled={!selectedTarea || !selectedProyecto}
+          >
+            <FontAwesomeIcon icon={faSave} className="me-2" />
+            {reasignarData.empleadoId ? 'Reasignar' : 'Desasignar'}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal 
+        show={showNotaModal} 
+        onHide={() => setShowNotaModal(false)} 
+        size="lg"
+        centered
+        scrollable
+      >
+        <Modal.Header closeButton className="bg-info text-white">
+          <Modal.Title className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faComment} className="me-2" />
+            Notas - {selectedTarea?.Titulo}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {selectedTarea && (
+            <>
+              {canManage && (
+                <Card className="mb-4 border-0 bg-light">
+                  <Card.Body>
+                    <h6 className="mb-3">Agregar Nueva Nota</h6>
+                    <Form.Group className="mb-3">
+                      <Form.Control
+                        as="textarea"
+                        rows={3}
+                        value={notaData.contenido}
+                        onChange={(e) => setNotaData({...notaData, contenido: e.target.value})}
+                        placeholder="Escribe tu nota aquí..."
+                        className="bg-white border-0"
+                      />
+                    </Form.Group>
+                    <Form.Check
+                      type="checkbox"
+                      label="Nota privada (solo visible para administradores)"
+                      checked={notaData.esPrivada}
+                      onChange={(e) => setNotaData({...notaData, esPrivada: e.target.checked})}
+                      className="mb-3"
+                    />
+                    <Button
+                      variant="primary"
+                      onClick={() => handleCrearNota(selectedTarea.ID)}
+                      disabled={!notaData.contenido.trim()}
+                      className="d-flex align-items-center"
+                    >
+                      <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
+                      Agregar Nota
+                    </Button>
+                  </Card.Body>
+                </Card>
+              )}
+
+              <h6 className="mb-3 d-flex align-items-center">
+                <FontAwesomeIcon icon={faHistory} className="me-2" />
+                Notas Anteriores ({notas.length})
+              </h6>
+              
+              {notas.length === 0 ? (
+                <Card className="text-center py-4 border-0 bg-light">
+                  <Card.Body>
+                    <FontAwesomeIcon icon={faComment} size="2x" className="text-muted mb-2 opacity-50" />
+                    <p className="text-muted mb-0">No hay notas para esta tarea</p>
+                  </Card.Body>
+                </Card>
+              ) : (
+                notas.map((nota: any) => {
+                  if (nota.EsPrivada && !isAdmin) return null;
+                  return (
+                    <Card key={nota.ID} className="mb-3 border-0 shadow-sm">
+                      <Card.Body>
+                        <div className="d-flex justify-content-between align-items-start mb-2">
+                          <div className="d-flex align-items-center">
+                            <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center me-2" 
+                                 style={{ width: '32px', height: '32px' }}>
+                              <FontAwesomeIcon icon={faUserCircle} className="text-white" size="sm" />
+                            </div>
+                            <div>
+                              <strong className="d-block">{nota.EmpleadoNombre}</strong>
+                              <small className="text-muted">
+                                {new Date(nota.createdAt).toLocaleString('es-MX', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </small>
+                            </div>
+                          </div>
+                          {nota.EsPrivada && (
+                            <Badge bg="warning" text="dark">
+                              <FontAwesomeIcon icon={faLock} className="me-1" />
+                              Privada
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="mb-0 mt-2 ps-4">{nota.Contenido}</p>
+                      </Card.Body>
+                    </Card>
+                  );
+                })
+              )}
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer className="border-0">
+          <Button variant="secondary" onClick={() => setShowNotaModal(false)}>
+            Cerrar
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
       <style>{`
         .timeline {
           position: relative;
