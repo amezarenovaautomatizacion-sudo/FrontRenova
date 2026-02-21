@@ -4,41 +4,85 @@
 @import '@fortawesome/fontawesome-free/css/all.min.css';
 
 /* ===============================
-   Variables personalizadas
+   VARIABLES GLOBALES
    =============================== */
 :root {
-  /* Paleta Renova */
-  --renova-primary: #0aac4d;
-  --renova-secondary: #3498db;
-  --renova-success: #27ae60;
-  --renova-danger: #e74c3c;
-  --renova-warning: #f39c12;
-  --renova-light: #ecf0f1;
-  --renova-dark: #1f5326;
+  /* Paleta base - MODO CLARO */
+  --primary-main: #27ae60;
+  --primary-dark: #1f5326;
+  --primary-light: #2ecc71;
+  --primary-soft: #eafaf1;
+  --primary-rgb: 39, 174, 96;
+  
+  --secondary-color: #3498db;
+  --success-color: #27ae60;
+  --danger-color: #e74c3c;
+  --warning-color: #f39c12;
+  --light-color: #ecf0f1;
+  --dark-color: #1f5326;
 
-  /* Paleta verde */
-  --green-main: #27ae60;
-  --green-dark: #33724e;
-  --green-light: #2ecc71;
-  --green-soft: #eafaf1;
+  /* Colores de fondo y texto - MODO CLARO */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --bg-tertiary: #ecf0f1;
+  --bg-soft: var(--primary-soft);
+  
+  --text-primary: #2c3e50;
+  --text-secondary: #6c757d;
+  --text-muted: #95a5a6;
+  --text-light: #ffffff;
+  
+  --border-color: #dee2e6;
+  --shadow-color: rgba(0, 0, 0, 0.05);
+  --shadow-hover-color: rgba(39, 174, 96, 0.15);
 
-  /* ===============================
-     Override Bootstrap PRIMARY
-     =============================== */
-  --bs-primary: #27ae5f75;
-  --bs-primary-rgb: 39, 174, 96;
-
-  --bs-link-color: var(--green-main);
-  --bs-link-hover-color: var(--green-dark);
+  /* Variables de Bootstrap */
+  --bs-primary: var(--primary-main);
+  --bs-primary-rgb: var(--primary-rgb);
+  --bs-link-color: var(--primary-main);
+  --bs-link-hover-color: var(--primary-dark);
 }
 
 /* ===============================
-   Estilos generales
+   MODO OSCURO - Variables
+   =============================== */
+.dark-theme {
+  /* Mantener colores primarios */
+  --primary-main: #27ae60;
+  --primary-dark: #2ecc71;
+  --primary-light: #45a049;
+  --primary-soft: #1e3a2a;
+  
+  /* Colores de fondo y texto - MODO OSCURO */
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #2d2d2d;
+  --bg-tertiary: #3d3d3d;
+  --bg-soft: #2d2d2d;
+  
+  --text-primary: #e0e0e0;
+  --text-secondary: #b0b0b0;
+  --text-muted: #a0a0a0;
+  --text-light: #ffffff;
+  
+  --border-color: #404040;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --shadow-hover-color: rgba(39, 174, 96, 0.3);
+
+  /* Bootstrap overrides */
+  --bs-body-bg: var(--bg-primary);
+  --bs-body-color: var(--text-primary);
+  --bs-dark: var(--bg-primary);
+  --bs-dark-rgb: 26, 26, 26;
+}
+
+/* ===============================
+   ESTILOS GENERALES
    =============================== */
 body {
   margin: 0;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #f8f9fa;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
   min-height: 100vh;
 }
 
@@ -47,73 +91,391 @@ body {
 }
 
 /* ===============================
-   Bootstrap helpers (primary)
+   UTILITARIOS DE COLOR
    =============================== */
 .bg-primary {
-  background-color: var(--bs-primary) !important;
+  background-color: var(--primary-main) !important;
 }
 
 .text-primary {
-  color: var(--green-dark) !important;
+  color: var(--primary-dark) !important;
 }
 
 .border-primary {
-  border-color: var(--green-dark) !important;
+  border-color: var(--primary-main) !important;
+}
+
+.bg-light {
+  background-color: var(--bg-secondary) !important;
+}
+
+.bg-white {
+  background-color: var(--bg-primary) !important;
+}
+
+.bg-soft {
+  background-color: var(--bg-soft) !important;
+}
+
+.text-muted {
+  color: var(--text-muted) !important;
+}
+
+.text-secondary {
+  color: var(--text-secondary) !important;
+}
+
+.border {
+  border-color: var(--border-color) !important;
+}
+
+.border-top,
+.border-bottom,
+.border-end,
+.border-start {
+  border-color: var(--border-color) !important;
 }
 
 /* ===============================
-   Navs
+   GRADIENTES
+   =============================== */
+.bg-gradient-primary {
+  background: linear-gradient(135deg, var(--primary-main) 0%, var(--primary-dark) 100%);
+}
+
+.bg-gradient-primary-light {
+  background: linear-gradient(135deg, var(--bg-soft) 0%, var(--bg-primary) 100%);
+}
+
+/* ===============================
+   NAVEGACIÓN
    =============================== */
 .nav {
   --bs-nav-link-padding-x: 1rem;
   --bs-nav-link-padding-y: 0.5rem;
   --bs-nav-link-font-weight: 500;
-  --bs-nav-link-color: var(--green-dark);
-  --bs-nav-link-hover-color: var(--green-main);
-  --bs-nav-link-disabled-color: #a9dfbf;
+  --bs-nav-link-color: var(--text-primary);
+  --bs-nav-link-hover-color: var(--primary-main);
+  --bs-nav-link-disabled-color: var(--text-muted);
   list-style: none;
-  background-color: var(--green-soft);
+  background-color: transparent;
 }
 
 .nav-link {
   font-size: var(--bs-nav-link-font-size);
   font-weight: var(--bs-nav-link-font-weight);
   color: var(--bs-nav-link-color);
-  transition: color 0.2s ease, background-color 0.2s ease;
+  transition: all 0.2s ease;
+  border-radius: 0.375rem;
 }
 
 .nav-link:hover,
 .nav-link:focus {
-  color: #fff;
-  background-color: var(--green-main);
-  border-radius: 0.25rem;
+  color: var(--text-light);
+  background-color: var(--primary-main);
 }
 
 .nav-link.active {
-  color: #fff;
-  background-color: var(--green-dark);
+  color: var(--text-light);
+  background-color: var(--primary-dark);
 }
 
 /* ===============================
-   Botones
+   BOTONES
    =============================== */
 .btn-primary {
-  --bs-btn-bg: var(--green-main);
-  --bs-btn-border-color: var(--green-main);
-  --bs-btn-hover-bg: var(--green-dark);
-  --bs-btn-hover-border-color: var(--green-dark);
-  --bs-btn-active-bg: var(--green-dark);
-  --bs-btn-active-border-color: var(--green-dark);
+  --bs-btn-bg: var(--primary-main);
+  --bs-btn-border-color: var(--primary-main);
+  --bs-btn-hover-bg: var(--primary-dark);
+  --bs-btn-hover-border-color: var(--primary-dark);
+  --bs-btn-active-bg: var(--primary-dark);
+  --bs-btn-active-border-color: var(--primary-dark);
 }
 
 .btn-outline-primary {
-  --bs-btn-color: var(--green-main);
-  --bs-btn-border-color: var(--green-main);
-  --bs-btn-hover-bg: var(--green-main);
-  --bs-btn-hover-border-color: var(--green-main);
+  --bs-btn-color: var(--primary-main);
+  --bs-btn-border-color: var(--primary-main);
+  --bs-btn-hover-bg: var(--primary-main);
+  --bs-btn-hover-border-color: var(--primary-main);
 }
 
-.nav-pills .nav-link.active, .nav-pills .show > .nav-link {
-  color: var(--green-dark);
-  background-color: var(--green-light);
+.btn {
+  transition: all 0.3s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px var(--shadow-color);
+}
+
+/* ===============================
+   SOMBRAS
+   =============================== */
+.shadow-sm {
+  box-shadow: 0 2px 4px var(--shadow-color) !important;
+}
+
+.shadow-hover:hover {
+  box-shadow: 0 4px 12px var(--shadow-hover-color) !important;
+}
+
+/* ===============================
+   DROPDOWNS
+   =============================== */
+.dropdown-menu {
+  border: none;
+  box-shadow: 0 4px 20px var(--shadow-color);
+  border-radius: 10px;
+  background-color: var(--bg-primary);
+}
+
+.dropdown-item {
+  padding: 0.6rem 1.2rem;
+  transition: all 0.2s ease;
+  color: var(--text-primary);
+}
+
+.dropdown-item:hover {
+  background-color: var(--bg-soft);
+  color: var(--primary-main);
+}
+
+.dropdown-divider {
+  border-top-color: var(--border-color);
+}
+
+/* ===============================
+   CARDS Y CONTENEDORES
+   =============================== */
+.card {
+  background-color: var(--bg-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.card-header,
+.card-footer {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* ===============================
+   TABLAS
+   =============================== */
+.table {
+  color: var(--text-primary) !important;
+}
+
+.table thead th {
+  border-bottom-color: var(--border-color) !important;
+}
+
+.table td,
+.table th {
+  border-top-color: var(--border-color) !important;
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+  background-color: rgba(var(--primary-rgb), 0.05) !important;
+}
+
+/* ===============================
+   FORMULARIOS
+   =============================== */
+.form-control,
+.form-select {
+  background-color: var(--bg-primary) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.form-control:focus,
+.form-select:focus {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--primary-main) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 0 0 0.2rem rgba(var(--primary-rgb), 0.25);
+}
+
+.form-control::placeholder {
+  color: var(--text-muted) !important;
+}
+
+.input-group-text {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* ===============================
+   MODALES
+   =============================== */
+.modal-content {
+  background-color: var(--bg-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.modal-header,
+.modal-footer {
+  border-color: var(--border-color) !important;
+}
+
+/* ===============================
+   BADGES
+   =============================== */
+.badge.bg-light {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ===============================
+   SCROLLBAR PERSONALIZADA
+   =============================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary-light);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-main);
+}
+
+/* ===============================
+   ANIMACIONES
+   =============================== */
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.offcanvas.show {
+  animation: slideIn 0.3s ease;
+}
+
+/* ===============================
+   TRANSICIONES
+   =============================== */
+.transition-all {
+  transition: all 0.3s ease;
+}
+
+* {
+  transition: background-color 0.3s ease, 
+              border-color 0.3s ease, 
+              color 0.3s ease,
+              box-shadow 0.3s ease;
+}
+
+/* ===============================
+   HOVER EFFECTS
+   =============================== */
+.hover-bg-light:hover {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.hover-bg-soft:hover {
+  background-color: var(--bg-soft) !important;
+}
+
+/* ===============================
+   AVATAR
+   =============================== */
+.avatar-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+/* ===============================
+   NOTIFICACIONES
+   =============================== */
+.notification-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  font-size: 0.6rem;
+  padding: 0.25rem 0.5rem;
+}
+
+/* ===============================
+   TEXTO
+   =============================== */
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===============================
+   HR
+   =============================== */
+hr {
+  background-color: var(--border-color);
+  opacity: 0.2;
+}
+
+/* ===============================
+   MEJORAS RESPONSIVAS
+   =============================== */
+@media (max-width: 768px) {
+  .container-fluid {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+}
+
+/* ===============================
+   BOTONES OUTLINE EN MODO OSCURO
+   =============================== */
+.btn-outline-secondary {
+  border-color: var(--border-color) !important;
+  color: var(--text-secondary) !important;
+}
+
+.btn-outline-secondary:hover {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ===============================
+   NAVBAR OFFCANVAS
+   =============================== */
+.offcanvas {
+  background-color: var(--bg-primary) !important;
+}
+
+.offcanvas-header {
+  border-bottom-color: var(--border-color) !important;
+}
+
+/* ===============================
+   NAVBAR DARK
+   =============================== */
+.navbar-dark {
+  background-color: var(--bg-primary) !important;
+}
+
+/* ===============================
+   NAV PILLS
+   =============================== */
+.nav-pills .nav-link.active,
+.nav-pills .show > .nav-link {
+  color: var(--text-light);
+  background-color: var(--primary-light);
 }

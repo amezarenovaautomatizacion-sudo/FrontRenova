@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import {
   Container,
   Navbar,
@@ -9,7 +10,9 @@ import {
   Button,
   Row,
   Col,
-  Offcanvas
+  Offcanvas,
+  Dropdown,
+  Stack
 } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -24,7 +27,11 @@ import {
   faProjectDiagram,
   faFileAlt,
   faUserShield,
-  faChartBar
+  faChartBar,
+  faChevronRight,
+  faMoon,
+  faSun,
+  faCog
 } from '@fortawesome/free-solid-svg-icons';
 
 interface MenuItem {
@@ -32,11 +39,13 @@ interface MenuItem {
   title: string;
   icon: any;
   roles: string[];
+  badge?: number;
   children?: MenuItem[];
 }
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const empleado = JSON.parse(localStorage.getItem('Recursos Humanos_empleado') || '{}');
@@ -53,31 +62,36 @@ const Layout: React.FC = () => {
       path: '/empleados',
       title: 'Empleados',
       icon: faUsers,
-      roles: ['admin', 'manager']
+      roles: ['admin', 'manager'],
+      badge: 12
     },
     {
       path: '/solicitudes',
       title: 'Solicitudes',
       icon: faCalendarAlt,
-      roles: ['admin', 'manager', 'employee']
+      roles: ['admin', 'manager', 'employee'],
+      badge: 5
     },
     {
       path: '/proyectos',
       title: 'Proyectos',
       icon: faProjectDiagram,
-      roles: ['admin', 'manager', 'employee']
+      roles: ['admin', 'manager', 'employee'],
+      badge: 3
     },
     {
       path: '/incidencias',
       title: 'Incidencias',
       icon: faFileAlt,
-      roles: ['admin', 'manager', 'employee']
+      roles: ['admin', 'manager', 'employee'],
+      badge: 2
     },
     {
       path: '/notificaciones',
       title: 'Notificaciones',
       icon: faBell,
-      roles: ['admin', 'manager', 'employee']
+      roles: ['admin', 'manager', 'employee'],
+      badge: 8
     },
     {
       path: '/reportes',
@@ -115,150 +129,326 @@ const Layout: React.FC = () => {
     return location.pathname === path;
   };
 
+  // Obtener iniciales del usuario
+  const getUserInitials = () => {
+    if (empleado?.NombreCompleto) {
+      return empleado.NombreCompleto.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+    }
+    return user?.usuario?.substring(0, 2).toUpperCase() || 'HR';
+  };
+
   // Renderizar item del menú
   const renderMenuItem = (item: MenuItem) => {
     const isItemActive = isActive(item.path);
 
     return (
-      <Nav.Item key={item.path}>
+      <Nav.Item key={item.path} className="mb-1">
         <Nav.Link
           as={Link}
           to={item.path}
-          className={`d-flex align-items-center py-2 px-3 ${isItemActive ? 'bg-primary text-white' : ''}`}
+          className={`d-flex align-items-center py-2 px-3 rounded-3 transition-all ${
+            isItemActive 
+              ? 'bg-primary text-white shadow-sm' 
+              : theme === 'dark'
+                ? 'text-secondary hover-bg-dark'
+                : 'text-secondary hover-bg-light'
+          }`}
           onClick={() => setSidebarOpen(false)}
         >
           <FontAwesomeIcon 
             icon={item.icon} 
-            className="me-3" 
+            className={`me-3 ${isItemActive ? 'text-white' : 'text-primary'}`}
             style={{ width: '20px', textAlign: 'center' }}
           />
-          <span>{item.title}</span>
+          <span className="flex-grow-1">{item.title}</span>
+          {item.badge && (
+            <Badge 
+              bg={isItemActive ? 'light' : 'primary'} 
+              className={`ms-2 rounded-pill ${isItemActive ? 'text-primary' : 'text-white'}`}
+              style={{ fontSize: '0.7rem' }}
+            >
+              {item.badge}
+            </Badge>
+          )}
         </Nav.Link>
       </Nav.Item>
     );
   };
 
   return (
-    <div className="d-flex vh-100">
-      {/* Sidebar para desktop */}
-      <div className="d-none d-lg-flex flex-column bg-light border-end" style={{ width: '250px' }}>
-        {/* Logo y usuario */}
-        <div className="p-3 border-bottom">
-          <div className="text-center mb-3">
-            <div className="rounded-circle bg-primary d-inline-flex align-items-center justify-content-center p-3">
+    <div className={`d-flex vh-100 ${theme === 'dark' ? 'bg-dark' : 'bg-light'}`}>
+      {/* Sidebar para desktop - SIN CAMBIOS */}
+      <div 
+        className={`d-none d-lg-flex flex-column ${
+          theme === 'dark' ? 'bg-dark border-secondary' : 'bg-white'
+        } shadow-sm`} 
+        style={{ width: '280px' }}
+      >
+        {/* Logo y branding */}
+        <div className={`p-4 border-bottom ${
+          theme === 'dark' ? 'border-secondary bg-dark-gradient' : 'bg-gradient-primary-light'
+        }`}>
+          <div className="d-flex align-items-center">
+            <div className="rounded-3 bg-primary p-2 me-3">
               <FontAwesomeIcon icon={faUserCircle} size="2x" className="text-white" />
             </div>
-            <h5 className="mt-2 mb-1">Recursos Humanos</h5>
-            <small className="text-muted">Sistema HR</small>
-          </div>
-          
-          <div className="text-center">
-            <small className="fw-bold">
-              {(empleado?.NombreCompleto || user?.usuario)?.toUpperCase()}
-            </small>
-
-            <Badge
-              bg={
-                user?.rol === 'admin'
-                  ? 'danger'
-                  : user?.rol === 'manager'
-                  ? 'warning'
-                  : 'info'
-              }
-              className="ms-2"
-            >
-              {user?.rol?.toUpperCase()}
-            </Badge>
+            <div>
+              <h5 className={`mb-0 fw-bold ${
+                theme === 'dark' ? 'text-light' : 'text-primary-dark'
+              }`}>
+                Recursos Humanos
+              </h5>
+              <small className={theme === 'dark' ? 'text-secondary' : 'text-muted'}>
+                Sistema de Gestión
+              </small>
+            </div>
           </div>
         </div>
 
-        {/* Menú */}
-        <div className="flex-grow-1 overflow-auto py-3">
+        {/* Perfil del usuario */}
+        <div className={`p-3 border-bottom ${
+          theme === 'dark' ? 'border-secondary bg-darker' : 'bg-light'
+        }`}>
+          <div className="d-flex align-items-center">
+            <div className="position-relative">
+              <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center" 
+                   style={{ width: '48px', height: '48px' }}>
+                <span className="text-white fw-bold fs-6">{getUserInitials()}</span>
+              </div>
+              <span className="position-absolute bottom-0 end-0 bg-success rounded-circle p-1 border border-2 border-white"></span>
+            </div>
+            <div className="ms-3 flex-grow-1">
+              <div className={`fw-bold text-truncate ${
+                theme === 'dark' ? 'text-light' : ''
+              }`} style={{ maxWidth: '160px' }}>
+                {empleado?.NombreCompleto || user?.usuario}
+              </div>
+              <div className="d-flex align-items-center">
+                <Badge 
+                  bg={
+                    user?.rol === 'admin' ? 'danger' :
+                    user?.rol === 'manager' ? 'warning' : 'info'
+                  }
+                  className="rounded-pill px-2 py-1"
+                  style={{ fontSize: '0.7rem' }}
+                >
+                  {user?.rol?.toUpperCase()}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Menú principal */}
+        <div className="flex-grow-1 overflow-auto py-3 px-3">
+          <div className={`small text-uppercase fw-bold mb-2 ps-3 ${
+            theme === 'dark' ? 'text-secondary' : 'text-muted'
+          }`}>
+            Navegación
+          </div>
           <Nav className="flex-column">
             {filteredMenu.map(item => renderMenuItem(item))}
           </Nav>
         </div>
 
         {/* Footer del sidebar */}
-        <div className="p-3 border-top">
+        <div className={`p-3 border-top ${
+          theme === 'dark' ? 'border-secondary bg-darker' : 'bg-light'
+        }`}>
           <Nav className="flex-column">
-            <Nav.Link as={Link} to="/perfil" className="d-flex align-items-center py-2">
-              <FontAwesomeIcon icon={faUser} className="me-3" />
+            <Nav.Link 
+              as={Link} 
+              to="/perfil" 
+              className={`d-flex align-items-center py-2 px-3 rounded-3 mb-1 ${
+                theme === 'dark' 
+                  ? 'text-secondary hover-bg-dark' 
+                  : 'text-secondary hover-bg-light'
+              }`}
+            >
+              <FontAwesomeIcon icon={faUser} className="me-3 text-primary" style={{ width: '20px' }} />
               <span>Mi Perfil</span>
+              <FontAwesomeIcon icon={faChevronRight} className="ms-auto text-muted" size="sm" />
             </Nav.Link>
           </Nav>
-          <Button 
-            variant="outline-danger" 
-            size="sm" 
-            className="w-100 mt-2"
-            onClick={logout}
-          >
-            <FontAwesomeIcon icon={faSignOutAlt} className="me-2" />
-            Cerrar Sesión
-          </Button>
+
+          <hr className={`my-2 ${theme === 'dark' ? 'bg-secondary' : ''}`} />
+
+          <div className="d-flex align-items-center justify-content-between mt-2">
+            <Button 
+              variant="link" 
+              className={`p-2 ${theme === 'dark' ? 'text-secondary' : 'text-muted'}`}
+              onClick={toggleTheme}
+            >
+              <FontAwesomeIcon icon={theme === 'dark' ? faSun : faMoon} />
+            </Button>
+
+            <Button 
+              variant="outline-danger" 
+              size="sm" 
+              className="rounded-pill px-3"
+              onClick={logout}
+            >
+              <FontAwesomeIcon icon={faSignOutAlt} className="me-2" />
+              Salir
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Contenido principal */}
       <div className="flex-grow-1 d-flex flex-column overflow-hidden">
         {/* Navbar para mobile */}
-        <Navbar bg="primary" variant="dark" expand="lg" className="shadow d-lg-none">
+        <Navbar 
+          bg={theme === 'dark' ? 'dark' : 'white'} 
+          variant={theme === 'dark' ? 'dark' : 'light'}
+          expand="lg" 
+          className="shadow-sm d-lg-none py-2"
+        >
           <Container fluid>
             <Button 
-              variant="outline-light" 
-              className="me-2"
+              variant="link" 
+              className={`p-0 me-2 ${theme === 'dark' ? 'text-secondary' : 'text-primary'}`}
               onClick={() => setSidebarOpen(true)}
             >
-              <FontAwesomeIcon icon={faBars} />
+              <FontAwesomeIcon icon={faBars} size="lg" />
             </Button>
             
-            <Navbar.Brand as={Link} to="/dashboard" className="fw-bold">
-              Recursos Humanos
+            <Navbar.Brand as={Link} to="/dashboard" className={`fw-bold ${
+              theme === 'dark' ? 'text-light' : 'text-primary-dark'
+            }`}>
+              <span className="d-none d-sm-inline">Recursos Humanos</span>
+              <span className="d-sm-none">HR</span>
             </Navbar.Brand>
             
-            <Nav className="ms-auto">
-              <Nav.Link as={Link} to="/notificaciones" className="text-white position-relative">
-                <FontAwesomeIcon icon={faBell} />
-                <Badge bg="danger" className="position-absolute top-0 start-100 translate-middle" style={{ fontSize: '0.6rem' }}>
-                  3
-                </Badge>
-              </Nav.Link>
-            </Nav>
+            <Stack direction="horizontal" gap={2} className="ms-auto">
+              {/* Botón de tema en navbar mobile (pequeño) */}
+              <Button 
+                variant="link" 
+                className={`p-0 ${theme === 'dark' ? 'text-secondary' : 'text-muted'}`}
+                onClick={toggleTheme}
+              >
+                <FontAwesomeIcon icon={theme === 'dark' ? faSun : faMoon} />
+              </Button>
+              
+              <Dropdown align="end">
+                <Dropdown.Toggle 
+                  variant="link" 
+                  className={`p-0 ${theme === 'dark' ? 'text-secondary' : 'text-muted'} border-0`}
+                >
+                  <div className="position-relative">
+                    <FontAwesomeIcon icon={faBell} />
+                    <Badge bg="danger" className="position-absolute top-0 start-100 translate-middle p-1 rounded-circle" style={{ fontSize: '0.5rem' }}>
+                      3
+                    </Badge>
+                  </div>
+                </Dropdown.Toggle>
+
+                <Dropdown.Menu className={`dropdown-menu-end p-0 ${
+                  theme === 'dark' ? 'bg-dark border-secondary' : ''
+                }`} style={{ width: '280px' }}>
+                  <div className={`p-3 border-bottom ${
+                    theme === 'dark' ? 'border-secondary' : ''
+                  }`}>
+                    <h6 className={`mb-0 ${theme === 'dark' ? 'text-light' : ''}`}>Notificaciones</h6>
+                  </div>
+                  <div className={`p-3 text-center ${
+                    theme === 'dark' ? 'text-secondary' : 'text-muted'
+                  }`}>
+                    <small>No hay notificaciones nuevas</small>
+                  </div>
+                </Dropdown.Menu>
+              </Dropdown>
+
+              <Dropdown align="end">
+                <Dropdown.Toggle variant="link" className="p-0 border-0">
+                  <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center" 
+                       style={{ width: '32px', height: '32px' }}>
+                    <span className="text-white fw-bold small">{getUserInitials()}</span>
+                  </div>
+                </Dropdown.Toggle>
+
+                <Dropdown.Menu className={`dropdown-menu-end ${
+                  theme === 'dark' ? 'bg-dark border-secondary' : ''
+                }`}>
+                  <Dropdown.Item 
+                    as={Link} 
+                    to="/perfil"
+                    className={theme === 'dark' ? 'text-light hover-bg-dark' : ''}
+                  >
+                    <FontAwesomeIcon icon={faUser} className="me-2" />
+                    Mi Perfil
+                  </Dropdown.Item>
+                  <Dropdown.Item 
+                    as={Link} 
+                    to="/configuracion"
+                    className={theme === 'dark' ? 'text-light hover-bg-dark' : ''}
+                  >
+                    <FontAwesomeIcon icon={faCog} className="me-2" />
+                    Configuración
+                  </Dropdown.Item>
+                  <Dropdown.Divider className={theme === 'dark' ? 'bg-secondary' : ''} />
+                  <Dropdown.Item 
+                    onClick={logout} 
+                    className={`text-danger ${theme === 'dark' ? 'hover-bg-dark' : ''}`}
+                  >
+                    <FontAwesomeIcon icon={faSignOutAlt} className="me-2" />
+                    Cerrar Sesión
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown>
+            </Stack>
           </Container>
         </Navbar>
 
-        {/* Sidebar para mobile (Offcanvas) */}
+        {/* Sidebar para mobile (Offcanvas) - MODIFICADO con botón grande de tema */}
         <Offcanvas 
           show={sidebarOpen} 
           onHide={() => setSidebarOpen(false)}
           placement="start"
-          className="d-lg-none"
-          style={{ width: '280px' }}
+          className={`d-lg-none border-0 ${
+            theme === 'dark' ? 'bg-dark' : ''
+          }`}
+          style={{ width: '300px' }}
         >
-          <Offcanvas.Header closeButton className="border-bottom">
+          <Offcanvas.Header 
+            closeButton 
+            closeVariant={theme === 'dark' ? 'white' : undefined}
+            className={`border-bottom ${
+              theme === 'dark' 
+                ? 'bg-primary border-secondary' 
+                : 'bg-primary text-white'
+            }`}
+          >
             <Offcanvas.Title>
               <div className="d-flex align-items-center">
-                <FontAwesomeIcon icon={faUserCircle} className="me-2 text-primary" />
+                <div className="rounded-3 bg-white p-2 me-3">
+                  <FontAwesomeIcon icon={faUserCircle} className="text-primary" />
+                </div>
                 <div>
-                  <div className="fw-bold">Recursos Humanos</div>
-                  <small className="text-muted">Menú Principal</small>
+                  <div className="fw-bold text-white">Recursos Humanos</div>
+                  <small className="text-white-50">Sistema de Gestión</small>
                 </div>
               </div>
             </Offcanvas.Title>
           </Offcanvas.Header>
-          <Offcanvas.Body className="p-0">
-            <div className="p-3 border-bottom">
+          
+          <Offcanvas.Body className="p-0 d-flex flex-column">
+            {/* Perfil usuario en mobile */}
+            <div className={`p-3 border-bottom ${
+              theme === 'dark' ? 'border-secondary bg-darker' : 'bg-light'
+            }`}>
               <div className="d-flex align-items-center">
-                <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center me-3" style={{ width: '40px', height: '40px' }}>
-                  <FontAwesomeIcon icon={faUserCircle} className="text-white" />
+                <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center" 
+                     style={{ width: '48px', height: '48px' }}>
+                  <span className="text-white fw-bold">{getUserInitials()}</span>
                 </div>
-                <div>
-                  <div className="fw-bold" style={{ fontSize: '0.9rem' }}>
+                <div className="ms-3">
+                  <div className={`fw-bold ${theme === 'dark' ? 'text-light' : ''}`}>
                     {empleado?.NombreCompleto || user?.usuario}
                   </div>
                   <Badge 
                     bg={user?.rol === 'admin' ? 'danger' : user?.rol === 'manager' ? 'warning' : 'info'}
-                    className="mt-1"
+                    className="rounded-pill"
                   >
                     {user?.rol}
                   </Badge>
@@ -266,59 +456,130 @@ const Layout: React.FC = () => {
               </div>
             </div>
 
-            <Nav className="flex-column">
-              {filteredMenu.map(item => renderMenuItem(item))}
-              
-              {/* Enlace a perfil en mobile */}
-              <Nav.Item>
+            {/* Menú mobile */}
+            <div className="py-3 px-3 flex-grow-1">
+              <div className={`small text-uppercase fw-bold mb-2 ps-3 ${
+                theme === 'dark' ? 'text-secondary' : 'text-muted'
+              }`}>
+                Menú Principal
+              </div>
+              <Nav className="flex-column">
+                {filteredMenu.map(item => renderMenuItem(item))}
+              </Nav>
+
+              <hr className={`my-3 ${theme === 'dark' ? 'bg-secondary' : ''}`} />
+
+              <div className={`small text-uppercase fw-bold mb-2 ps-3 ${
+                theme === 'dark' ? 'text-secondary' : 'text-muted'
+              }`}>
+                Cuenta
+              </div>
+              <Nav className="flex-column">
                 <Nav.Link
                   as={Link}
                   to="/perfil"
-                  className="d-flex align-items-center py-2 px-3"
+                  className={`d-flex align-items-center py-2 px-3 rounded-3 ${
+                    theme === 'dark' 
+                      ? 'text-secondary hover-bg-dark' 
+                      : 'hover-bg-light'
+                  }`}
                   onClick={() => setSidebarOpen(false)}
                 >
-                  <FontAwesomeIcon icon={faUser} className="me-3" />
+                  <FontAwesomeIcon icon={faUser} className="me-3 text-primary" style={{ width: '20px' }} />
                   <span>Mi Perfil</span>
                 </Nav.Link>
-              </Nav.Item>
-            </Nav>
+                <Nav.Link
+                  as={Link}
+                  to="/configuracion"
+                  className={`d-flex align-items-center py-2 px-3 rounded-3 ${
+                    theme === 'dark' 
+                      ? 'text-secondary hover-bg-dark' 
+                      : 'hover-bg-light'
+                  }`}
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <FontAwesomeIcon icon={faCog} className="me-3 text-primary" style={{ width: '20px' }} />
+                  <span>Configuración</span>
+                </Nav.Link>
+              </Nav>
+            </div>
 
-            <div className="p-3 border-top">
+            {/* SECCIÓN DE ACCIONES - Con botón grande de tema */}
+            <div className={`p-3 border-top ${
+              theme === 'dark' ? 'border-secondary' : ''
+            }`}>
+              {/* Botón grande de cambio de tema - MÁS VISIBLE */}
+              <Button 
+                variant={theme === 'dark' ? 'outline-light' : 'outline-primary'}
+                className="w-100 rounded-pill mb-2 py-2 d-flex align-items-center justify-content-center"
+                onClick={() => {
+                  toggleTheme();
+                  // No cerramos el offcanvas para que vea el cambio
+                }}
+              >
+                <FontAwesomeIcon 
+                  icon={theme === 'dark' ? faSun : faMoon} 
+                  className="me-2" 
+                  size="lg"
+                />
+                <span className="fw-bold">
+                  {theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
+                </span>
+              </Button>
+
+              {/* Botón de cerrar sesión */}
               <Button 
                 variant="outline-danger" 
-                size="sm" 
-                className="w-100"
+                className="w-100 rounded-pill py-2 d-flex align-items-center justify-content-center"
                 onClick={() => {
                   setSidebarOpen(false);
                   logout();
                 }}
               >
                 <FontAwesomeIcon icon={faSignOutAlt} className="me-2" />
-                Cerrar Sesión
+                <span className="fw-bold">Cerrar Sesión</span>
               </Button>
+              
+              {/* Texto adicional opcional */}
+              <div className="text-center mt-2">
+                <small className={theme === 'dark' ? 'text-secondary' : 'text-muted'}>
+                  Personaliza tu experiencia
+                </small>
+              </div>
             </div>
           </Offcanvas.Body>
         </Offcanvas>
 
         {/* Contenido de la página */}
-        <div className="flex-grow-1 overflow-auto">
-          <Container fluid className="py-3 h-100">
+        <div className={`flex-grow-1 overflow-auto ${
+          theme === 'dark' ? 'bg-dark' : 'bg-light'
+        }`}>
+          <Container fluid className="py-4 px-4 h-100">
             <Outlet />
           </Container>
         </div>
 
         {/* Footer */}
-        <footer className="bg-light border-top py-3">
-          <Container fluid>
+        <footer className={`border-top py-3 mt-auto ${
+          theme === 'dark' ? 'bg-darker border-secondary' : 'bg-white'
+        }`}>
+          <Container fluid className="px-4">
             <Row className="align-items-center">
-              <Col md={6}>
-                <small className="text-muted">
-                  Recursos Humanos HR System &copy; {new Date().getFullYear()} - v2.0.0
+              <Col xs={12} md={6} className="text-center text-md-start mb-2 mb-md-0">
+                <small className={theme === 'dark' ? 'text-secondary' : 'text-muted'}>
+                  <i className="bi bi-c-circle me-1"></i>
+                  {new Date().getFullYear()} RH RENOVA. Todos los derechos reservados.
                 </small>
               </Col>
-              <Col md={6} className="text-end">
-                <small className="text-muted">
-                  {user?.rol === 'admin' ? 'Modo Administrador' : user?.rol === 'manager' ? 'Modo Manager' : 'Modo Empleado'}
+              <Col xs={12} md={6} className="text-center text-md-end">
+                <small className={theme === 'dark' ? 'text-secondary' : 'text-muted'}>
+                  Versión 2.0.0 | 
+                  <span className={`ms-2 badge ${
+                    theme === 'dark' ? 'bg-secondary text-light' : 'bg-light text-dark'
+                  }`}>
+                    <FontAwesomeIcon icon={faUserShield} className="me-1" size="sm" />
+                    {user?.rol === 'admin' ? 'Administrador' : user?.rol === 'manager' ? 'Manager' : 'Empleado'}
+                  </span>
                 </small>
               </Col>
             </Row>

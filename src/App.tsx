@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
+import { ThemeProvider } from './contexts/ThemeContext'; // Importar ThemeProvider
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -67,14 +68,15 @@ const AppRoutes: React.FC = () => {
   );
 };
 
-
 const App: React.FC = () => {
   return (
     <AuthProvider>
       <SocketProvider>
-        <Router>
-          <AppRoutes />
-        </Router>
+        <ThemeProvider> {/* Envolver con ThemeProvider */}
+          <Router>
+            <AppRoutes />
+          </Router>
+        </ThemeProvider>
       </SocketProvider>
     </AuthProvider>
   );
