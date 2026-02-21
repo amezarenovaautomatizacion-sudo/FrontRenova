@@ -204,12 +204,13 @@ const Solicitudes: React.FC = () => {
   const [success, setSuccess] = useState('');
   const [activeTab, setActiveTab] = useState('mis-solicitudes');
   
-  // Estados para listados
-  const [misSolicitudes, setMisSolicitudes] = useState<Solicitud[]>([]);
-  const [solicitudesPendientes, setSolicitudesPendientes] = useState<AprobacionPendiente[]>([]);
-  const [solicitudesAprobadas, setSolicitudesAprobadas] = useState<Solicitud[]>([]);
-  const [reporteHorasExtras, setReporteHorasExtras] = useState<ReporteHorasExtras[]>([]);
-  const [empleadosSelect, setEmpleadosSelect] = useState<any[]>([]);
+// Estados para listados
+const [misSolicitudes, setMisSolicitudes] = useState<Solicitud[]>([]);
+const [solicitudesPendientes, setSolicitudesPendientes] = useState<AprobacionPendiente[]>([]);
+const [solicitudesAprobadas, setSolicitudesAprobadas] = useState<Solicitud[]>([]);
+const [reporteHorasExtras, setReporteHorasExtras] = useState<ReporteHorasExtras[]>([]);
+const [empleadosSelect, setEmpleadosSelect] = useState<any[]>([]);
+const [pendientesCount, setPendientesCount] = useState<number>(0); // <-- AGREGAR ESTA LÍNEA
   
   // Estados para formularios
   const [showVacacionesModal, setShowVacacionesModal] = useState(false);
@@ -272,28 +273,47 @@ const Solicitudes: React.FC = () => {
     if (canViewAll) {
       loadEmpleadosSelect();
     }
+     if (canApprove) {
+      loadPendientesCount();
+    }
   }, []);
   
   useEffect(() => {
     loadTabData();
   }, [activeTab, filterEstado, filterTipo, filterFechaDesde, filterFechaHasta]);
   
-  const loadTabData = () => {
-    switch (activeTab) {
-      case 'mis-solicitudes':
-        loadMisSolicitudes();
-        break;
-      case 'pendientes':
-        if (canApprove) loadSolicitudesPendientes();
-        break;
-      case 'aprobadas':
-        if (canViewAll) loadSolicitudesAprobadas();
-        break;
-      case 'horas-extras':
-        if (canViewReports) loadReporteHorasExtras();
-        break;
-    }
-  };
+
+useEffect(() => {
+  if (!canApprove) return;
+  
+  // Actualizar cada 30 segundos
+  const interval = setInterval(() => {
+    loadPendientesCount();
+  }, 30000);
+  return () => clearInterval(interval);
+}, [canApprove]);
+
+const loadTabData = () => {
+  switch (activeTab) {
+    case 'mis-solicitudes':
+      loadMisSolicitudes();
+      break;
+    case 'pendientes':
+      if (canApprove) loadSolicitudesPendientes();
+      break;
+    case 'aprobadas':
+      if (canViewAll) loadSolicitudesAprobadas();
+      break;
+    case 'horas-extras':
+      if (canViewReports) loadReporteHorasExtras();
+      break;
+  }
+  
+  // Siempre actualizar el contador de pendientes cuando se cambia de pestaña
+  if (canApprove && activeTab !== 'pendientes') {
+    loadPendientesCount();
+  }
+};
   
   const loadDerechosVacacionales = async () => {
     try {
@@ -379,28 +399,30 @@ const Solicitudes: React.FC = () => {
     }
   };
   
-  const loadSolicitudesPendientes = async () => {
-    if (!canApprove) return;
+const loadSolicitudesPendientes = async () => {
+  if (!canApprove) return;
+  
+  try {
+    setLoading(true);
+    setError('');
     
-    try {
-      setLoading(true);
-      setError('');
-      
-      const response = await api.get('/solicitudes/aprobaciones/pendientes');
-      console.log('Aprobaciones pendientes respuesta:', response.data);
-      
-      if (response.data.success) {
-        setSolicitudesPendientes(response.data.data || []);
-      } else {
-        setError(response.data.message || 'Error cargando aprobaciones pendientes');
-      }
-    } catch (error: any) {
-      console.error('Error en loadSolicitudesPendientes:', error);
-      setError(error.response?.data?.message || 'Error cargando aprobaciones pendientes');
-    } finally {
-      setLoading(false);
+    const response = await api.get('/solicitudes/aprobaciones/pendientes');
+    console.log('Aprobaciones pendientes respuesta:', response.data);
+    
+    if (response.data.success) {
+      const data = response.data.data || [];
+      setSolicitudesPendientes(data);
+      setPendientesCount(data.length); // <-- ACTUALIZAR EL CONTADOR
+    } else {
+      setError(response.data.message || 'Error cargando aprobaciones pendientes');
     }
-  };
+  } catch (error: any) {
+    console.error('Error en loadSolicitudesPendientes:', error);
+    setError(error.response?.data?.message || 'Error cargando aprobaciones pendientes');
+  } finally {
+    setLoading(false);
+  }
+};
   
   const loadSolicitudesAprobadas = async () => {
     if (!canViewAll) return;
@@ -457,6 +479,22 @@ const Solicitudes: React.FC = () => {
       setError(error.response?.data?.message || 'Error cargando reporte de horas extras');
     } finally {
       setLoading(false);
+    }
+  };
+
+    const loadPendientesCount = async () => {
+    if (!canApprove) return;
+    
+    try {
+      // Usar el mismo endpoint que carga las pendientes pero solo para contar
+      const response = await api.get('/solicitudes/aprobaciones/pendientes');
+      if (response.data.success) {
+        const count = response.data.data?.length || 0;
+        setPendientesCount(count);
+        console.log('📊 Pendientes count actualizado:', count);
+      }
+    } catch (error: any) {
+      console.error('Error cargando contador de pendientes:', error);
     }
   };
   
@@ -694,90 +732,96 @@ const Solicitudes: React.FC = () => {
     }
   };
   
-  const handleProcesarAprobacion = async () => {
-    try {
-      setError('');
-      setSuccess('');
-      
-      if (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5) {
-        setError('Se requiere un comentario explicativo de al menos 5 caracteres');
-        return;
-      }
-      
-      console.log('Procesando aprobación:', aprobacionData);
-      
-      const estadoAPI = aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
-      
-      const response = await api.patch(
-        `/solicitudes/aprobaciones/${aprobacionData.aprobacionId}/procesar`,
-        { 
-          estado: estadoAPI, 
-          comentarios: aprobacionData.comentarios 
-        }
-      );
-      
-      console.log('Respuesta procesar aprobación:', response.data);
-      
-      if (response.data.success) {
-        setSuccess(`Aprobación ${aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'} exitosamente`);
-        setShowApproveModal(false);
-        setAprobacionData({
-          aprobacionId: 0,
-          estado: 'aprobada',
-          comentarios: ''
-        });
-        loadSolicitudesPendientes();
-        loadSolicitudesAprobadas();
-      } else {
-        setError(response.data.message || 'Error procesando aprobación');
-      }
-    } catch (error: any) {
-      console.error('Error en handleProcesarAprobacion:', error);
-      setError(error.response?.data?.message || 'Error procesando aprobación');
+const handleProcesarAprobacion = async () => {
+  try {
+    setError('');
+    setSuccess('');
+    
+    if (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5) {
+      setError('Se requiere un comentario explicativo de al menos 5 caracteres');
+      return;
     }
-  };
+    
+    console.log('Procesando aprobación:', aprobacionData);
+    
+    const estadoAPI = aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
+    
+    const response = await api.patch(
+      `/solicitudes/aprobaciones/${aprobacionData.aprobacionId}/procesar`,
+      { 
+        estado: estadoAPI, 
+        comentarios: aprobacionData.comentarios 
+      }
+    );
+    
+    console.log('Respuesta procesar aprobación:', response.data);
+    
+    if (response.data.success) {
+      setSuccess(`Aprobación ${aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'} exitosamente`);
+      setShowApproveModal(false);
+      setAprobacionData({
+        aprobacionId: 0,
+        estado: 'aprobada',
+        comentarios: ''
+      });
+      
+      // Actualizar datos
+      await loadSolicitudesPendientes(); // Esto ya actualiza el contador
+      loadSolicitudesAprobadas();
+      loadPendientesCount(); // <-- ACTUALIZAR EXPLÍCITAMENTE EL CONTADOR
+    } else {
+      setError(response.data.message || 'Error procesando aprobación');
+    }
+  } catch (error: any) {
+    console.error('Error en handleProcesarAprobacion:', error);
+    setError(error.response?.data?.message || 'Error procesando aprobación');
+  }
+};
   
-  const handleEditarAprobacion = async () => {
-    try {
-      setError('');
-      setSuccess('');
-      
-      if (!editAprobacionData.comentarios || editAprobacionData.comentarios.trim().length < 10) {
-        setError('Se requiere un comentario explicativo de al menos 10 caracteres');
-        return;
-      }
-      
-      console.log('Editando aprobación:', editAprobacionData);
-      
-      const estadoAPI = editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
-      
-      const response = await api.patch(
-        `/solicitudes/aprobaciones/${editAprobacionData.aprobacionId}/editar`,
-        { 
-          estado: estadoAPI, 
-          comentarios: editAprobacionData.comentarios 
-        }
-      );
-      
-      console.log('Respuesta editar aprobación:', response.data);
-      
-      if (response.data.success) {
-        setSuccess(`Aprobación actualizada a ${editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'}`);
-        setShowEditAprobacionModal(false);
-        setEditAprobacionData({
-          aprobacionId: 0,
-          estado: 'aprobada',
-          comentarios: ''
-        });
-        loadSolicitudesPendientes();
-      } else {
-        setError(response.data.message || 'Error editando aprobación');
-      }
-    } catch (error: any) {
-      console.error('Error en handleEditarAprobacion:', error);
-      setError(error.response?.data?.message || 'Error editando aprobación');
+const handleEditarAprobacion = async () => {
+  try {
+    setError('');
+    setSuccess('');
+    
+    if (!editAprobacionData.comentarios || editAprobacionData.comentarios.trim().length < 10) {
+      setError('Se requiere un comentario explicativo de al menos 10 caracteres');
+      return;
     }
-  };
+    
+    console.log('Editando aprobación:', editAprobacionData);
+    
+    const estadoAPI = editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
+    
+    const response = await api.patch(
+      `/solicitudes/aprobaciones/${editAprobacionData.aprobacionId}/editar`,
+      { 
+        estado: estadoAPI, 
+        comentarios: editAprobacionData.comentarios 
+      }
+    );
+    
+    console.log('Respuesta editar aprobación:', response.data);
+    
+    if (response.data.success) {
+      setSuccess(`Aprobación actualizada a ${editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'}`);
+      setShowEditAprobacionModal(false);
+      setEditAprobacionData({
+        aprobacionId: 0,
+        estado: 'aprobada',
+        comentarios: ''
+      });
+      
+      // Actualizar datos
+      await loadSolicitudesPendientes(); // Esto ya actualiza el contador
+      loadPendientesCount(); // <-- ACTUALIZAR EXPLÍCITAMENTE EL CONTADOR
+    } else {
+      setError(response.data.message || 'Error editando aprobación');
+    }
+  } catch (error: any) {
+    console.error('Error en handleEditarAprobacion:', error);
+    setError(error.response?.data?.message || 'Error editando aprobación');
+  }
+};
   
   const handleCancelarSolicitud = async (solicitudId: number) => {
     if (!window.confirm('¿Estás seguro de cancelar esta solicitud?')) {
@@ -1040,114 +1084,140 @@ const Solicitudes: React.FC = () => {
   };
   
   // Renderizar botones de acción
-  const renderActionButtons = () => {
-    return (
-      <ButtonGroup>
-        {canCreateVacaciones && (
-          <Button variant="primary" onClick={() => setShowVacacionesModal(true)}>
-            <FontAwesomeIcon icon={faCalendarDay} className="me-2" />
-            Vacaciones
-          </Button>
-        )}
-        
-        {canCreatePermiso && (
-          <Button variant="info" onClick={() => setShowPermisoModal(true)}>
-            <FontAwesomeIcon icon={faCalendarCheck} className="me-2" />
-            Permiso
-          </Button>
-        )}
-        
-        {canCreateHorasExtras && (
-          <Button variant="warning" onClick={() => setShowHorasExtrasModal(true)}>
-            <FontAwesomeIcon icon={faClock} className="me-2" />
-            Horas Extras
-          </Button>
-        )}
-      </ButtonGroup>
-    );
-  };
+const renderActionButtons = () => {
+  const sinDiasVacaciones = derechosVacacionales?.DiasDisponibles <= 0;
+  
+  return (
+    <ButtonGroup>
+      {canCreateVacaciones && (
+        <Button 
+          variant="primary" 
+          onClick={() => setShowVacacionesModal(true)}
+          disabled={sinDiasVacaciones}
+          title={sinDiasVacaciones ? "No tienes días de vacaciones disponibles" : "Solicitar vacaciones"}
+        >
+          <FontAwesomeIcon icon={faCalendarDay} className="me-2" />
+          Vacaciones
+          {sinDiasVacaciones && (
+            <Badge bg="danger" className="ms-2">
+              <FontAwesomeIcon icon={faExclamationTriangle} size="sm" />
+            </Badge>
+          )}
+        </Button>
+      )}
+      
+      {canCreatePermiso && (
+        <Button variant="info" onClick={() => setShowPermisoModal(true)}>
+          <FontAwesomeIcon icon={faCalendarCheck} className="me-2" />
+          Permiso
+        </Button>
+      )}
+      
+      {canCreateHorasExtras && (
+        <Button variant="warning" onClick={() => setShowHorasExtrasModal(true)}>
+          <FontAwesomeIcon icon={faClock} className="me-2" />
+          Horas Extras
+        </Button>
+      )}
+    </ButtonGroup>
+  );
+};
   
   // Renderizar cards de estadísticas
-  const renderStatsCards = () => {
-    return (
-      <Row className="mb-4">
-        {/* Vacaciones */}
-        {estadisticasVacaciones && (
-          <Col md={4} className="mb-3">
-            <Card className="border-primary border-2 shadow-sm h-100">
-              <Card.Body>
-                <div className="d-flex justify-content-between align-items-center mb-3">
-                  <div>
-                    <FontAwesomeIcon icon={faCalendarDay} size="2x" className="text-primary" />
-                  </div>
-                  <div className="text-end">
-                    <h3 className="mb-0">{estadisticasVacaciones.disponibles}</h3>
-                    <small className="text-muted">Días disponibles</small>
-                  </div>
-                </div>
-                <div className="progress mb-2" style={{ height: '8px' }}>
-                  <div 
-                    className="progress-bar bg-primary" 
-                    role="progressbar" 
-                    style={{ width: `${estadisticasVacaciones.porcentaje}%` }}
-                  ></div>
-                </div>
-                <div className="d-flex justify-content-between">
-                  <small className="text-muted">Tomados: {estadisticasVacaciones.tomados}</small>
-                  <small className="text-muted">Total: {estadisticasVacaciones.total}</small>
-                </div>
-                {estadisticasVacaciones.pendientes > 0 && (
-                  <div className="mt-2 small">
-                    <Badge bg="warning" className="me-1">Pendientes: {estadisticasVacaciones.pendientes}</Badge>
-                  </div>
-                )}
-              </Card.Body>
-            </Card>
-          </Col>
-        )}
-        
-        {/* Mis Solicitudes Pendientes */}
+const renderStatsCards = () => {
+  return (
+    <Row className="mb-4">
+      {/* Vacaciones */}
+      {estadisticasVacaciones && (
         <Col md={4} className="mb-3">
-          <Card className="border-warning border-2 shadow-sm h-100">
+          <Card className={`border-${estadisticasVacaciones.disponibles <= 0 ? 'danger' : 'primary'} border-2 shadow-sm h-100`}>
             <Card.Body>
               <div className="d-flex justify-content-between align-items-center mb-3">
                 <div>
-                  <FontAwesomeIcon icon={faHourglassHalf} size="2x" className="text-warning" />
+                  <FontAwesomeIcon 
+                    icon={faCalendarDay} 
+                    size="2x" 
+                    className={estadisticasVacaciones.disponibles <= 0 ? 'text-danger' : 'text-primary'} 
+                  />
                 </div>
                 <div className="text-end">
-                  <h3 className="mb-0">
-                    {misSolicitudes.filter(s => s.Estado === 'pendiente').length}
+                  <h3 className={`mb-0 ${estadisticasVacaciones.disponibles <= 0 ? 'text-danger' : ''}`}>
+                    {estadisticasVacaciones.disponibles}
                   </h3>
-                  <small className="text-muted">Pendientes</small>
+                  <small className="text-muted">Días disponibles</small>
                 </div>
               </div>
-              <small className="text-muted d-block">Mis solicitudes en revisión</small>
+              <div className="progress mb-2" style={{ height: '8px' }}>
+                <div 
+                  className={`progress-bar ${estadisticasVacaciones.disponibles <= 0 ? 'bg-danger' : 'bg-primary'}`}
+                  role="progressbar" 
+                  style={{ width: `${estadisticasVacaciones.porcentaje}%` }}
+                ></div>
+              </div>
+              <div className="d-flex justify-content-between">
+                <small className="text-muted">Tomados: {estadisticasVacaciones.tomados}</small>
+                <small className="text-muted">Total: {estadisticasVacaciones.total}</small>
+              </div>
+              {estadisticasVacaciones.disponibles <= 0 && (
+                <div className="mt-2">
+                  <Badge bg="danger" className="w-100 py-2">
+                    <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                    No tienes días de vacaciones disponibles
+                  </Badge>
+                </div>
+              )}
+              {estadisticasVacaciones.pendientes > 0 && (
+                <div className="mt-2 small">
+                  <Badge bg="warning" className="me-1">Pendientes: {estadisticasVacaciones.pendientes}</Badge>
+                </div>
+              )}
             </Card.Body>
           </Card>
         </Col>
-        
-        {/* Mis Solicitudes Aprobadas */}
-        <Col md={4} className="mb-3">
-          <Card className="border-success border-2 shadow-sm h-100">
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <div>
-                  <FontAwesomeIcon icon={faCheckCircle} size="2x" className="text-success" />
-                </div>
-                <div className="text-end">
-                  <h3 className="mb-0">
-                    {misSolicitudes.filter(s => s.Estado === 'aprobada').length}
-                  </h3>
-                  <small className="text-muted">Aprobadas</small>
-                </div>
+      )}
+      
+      {/* Mis Solicitudes Pendientes */}
+      <Col md={4} className="mb-3">
+        <Card className="border-warning border-2 shadow-sm h-100">
+          <Card.Body>
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <FontAwesomeIcon icon={faHourglassHalf} size="2x" className="text-warning" />
               </div>
-              <small className="text-muted d-block">Solicitudes aprobadas</small>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-    );
-  };
+              <div className="text-end">
+                <h3 className="mb-0">
+                  {misSolicitudes.filter(s => s.Estado === 'pendiente').length}
+                </h3>
+                <small className="text-muted">Pendientes</small>
+              </div>
+            </div>
+            <small className="text-muted d-block">Mis solicitudes en revisión</small>
+          </Card.Body>
+        </Card>
+      </Col>
+      
+      {/* Mis Solicitudes Aprobadas */}
+      <Col md={4} className="mb-3">
+        <Card className="border-success border-2 shadow-sm h-100">
+          <Card.Body>
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <FontAwesomeIcon icon={faCheckCircle} size="2x" className="text-success" />
+              </div>
+              <div className="text-end">
+                <h3 className="mb-0">
+                  {misSolicitudes.filter(s => s.Estado === 'aprobada').length}
+                </h3>
+                <small className="text-muted">Aprobadas</small>
+              </div>
+            </div>
+            <small className="text-muted d-block">Solicitudes aprobadas</small>
+          </Card.Body>
+        </Card>
+      </Col>
+    </Row>
+  );
+};
   
   // Renderizar filtros
   const renderFilters = () => {
@@ -1710,55 +1780,90 @@ const renderHorasExtrasContent = () => {
 };
 
   return (
-    <Container fluid className="py-4">
-      {/* Header */}
-      <Row className="mb-4">
-        <Col>
-          <div className="d-flex justify-content-between align-items-center">
-            <div>
-              <h2 className="mb-0">
-                <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
-                Gestión de Solicitudes
-              </h2>
-              <p className="text-muted mb-0">
-                {isAdmin ? '🔐 Administrador - Gestión completa' : 
-                 isManager ? '👨‍💼 Manager - Aprobaciones y reportes' : 
-                 '👤 Empleado - Mis solicitudes'}
-              </p>
-            </div>
-            
-            <div className="d-flex gap-2">
-              <Button 
-                variant="outline-primary" 
-                onClick={loadTabData}
-                disabled={loading}
-              >
-                <FontAwesomeIcon icon={faSync} className="me-2" />
-                Actualizar
-              </Button>
-              {renderActionButtons()}
-            </div>
+  <Container fluid className="py-4">
+    {/* Header */}
+    <Row className="mb-4">
+      <Col>
+        <div className="d-flex justify-content-between align-items-center">
+          <div>
+            <h2 className="mb-0">
+              <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
+              Gestión de Solicitudes
+            </h2>
+            <p className="text-muted mb-0">
+              {isAdmin ? '🔐 Administrador - Gestión completa' : 
+               isManager ? '👨‍💼 Manager - Aprobaciones y reportes' : 
+               '👤 Empleado - Mis solicitudes'}
+            </p>
           </div>
-        </Col>
-      </Row>
+          
+          <div className="d-flex gap-2">
+            <Button 
+              variant="outline-primary" 
+              onClick={loadTabData}
+              disabled={loading}
+            >
+              <FontAwesomeIcon icon={faSync} className="me-2" />
+              Actualizar
+            </Button>
+            {renderActionButtons()}
+          </div>
+        </div>
+      </Col>
+    </Row>
 
-      {/* Alertas */}
-      {error && (
-        <Alert variant="danger" dismissible onClose={() => setError('')}>
-          <FontAwesomeIcon icon={faTimesCircle} className="me-2" />
-          {error}
-        </Alert>
-      )}
-      
-      {success && (
-        <Alert variant="success" dismissible onClose={() => setSuccess('')}>
-          <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
-          {success}
-        </Alert>
-      )}
+    {/* Alerta de días disponibles */}
+    {estadisticasVacaciones && estadisticasVacaciones.disponibles <= 0 && isEmployee && (
+      <Alert variant="danger" className="mb-3">
+        <div className="d-flex align-items-center">
+          <FontAwesomeIcon icon={faExclamationTriangle} size="2x" className="me-3" />
+          <div>
+            <h5 className="alert-heading mb-1">No tienes días de vacaciones disponibles</h5>
+            <p className="mb-0">
+              Has utilizado todos tus {estadisticasVacaciones.total} días de vacaciones de este año.
+              {estadisticasVacaciones.pendientes > 0 && (
+                <span className="d-block mt-1">
+                  <Badge bg="warning">Tienes {estadisticasVacaciones.pendientes} días pendientes de aprobación</Badge>
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+      </Alert>
+    )}
 
-      {/* Estadísticas */}
-      {renderStatsCards()}
+    {estadisticasVacaciones && estadisticasVacaciones.disponibles < 0 && (
+      <Alert variant="warning" className="mb-3">
+        <div className="d-flex align-items-center">
+          <FontAwesomeIcon icon={faExclamationTriangle} size="2x" className="me-3 text-warning" />
+          <div>
+            <h5 className="alert-heading mb-1">Has excedido tus días de vacaciones</h5>
+            <p className="mb-0">
+              Has tomado {Math.abs(estadisticasVacaciones.disponibles)} días adicionales.
+              Por favor, contacta a Recursos Humanos para regularizar tu situación.
+            </p>
+          </div>
+        </div>
+      </Alert>
+    )}
+
+    {/* Alertas */}
+    {error && (
+      <Alert variant="danger" dismissible onClose={() => setError('')}>
+        <FontAwesomeIcon icon={faTimesCircle} className="me-2" />
+        {error}
+      </Alert>
+    )}
+    
+    {success && (
+      <Alert variant="success" dismissible onClose={() => setSuccess('')}>
+        <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
+        {success}
+      </Alert>
+    )}
+
+    {/* Estadísticas */}
+    {renderStatsCards()}
 
       {/* Tabs principales */}
       <Card className="shadow-sm">
@@ -1790,15 +1895,15 @@ const renderHorasExtrasContent = () => {
                 <span>
                   <FontAwesomeIcon icon={faUserClock} className="me-2" />
                   Por Aprobar
-                  {solicitudesPendientes.length > 0 && (
-                    <Badge bg="danger" className="ms-2">{solicitudesPendientes.length}</Badge>
+                  {pendientesCount > 0 && ( // <-- USAR pendientesCount EN VEZ DE solicitudesPendientes.length
+                    <Badge bg="danger" className="ms-2">{pendientesCount}</Badge>
                   )}
                 </span>
               }>
                 <div className="p-3">
                   <Alert variant="info" className="mb-3">
                     <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-                    Tienes {solicitudesPendientes.length} solicitudes pendientes de aprobación
+                    Tienes {pendientesCount} solicitudes pendientes de aprobación {/* <-- USAR pendientesCount */}
                   </Alert>
                   {renderTabContent()}
                 </div>
@@ -1836,114 +1941,144 @@ const renderHorasExtrasContent = () => {
         </Card.Body>
       </Card>
 
-      {/* Modal de Vacaciones */}
-      <Modal show={showVacacionesModal} onHide={() => setShowVacacionesModal(false)} size="lg">
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>
-            <FontAwesomeIcon icon={faCalendarDay} className="me-2" />
-            Solicitar Vacaciones
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {estadisticasVacaciones && (
-            <Alert variant="info" className="mb-4">
-              <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-              <div>
-                <strong>Resumen de tus vacaciones:</strong>
-                <div className="mt-2">
-                  <span className="me-3"><strong>Días disponibles:</strong> {estadisticasVacaciones.disponibles}</span>
-                  <span className="me-3"><strong>Días tomados:</strong> {estadisticasVacaciones.tomados}</span>
-                  <span><strong>Total días:</strong> {estadisticasVacaciones.total}</span>
-                </div>
-                {estadisticasVacaciones.pendientes > 0 && (
-                  <div className="mt-1">
-                    <Badge bg="warning">Días pendientes de aprobación: {estadisticasVacaciones.pendientes}</Badge>
-                  </div>
-                )}
-              </div>
-            </Alert>
+{/* Modal de Vacaciones */}
+<Modal show={showVacacionesModal} onHide={() => setShowVacacionesModal(false)} size="lg">
+  <Modal.Header closeButton className="bg-primary text-white">
+    <Modal.Title>
+      <FontAwesomeIcon icon={faCalendarDay} className="me-2" />
+      Solicitar Vacaciones
+    </Modal.Title>
+  </Modal.Header>
+  <Modal.Body>
+    {estadisticasVacaciones && (
+      <Alert 
+        variant={estadisticasVacaciones.disponibles <= 0 ? "danger" : "info"} 
+        className="mb-4"
+      >
+        <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+        <div>
+          <strong>Resumen de tus vacaciones:</strong>
+          <div className="mt-2">
+            <span className="me-3">
+              <strong>Días disponibles:</strong> 
+              <span className={estadisticasVacaciones.disponibles <= 0 ? 'text-danger fw-bold' : ''}>
+                {' '}{estadisticasVacaciones.disponibles}
+              </span>
+            </span>
+            <span className="me-3"><strong>Días tomados:</strong> {estadisticasVacaciones.tomados}</span>
+            <span><strong>Total días:</strong> {estadisticasVacaciones.total}</span>
+          </div>
+          {estadisticasVacaciones.pendientes > 0 && (
+            <div className="mt-1">
+              <Badge bg="warning">Días pendientes de aprobación: {estadisticasVacaciones.pendientes}</Badge>
+            </div>
           )}
-          
-          <Form>
-            <Row>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Fecha de Inicio *</Form.Label>
-                  <Form.Control
-                    type="date"
-                    value={vacacionesData.fechaInicio}
-                    onChange={(e) => setVacacionesData({...vacacionesData, fechaInicio: e.target.value})}
-                    min={new Date().toISOString().split('T')[0]}
-                    required
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Fecha de Fin *</Form.Label>
-                  <Form.Control
-                    type="date"
-                    value={vacacionesData.fechaFin}
-                    onChange={(e) => setVacacionesData({...vacacionesData, fechaFin: e.target.value})}
-                    min={vacacionesData.fechaInicio}
-                    required
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Motivo *</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={vacacionesData.motivo}
-                onChange={(e) => setVacacionesData({...vacacionesData, motivo: e.target.value})}
-                placeholder="Describe el motivo de tu solicitud de vacaciones..."
-                required
-              />
-            </Form.Group>
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Observaciones (Opcional)</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={2}
-                value={vacacionesData.observaciones}
-                onChange={(e) => setVacacionesData({...vacacionesData, observaciones: e.target.value})}
-                placeholder="Observaciones adicionales..."
-              />
-            </Form.Group>
-          </Form>
-          
-          {vacacionesData.fechaInicio && vacacionesData.fechaFin && (
-            <Alert variant={calcularDiasSolicitados() > (estadisticasVacaciones?.disponibles || 0) ? "danger" : "secondary"} className="mt-3">
-              <FontAwesomeIcon icon={faCalculator} className="me-2" />
-              <div>
-                <strong>Días solicitados:</strong> {calcularDiasSolicitados()} días
-                {estadisticasVacaciones && calcularDiasSolicitados() > estadisticasVacaciones.disponibles && (
-                  <div className="text-danger mt-1">
-                    ⚠️ Estás solicitando más días de los que tienes disponibles
-                  </div>
-                )}
-              </div>
-            </Alert>
+          {estadisticasVacaciones.disponibles <= 0 && (
+            <div className="mt-2 text-danger">
+              <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+              <strong>No puedes solicitar vacaciones porque no tienes días disponibles.</strong>
+            </div>
           )}
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowVacacionesModal(false)}>
-            Cancelar
-          </Button>
-          <Button 
-            variant="primary" 
-            onClick={handleSolicitarVacaciones}
-            disabled={!vacacionesData.fechaInicio || !vacacionesData.fechaFin || !vacacionesData.motivo}
-          >
-            <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
-            Enviar Solicitud
-          </Button>
-        </Modal.Footer>
-      </Modal>
+        </div>
+      </Alert>
+    )}
+    
+    <Form>
+      <Row>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Fecha de Inicio *</Form.Label>
+            <Form.Control
+              type="date"
+              value={vacacionesData.fechaInicio}
+              onChange={(e) => setVacacionesData({...vacacionesData, fechaInicio: e.target.value})}
+              min={new Date().toISOString().split('T')[0]}
+              disabled={estadisticasVacaciones?.disponibles <= 0}
+              required
+            />
+          </Form.Group>
+        </Col>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Fecha de Fin *</Form.Label>
+            <Form.Control
+              type="date"
+              value={vacacionesData.fechaFin}
+              onChange={(e) => setVacacionesData({...vacacionesData, fechaFin: e.target.value})}
+              min={vacacionesData.fechaInicio}
+              disabled={estadisticasVacaciones?.disponibles <= 0}
+              required
+            />
+          </Form.Group>
+        </Col>
+      </Row>
+      
+      <Form.Group className="mb-3">
+        <Form.Label>Motivo *</Form.Label>
+        <Form.Control
+          as="textarea"
+          rows={3}
+          value={vacacionesData.motivo}
+          onChange={(e) => setVacacionesData({...vacacionesData, motivo: e.target.value})}
+          placeholder="Describe el motivo de tu solicitud de vacaciones..."
+          disabled={estadisticasVacaciones?.disponibles <= 0}
+          required
+        />
+      </Form.Group>
+      
+      <Form.Group className="mb-3">
+        <Form.Label>Observaciones (Opcional)</Form.Label>
+        <Form.Control
+          as="textarea"
+          rows={2}
+          value={vacacionesData.observaciones}
+          onChange={(e) => setVacacionesData({...vacacionesData, observaciones: e.target.value})}
+          placeholder="Observaciones adicionales..."
+          disabled={estadisticasVacaciones?.disponibles <= 0}
+        />
+      </Form.Group>
+    </Form>
+    
+    {vacacionesData.fechaInicio && vacacionesData.fechaFin && (
+      <Alert 
+        variant={
+          calcularDiasSolicitados() > (estadisticasVacaciones?.disponibles || 0) 
+            ? "danger" 
+            : "secondary"
+        } 
+        className="mt-3"
+      >
+        <FontAwesomeIcon icon={faCalculator} className="me-2" />
+        <div>
+          <strong>Días solicitados:</strong> {calcularDiasSolicitados()} días
+          {estadisticasVacaciones && calcularDiasSolicitados() > estadisticasVacaciones.disponibles && (
+            <div className="text-danger mt-1">
+              ⚠️ Estás solicitando más días de los que tienes disponibles
+            </div>
+          )}
+        </div>
+      </Alert>
+    )}
+  </Modal.Body>
+  <Modal.Footer>
+    <Button variant="secondary" onClick={() => setShowVacacionesModal(false)}>
+      Cancelar
+    </Button>
+    <Button 
+      variant="primary" 
+      onClick={handleSolicitarVacaciones}
+      disabled={
+        !vacacionesData.fechaInicio || 
+        !vacacionesData.fechaFin || 
+        !vacacionesData.motivo ||
+        (estadisticasVacaciones?.disponibles <= 0)
+      }
+    >
+      <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
+      Enviar Solicitud
+    </Button>
+  </Modal.Footer>
+</Modal>
 
       {/* Modal de Permiso */}
       <Modal show={showPermisoModal} onHide={() => setShowPermisoModal(false)}>

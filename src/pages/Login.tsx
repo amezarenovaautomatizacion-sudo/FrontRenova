@@ -2,17 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
-  Container,
-  Row,
-  Col,
-  Card,
-  Form,
-  Button,
-  Alert,
-  Spinner
+  Container, Row, Col, Card, Form,
+  Button, Alert, Spinner, InputGroup
 } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSignInAlt, faUser, faLock } from '@fortawesome/free-solid-svg-icons';
+import {
+  faUser, faLock, faEye, faEyeSlash
+} from '@fortawesome/free-solid-svg-icons';
 
 const Login: React.FC = () => {
   const [usuario, setUsuario] = useState('');
@@ -20,19 +16,16 @@ const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // USAR SESSIONSTORAGE COMO FUENTE PRINCIPAL
-  const from = sessionStorage.getItem('redirectAfterLogin') || 
-               location.state?.from?.pathname || 
-               "/dashboard";
-
-  console.log('Login - from:', from);
-  console.log('Login - location.state:', location.state);
-  console.log('Login - sessionStorage:', sessionStorage.getItem('redirectAfterLogin'));
+  const redirectTo =
+    sessionStorage.getItem('redirectAfterLogin') ||
+    location.state?.from?.pathname ||
+    '/dashboard';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,136 +34,128 @@ const Login: React.FC = () => {
 
     try {
       await login(usuario, contrasenia);
-      
-      if (rememberMe) {
-        localStorage.setItem('rememberedUser', usuario);
-      } else {
-        localStorage.removeItem('rememberedUser');
-      }
-      
-      // Obtener la ruta de destino
-      const redirectTo = sessionStorage.getItem('redirectAfterLogin') || 
-                         location.state?.from?.pathname || 
-                         '/dashboard';
-      
-      console.log('Login exitoso, redirigiendo a:', redirectTo);
-      
-      // Limpiar sessionStorage
+
+      rememberMe
+        ? localStorage.setItem('rememberedUser', usuario)
+        : localStorage.removeItem('rememberedUser');
+
       sessionStorage.removeItem('redirectAfterLogin');
-      
-      // Pequeño timeout para asegurar que todo esté listo
-      setTimeout(() => {
-        navigate(redirectTo, { replace: true });
-      }, 100);
+      navigate(redirectTo, { replace: true });
+
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Error en el login';
-      setError(errorMessage);
+      setError(err instanceof Error ? err.message : 'Error en el login');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    const rememberedUser = localStorage.getItem('rememberedUser');
-    if (rememberedUser) {
-      setUsuario(rememberedUser);
+    const remembered = localStorage.getItem('rememberedUser');
+    if (remembered) {
+      setUsuario(remembered);
       setRememberMe(true);
     }
   }, []);
 
   return (
     <Container fluid className="vh-100 d-flex align-items-center justify-content-center bg-light">
-      <Row className="justify-content-center w-100">
-        <Col xs={12} sm={10} md={8} lg={6} xl={5}>
-          <Card className="shadow-lg border-0 rounded-3">
-            <Card.Body className="p-5">
+      <Row className="w-100 justify-content-center">
+        <Col xs={11} sm={8} md={6} lg={5} xl={4}>
+          <Card className="shadow border-0">
+            <Card.Body className="p-4">
+
               <div className="text-center mb-4">
-                <div className="bg-primary rounded-circle p-3 d-inline-block mb-3">
-                  <FontAwesomeIcon 
-                    icon={faSignInAlt} 
-                    size="3x" 
-                    className="text-white"
-                  />
-                </div>
-                <h2 className="fw-bold text-primary">RENOVA</h2>
-                <p className="text-muted">Sistema de Gestión de Recursos Humanos</p>
+                <img src="/vite.svg" alt="Logo" width={60} className="mb-2" />
+                <h5 className="fw-bold mb-1">RENOVA</h5>
+                <small className="text-muted">Gestión de Recursos Humanos</small>
               </div>
 
               <Form onSubmit={handleSubmit}>
+
                 {error && (
                   <Alert variant="danger" dismissible onClose={() => setError('')}>
                     {error}
                   </Alert>
                 )}
 
-                <Form.Group className="mb-3">
-                  <Form.Label className="fw-medium">
+                {/* Usuario con form-floating */}
+                <Form.Group className="form-floating mb-3">
+                  <Form.Control
+                    type="email"
+                    id="usuario"
+                    placeholder="Usuario / Correo"
+                    value={usuario}
+                    onChange={e => setUsuario(e.target.value)}
+                    required
+                    disabled={loading}
+                    autoComplete="username"
+                  />
+                  <Form.Label htmlFor="usuario">
                     <FontAwesomeIcon icon={faUser} className="me-2" />
                     Usuario / Correo
                   </Form.Label>
-                  <Form.Control
-                    type="email"
-                    placeholder="usuario@ejemplo.com"
-                    value={usuario}
-                    onChange={(e) => setUsuario(e.target.value)}
-                    required
-                    disabled={loading}
-                    className="py-2"
-                  />
                 </Form.Group>
 
-                <Form.Group className="mb-4">
-                  <Form.Label className="fw-medium">
-                    <FontAwesomeIcon icon={faLock} className="me-2" />
-                    Contraseña
-                  </Form.Label>
-                  <Form.Control
-                    type="password"
-                    placeholder="••••••••"
-                    value={contrasenia}
-                    onChange={(e) => setContrasenia(e.target.value)}
-                    required
-                    disabled={loading}
-                    className="py-2"
-                  />
+                {/* Contraseña con ojito y form-floating */}
+                <Form.Group className="mb-3">
+                  <InputGroup className="form-floating">
+                    <Form.Control
+                      type={showPass ? "text" : "password"}
+                      id="contrasenia"
+                      placeholder="Contraseña"
+                      value={contrasenia}
+                      onChange={e => setContrasenia(e.target.value)}
+                      required
+                      disabled={loading}
+                      autoComplete="current-password"
+                    />
+                    <Form.Label htmlFor="contrasenia">
+                      <FontAwesomeIcon icon={faLock} className="me-2" />
+                      Contraseña
+                    </Form.Label>
+                    <Button
+                      variant="outline-secondary"
+                      onClick={() => setShowPass(!showPass)}
+                      disabled={loading}
+                      tabIndex={-1}
+                      className="border-start-0"
+                      style={{ zIndex: 100 }}
+                    >
+                      <FontAwesomeIcon icon={showPass ? faEyeSlash : faEye} />
+                    </Button>
+                  </InputGroup>
                 </Form.Group>
 
-                <Form.Group className="mb-4">
+                {/* Recordarme con mejor alineación */}
+                <Form.Group className="mb-4 d-flex align-items-center">
                   <Form.Check
                     type="checkbox"
+                    id="rememberMe"
                     label="Recordarme"
                     checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
+                    onChange={e => setRememberMe(e.target.checked)}
                     disabled={loading}
                   />
                 </Form.Group>
 
+                {/* Botón login */}
                 <Button
-                  variant="primary"
                   type="submit"
+                  className="w-100"
                   disabled={loading}
-                  className="w-100 py-2 fw-medium"
                 >
-                  {loading ? (
-                    <>
-                      <Spinner
-                        as="span"
-                        animation="border"
-                        size="sm"
-                        role="status"
-                        aria-hidden="true"
-                        className="me-2"
-                      />
-                      Iniciando sesión...
-                    </>
-                  ) : (
-                    <>
-                      <FontAwesomeIcon icon={faSignInAlt} className="me-2" />
-                      Iniciar Sesión
-                    </>
-                  )}
+                  {loading
+                    ? (
+                      <>
+                        <Spinner size="sm" animation="border" role="status" aria-hidden="true" className="me-2" />
+                        Iniciando sesión...
+                      </>
+                    )
+                    : "Iniciar Sesión"
+                  }
                 </Button>
               </Form>
+
             </Card.Body>
           </Card>
         </Col>
