@@ -45,13 +45,14 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../services/api';
 
-// Interfaces
+// Interfaces actualizadas según la API real
 interface TipoIncidencia {
   ID: number;
   Nombre: string;
   Descripcion?: string;
-  Activo: boolean;
-  FechaCreacion: string;
+  Activo: number; // La API devuelve 1 o 0
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface EmpleadoSelect {
@@ -59,24 +60,56 @@ interface EmpleadoSelect {
   NombreCompleto: string;
   CorreoElectronico: string;
   RolApp: string;
-  PuestoNombre?: string;
+  PuestoNombre?: string | null;
 }
 
+// Interfaz para la respuesta de /incidencias (admin/manager)
+interface IncidenciaFromAPI {
+  ID: number;
+  EmpleadoID: number;
+  TipoIncidenciaID: number;
+  Descripcion: string;
+  FechaIncidencia: string;
+  HoraIncidencia: string | null;
+  Observaciones: string | null;
+  Activo: number; // 1 o 0
+  CreadoPor: number;
+  createdAt: string;
+  updatedAt: string;
+  SolicitudID: number | null;
+  TipoIncidenciaNombre: string;
+  EmpleadoNombre: string;
+  EmpleadoCorreo: string;
+  CreadoPorUsuario: string; // Email de quien creó
+}
+
+// Interfaz para la respuesta de /mis-incidencias (employee)
+interface MisIncidenciaFromAPI extends IncidenciaFromAPI {
+  TipoIncidenciaDescripcion?: string;
+  TipoSolicitud?: string;
+  EstadoSolicitud?: string;
+  MotivoSolicitud?: string;
+}
+
+// Interfaz unificada para usar en el frontend
 interface Incidencia {
   ID: number;
   EmpleadoID: number;
   EmpleadoNombre: string;
+  EmpleadoCorreo?: string;
   TipoIncidenciaID: number;
   TipoIncidenciaNombre: string;
   Descripcion: string;
   FechaIncidencia: string;
-  HoraIncidencia?: string;
-  Observaciones?: string;
-  Estado: string;
-  Activo: boolean;
+  HoraIncidencia?: string | null;
+  Observaciones?: string | null;
+  activo: boolean; // Convertido de Activo (1/0)
   CreadoPor: number;
-  CreadorNombre: string;
+  CreadorEmail: string; // Cambiado de CreadorNombre a CreadorEmail
   FechaCreacion: string;
+  // Campos opcionales de mis-incidencias
+  TipoSolicitud?: string;
+  EstadoSolicitud?: string;
 }
 
 interface CreateIncidenciaData {
@@ -112,7 +145,7 @@ const Incidencias: React.FC = () => {
   const canViewTipos = isAdmin || isManager;
   const canManageTipos = isAdmin;
   
-  const [activeTab, setActiveTab] = useState('incidencias'); // 'incidencias' o 'tipos'
+  const [activeTab, setActiveTab] = useState('incidencias');
   const [incidencias, setIncidencias] = useState<Incidencia[]>([]);
   const [misIncidencias, setMisIncidencias] = useState<Incidencia[]>([]);
   const [tiposIncidencia, setTiposIncidencia] = useState<TipoIncidencia[]>([]);
@@ -148,15 +181,17 @@ const Incidencias: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEmpleado, setFilterEmpleado] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
-  const [filterEstado, setFilterEstado] = useState('');
+  const [filterActivo, setFilterActivo] = useState('');
   const [filterFechaDesde, setFilterFechaDesde] = useState('');
   const [filterFechaHasta, setFilterFechaHasta] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const itemsPerPage = 10;
 
-  // Mueve las funciones de carga a useCallback para estabilizar las referencias
+  // Función para cargar incidencias (admin/manager)
   const loadIncidencias = useCallback(async () => {
+    if (!canViewAll) return;
+    
     try {
       setLoading(true);
       setError('');
@@ -169,23 +204,32 @@ const Incidencias: React.FC = () => {
       if (searchTerm) params.append('search', searchTerm);
       if (filterEmpleado) params.append('empleadoId', filterEmpleado);
       if (filterTipo) params.append('tipoIncidenciaId', filterTipo);
-      if (filterEstado) params.append('estado', filterEstado);
       if (filterFechaDesde) params.append('fechaDesde', filterFechaDesde);
       if (filterFechaHasta) params.append('fechaHasta', filterFechaHasta);
       
       const response = await api.get(`/incidencias?${params}`);
       
       if (response.data.success) {
-        // Validar y limpiar datos
-        const incidenciasData = (response.data.data.incidencias || []).map((inc: any) => ({
-          ...inc,
-          Estado: inc.Estado || 'pendiente', // Valor por defecto
-          Descripcion: inc.Descripcion || '',
-          EmpleadoNombre: inc.EmpleadoNombre || 'Sin nombre',
-          TipoIncidenciaNombre: inc.TipoIncidenciaNombre || 'Sin tipo'
+        const incidenciasFromAPI: IncidenciaFromAPI[] = response.data.data.incidencias || [];
+        
+        const mappedIncidencias: Incidencia[] = incidenciasFromAPI.map(inc => ({
+          ID: inc.ID,
+          EmpleadoID: inc.EmpleadoID,
+          EmpleadoNombre: inc.EmpleadoNombre,
+          EmpleadoCorreo: inc.EmpleadoCorreo,
+          TipoIncidenciaID: inc.TipoIncidenciaID,
+          TipoIncidenciaNombre: inc.TipoIncidenciaNombre,
+          Descripcion: inc.Descripcion,
+          FechaIncidencia: inc.FechaIncidencia,
+          HoraIncidencia: inc.HoraIncidencia,
+          Observaciones: inc.Observaciones,
+          activo: inc.Activo === 1,
+          CreadoPor: inc.CreadoPor,
+          CreadorEmail: inc.CreadoPorUsuario,
+          FechaCreacion: inc.createdAt
         }));
         
-        setIncidencias(incidenciasData);
+        setIncidencias(mappedIncidencias);
         setTotalPages(response.data.data.pagination?.totalPages || 1);
       } else {
         setError(response.data.message || 'Error cargando incidencias');
@@ -198,9 +242,12 @@ const Incidencias: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm, filterEmpleado, filterTipo, filterEstado, filterFechaDesde, filterFechaHasta]);
+  }, [currentPage, searchTerm, filterEmpleado, filterTipo, filterFechaDesde, filterFechaHasta, canViewAll]);
 
+  // Función para cargar mis incidencias (employee)
   const loadMisIncidencias = useCallback(async () => {
+    if (!isEmployee) return;
+    
     try {
       setLoading(true);
       setError('');
@@ -208,16 +255,28 @@ const Incidencias: React.FC = () => {
       const response = await api.get('/incidencias/mis-incidencias');
       
       if (response.data.success) {
-        // Validar y limpiar datos
-        const incidenciasData = (response.data.data || []).map((inc: any) => ({
-          ...inc,
-          Estado: inc.Estado || 'pendiente',
-          Descripcion: inc.Descripcion || '',
-          EmpleadoNombre: inc.EmpleadoNombre || 'Sin nombre',
-          TipoIncidenciaNombre: inc.TipoIncidenciaNombre || 'Sin tipo'
+        const misIncidenciasFromAPI: MisIncidenciaFromAPI[] = response.data.data || [];
+        
+        const mappedMisIncidencias: Incidencia[] = misIncidenciasFromAPI.map(inc => ({
+          ID: inc.ID,
+          EmpleadoID: inc.EmpleadoID,
+          EmpleadoNombre: inc.EmpleadoNombre,
+          EmpleadoCorreo: inc.EmpleadoCorreo,
+          TipoIncidenciaID: inc.TipoIncidenciaID,
+          TipoIncidenciaNombre: inc.TipoIncidenciaNombre,
+          Descripcion: inc.Descripcion,
+          FechaIncidencia: inc.FechaIncidencia,
+          HoraIncidencia: inc.HoraIncidencia,
+          Observaciones: inc.Observaciones,
+          activo: inc.Activo === 1,
+          CreadoPor: inc.CreadoPor,
+          CreadorEmail: inc.CreadoPorUsuario,
+          FechaCreacion: inc.createdAt,
+          TipoSolicitud: inc.TipoSolicitud,
+          EstadoSolicitud: inc.EstadoSolicitud
         }));
         
-        setMisIncidencias(incidenciasData);
+        setMisIncidencias(mappedMisIncidencias);
       } else {
         setError(response.data.message || 'Error cargando tus incidencias');
         setMisIncidencias([]);
@@ -229,15 +288,17 @@ const Incidencias: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isEmployee]);
 
+  // Función para cargar tipos de incidencia
   const loadTiposIncidencia = useCallback(async () => {
+    if (!canViewTipos) return;
+    
     try {
       setLoadingTipos(true);
       setError('');
       
-      const endpoint = isAdmin ? '/incidencias/tipos/todos' : '/incidencias/tipos';
-      const response = await api.get(endpoint);
+      const response = await api.get('/incidencias/tipos');
       
       if (response.data.success) {
         setTiposIncidencia(response.data.data || []);
@@ -250,8 +311,9 @@ const Incidencias: React.FC = () => {
     } finally {
       setLoadingTipos(false);
     }
-  }, [isAdmin]);
+  }, [canViewTipos]);
 
+  // Función para cargar empleados supervisados
   const loadEmpleadosSupervisados = useCallback(async () => {
     if (!canCreate) return;
     
@@ -266,48 +328,41 @@ const Incidencias: React.FC = () => {
     }
   }, [canCreate]);
 
-// Efecto principal con todas las dependencias y carga inicial de tipos
-useEffect(() => {
-  // SIEMPRE cargar tipos de incidencia si tiene permisos, independientemente de la pestaña
-  if (canViewTipos) {
-    loadTiposIncidencia();
-  }
-  
-  // Cargar empleados supervisados si puede crear
-  if (canCreate) {
-    loadEmpleadosSupervisados();
-  }
-  
-  // Cargar incidencias según la pestaña activa y permisos
-  if (activeTab === 'incidencias') {
-    if (canViewAll) {
-      loadIncidencias();
-    } else if (isEmployee) {
-      loadMisIncidencias();
+  // Efecto principal
+  useEffect(() => {
+    if (canViewTipos) {
+      loadTiposIncidencia();
     }
-  } else if (activeTab === 'tipos' && canViewTipos) {
-    // No necesitamos recargar tipos aquí porque ya se cargaron arriba,
-    // pero podemos dejarlo por si acaso
-    loadTiposIncidencia();
-  }
-}, [
-  activeTab, 
-  currentPage, 
-  filterEmpleado, 
-  filterTipo, 
-  filterEstado, 
-  filterFechaDesde, 
-  filterFechaHasta,
-  canViewAll,
-  isEmployee,
-  canViewTipos,
-  canCreate,
-  loadIncidencias,
-  loadMisIncidencias,
-  loadTiposIncidencia,
-  loadEmpleadosSupervisados
-]);
+    
+    if (canCreate) {
+      loadEmpleadosSupervisados();
+    }
+    
+    if (activeTab === 'incidencias') {
+      if (canViewAll) {
+        loadIncidencias();
+      } else if (isEmployee) {
+        loadMisIncidencias();
+      }
+    }
+  }, [
+    activeTab, 
+    currentPage, 
+    filterEmpleado, 
+    filterTipo, 
+    filterFechaDesde, 
+    filterFechaHasta,
+    canViewAll,
+    isEmployee,
+    canViewTipos,
+    canCreate,
+    loadIncidencias,
+    loadMisIncidencias,
+    loadTiposIncidencia,
+    loadEmpleadosSupervisados
+  ]);
 
+  // Función para crear incidencia
   const handleCreateIncidencia = async () => {
     if (!canCreate) {
       setError('No tienes permisos para crear incidencias');
@@ -333,7 +388,11 @@ useEffect(() => {
         setShowCreateModal(false);
         resetCreateForm();
         if (activeTab === 'incidencias') {
-          loadIncidencias();
+          if (canViewAll) {
+            loadIncidencias();
+          } else {
+            loadMisIncidencias();
+          }
         }
       } else {
         setError(response.data.message || 'Error creando incidencia');
@@ -344,6 +403,7 @@ useEffect(() => {
     }
   };
 
+  // Función para actualizar incidencia
   const handleUpdateIncidencia = async () => {
     if (!selectedIncidencia || !canEdit) return;
     
@@ -356,7 +416,11 @@ useEffect(() => {
       if (response.data.success) {
         setSuccess('Incidencia actualizada exitosamente');
         setShowEditModal(false);
-        loadIncidencias();
+        if (canViewAll) {
+          loadIncidencias();
+        } else {
+          loadMisIncidencias();
+        }
       } else {
         setError(response.data.message || 'Error actualizando incidencia');
       }
@@ -366,6 +430,7 @@ useEffect(() => {
     }
   };
 
+  // Función para eliminar incidencia
   const handleDeleteIncidencia = async () => {
     if (!selectedIncidencia || !canDelete) return;
     
@@ -378,7 +443,11 @@ useEffect(() => {
       if (response.data.success) {
         setSuccess('Incidencia eliminada exitosamente');
         setShowDeleteModal(false);
-        loadIncidencias();
+        if (canViewAll) {
+          loadIncidencias();
+        } else {
+          loadMisIncidencias();
+        }
       } else {
         setError(response.data.message || 'Error eliminando incidencia');
       }
@@ -388,13 +457,14 @@ useEffect(() => {
     }
   };
 
+  // Función para cambiar estado de incidencia (activar/desactivar)
   const handleToggleStatusIncidencia = async (incidencia: Incidencia) => {
     if (!canChangeStatus) {
       setError('No tienes permisos para cambiar el estado de incidencias');
       return;
     }
     
-    if (!window.confirm(`¿Estás seguro de ${incidencia.Activo ? 'desactivar' : 'activar'} esta incidencia?`)) {
+    if (!window.confirm(`¿Estás seguro de ${incidencia.activo ? 'desactivar' : 'activar'} esta incidencia?`)) {
       return;
     }
     
@@ -403,12 +473,16 @@ useEffect(() => {
       setSuccess('');
       
       const response = await api.patch(`/incidencias/${incidencia.ID}/estado`, {
-        activo: !incidencia.Activo
+        activo: !incidencia.activo
       });
       
       if (response.data.success) {
-        setSuccess(`Incidencia ${incidencia.Activo ? 'desactivada' : 'activada'} exitosamente`);
-        loadIncidencias();
+        setSuccess(`Incidencia ${incidencia.activo ? 'desactivada' : 'activada'} exitosamente`);
+        if (canViewAll) {
+          loadIncidencias();
+        } else {
+          loadMisIncidencias();
+        }
       } else {
         setError(response.data.message || 'Error cambiando estado');
       }
@@ -418,6 +492,7 @@ useEffect(() => {
     }
   };
 
+  // Función para crear tipo de incidencia
   const handleCreateTipo = async () => {
     if (!canManageTipos) {
       setError('Solo administradores pueden crear tipos de incidencia');
@@ -449,6 +524,7 @@ useEffect(() => {
     }
   };
 
+  // Función para actualizar tipo de incidencia
   const handleUpdateTipo = async () => {
     if (!selectedTipo || !canManageTipos) return;
     
@@ -476,6 +552,7 @@ useEffect(() => {
     }
   };
 
+  // Función para cambiar estado de tipo de incidencia
   const handleToggleStatusTipo = async (tipo: TipoIncidencia) => {
     if (!canManageTipos) {
       setError('Solo administradores pueden cambiar el estado de tipos');
@@ -506,6 +583,7 @@ useEffect(() => {
     }
   };
 
+  // Función para resetear formulario de creación
   const resetCreateForm = () => {
     setCreateData({
       empleadoId: empleadosSupervisados.length > 0 ? empleadosSupervisados[0].ID : 0,
@@ -516,6 +594,7 @@ useEffect(() => {
     });
   };
 
+  // Función para abrir modal de creación
   const openCreateModal = () => {
     if (!canCreate) {
       setError('No tienes permisos para crear incidencias');
@@ -536,11 +615,13 @@ useEffect(() => {
     setShowCreateModal(true);
   };
 
+  // Función para abrir modal de vista
   const openViewModal = (incidencia: Incidencia) => {
     setSelectedIncidencia(incidencia);
     setShowViewModal(true);
   };
 
+  // Función para abrir modal de edición
   const openEditModal = (incidencia: Incidencia) => {
     if (!canEdit) {
       setError('No tienes permisos para editar incidencias');
@@ -558,6 +639,7 @@ useEffect(() => {
     setShowEditModal(true);
   };
 
+  // Función para abrir modal de eliminación
   const openDeleteModal = (incidencia: Incidencia) => {
     if (!canDelete) {
       setError('Solo administradores pueden eliminar incidencias');
@@ -568,6 +650,7 @@ useEffect(() => {
     setShowDeleteModal(true);
   };
 
+  // Función para abrir modal de edición de tipo
   const openEditTipoModal = (tipo: TipoIncidencia) => {
     if (!canManageTipos) {
       setError('Solo administradores pueden editar tipos de incidencia');
@@ -582,38 +665,8 @@ useEffect(() => {
     setShowEditTipoModal(true);
   };
 
-  const getEstadoBadge = (estado: string | undefined) => {
-    // Verificar si estado es undefined o null
-    if (!estado) {
-      return (
-        <Badge bg="light" className="text-dark">
-          Sin Estado
-        </Badge>
-      );
-    }
-    
-    const estadoLower = estado.toLowerCase();
-    const estados: Record<string, { color: string, text: string }> = {
-      activa: { color: 'success', text: 'Activa' },
-      pendiente: { color: 'warning', text: 'Pendiente' },
-      resuelta: { color: 'info', text: 'Resuelta' },
-      cerrada: { color: 'secondary', text: 'Cerrada' }
-    };
-    
-    const estadoInfo = estados[estadoLower] || { color: 'light', text: estado };
-    
-    return (
-      <Badge bg={estadoInfo.color} className="text-dark">
-        {estadoInfo.text}
-      </Badge>
-    );
-  };
-
-  const getActivoBadge = (activo: boolean | undefined) => {
-    if (activo === undefined || activo === null) {
-      return <Badge bg="secondary">No definido</Badge>;
-    }
-    
+  // Función para obtener badge de activo/inactivo
+  const getActivoBadge = (activo: boolean) => {
     return activo ? (
       <Badge bg="success">Activo</Badge>
     ) : (
@@ -621,12 +674,12 @@ useEffect(() => {
     );
   };
 
+  // Función para formatear fecha
   const formatFecha = (fecha: string | undefined) => {
     if (!fecha) return 'Fecha no disponible';
     
     try {
       const date = new Date(fecha);
-      // Verificar si la fecha es válida
       if (isNaN(date.getTime())) {
         return 'Fecha inválida';
       }
@@ -637,11 +690,12 @@ useEffect(() => {
         day: 'numeric'
       });
     } catch (error) {
-      console.error('Error formateando fecha:', error, fecha);
+      console.error('Error formateando fecha:', error);
       return 'Error en fecha';
     }
   };
 
+  // Función para renderizar acciones de incidencia
   const renderAccionesIncidencia = (incidencia: Incidencia) => {
     return (
       <ButtonGroup size="sm">
@@ -675,17 +729,18 @@ useEffect(() => {
         
         {canChangeStatus && (
           <Button
-            variant={incidencia.Activo ? "outline-danger" : "outline-success"}
+            variant={incidencia.activo ? "outline-danger" : "outline-success"}
             onClick={() => handleToggleStatusIncidencia(incidencia)}
-            title={incidencia.Activo ? "Desactivar" : "Activar"}
+            title={incidencia.activo ? "Desactivar" : "Activar"}
           >
-            <FontAwesomeIcon icon={incidencia.Activo ? faTimesCircle : faCheckCircle} />
+            <FontAwesomeIcon icon={incidencia.activo ? faTimesCircle : faCheckCircle} />
           </Button>
         )}
       </ButtonGroup>
     );
   };
 
+  // Función para renderizar acciones de tipo
   const renderAccionesTipo = (tipo: TipoIncidencia) => {
     return (
       <ButtonGroup size="sm">
@@ -693,6 +748,7 @@ useEffect(() => {
           variant="outline-primary"
           onClick={() => {
             setSelectedTipo(tipo);
+            setShowViewModal(true);
           }}
           title="Ver detalles"
         >
@@ -722,7 +778,7 @@ useEffect(() => {
     );
   };
 
-  // Agrega un loader inicial para evitar el parpadeo
+  // Verificación de usuario
   if (!user) {
     return (
       <Container fluid className="py-4">
@@ -734,7 +790,7 @@ useEffect(() => {
     );
   }
 
-  // Si no tiene permisos para ver incidencias
+  // Verificación de permisos
   if (!canViewAll && !isEmployee) {
     return (
       <Container fluid className="py-4">
@@ -783,7 +839,11 @@ useEffect(() => {
             <div className="d-flex gap-2">
               <Button variant="outline-primary" onClick={() => {
                 if (activeTab === 'incidencias') {
-                  loadIncidencias();
+                  if (canViewAll) {
+                    loadIncidencias();
+                  } else {
+                    loadMisIncidencias();
+                  }
                 } else {
                   loadTiposIncidencia();
                 }
@@ -834,7 +894,7 @@ useEffect(() => {
           setSearchTerm('');
           setFilterEmpleado('');
           setFilterTipo('');
-          setFilterEstado('');
+          setFilterActivo('');
           setFilterFechaDesde('');
           setFilterFechaHasta('');
         }}
@@ -887,7 +947,7 @@ useEffect(() => {
                         onChange={(e) => setFilterTipo(e.target.value)}
                       >
                         <option value="">Todos los tipos</option>
-                        {tiposIncidencia.filter(t => t.Activo).map((tipo) => (
+                        {tiposIncidencia.filter(t => t.Activo === 1).map((tipo) => (
                           <option key={tipo.ID} value={tipo.ID}>
                             {tipo.Nombre}
                           </option>
@@ -900,14 +960,12 @@ useEffect(() => {
                     <Form.Group>
                       <Form.Label>Estado</Form.Label>
                       <Form.Select
-                        value={filterEstado}
-                        onChange={(e) => setFilterEstado(e.target.value)}
+                        value={filterActivo}
+                        onChange={(e) => setFilterActivo(e.target.value)}
                       >
-                        <option value="">Todos los estados</option>
-                        <option value="activa">Activa</option>
-                        <option value="pendiente">Pendiente</option>
-                        <option value="resuelta">Resuelta</option>
-                        <option value="cerrada">Cerrada</option>
+                        <option value="">Todos</option>
+                        <option value="activo">Activo</option>
+                        <option value="inactivo">Inactivo</option>
                       </Form.Select>
                     </Form.Group>
                   </Col>
@@ -959,7 +1017,7 @@ useEffect(() => {
                       onClick={() => {
                         setFilterEmpleado('');
                         setFilterTipo('');
-                        setFilterEstado('');
+                        setFilterActivo('');
                         setFilterFechaDesde('');
                         setFilterFechaHasta('');
                         setSearchTerm('');
@@ -989,35 +1047,33 @@ useEffect(() => {
               </Card>
             </Col>
             <Col md={3}>
-              <Card className="text-center shadow-sm border-danger">
+              <Card className="text-center shadow-sm border-success">
                 <Card.Body>
-                  <FontAwesomeIcon icon={faExclamationTriangle} size="2x" className="text-danger mb-2" />
-                  <h3>{isEmployee 
-                    ? misIncidencias.filter(i => i.Estado === 'activa').length
-                    : incidencias.filter(i => i.Estado === 'activa').length}</h3>
+                  <FontAwesomeIcon icon={faCheckCircle} size="2x" className="text-success mb-2" />
+                  <h3>{
+                    (isEmployee ? misIncidencias : incidencias).filter(i => i.activo).length
+                  }</h3>
                   <small className="text-muted">Activas</small>
                 </Card.Body>
               </Card>
             </Col>
             <Col md={3}>
-              <Card className="text-center shadow-sm border-warning">
+              <Card className="text-center shadow-sm border-secondary">
                 <Card.Body>
-                  <FontAwesomeIcon icon={faClock} size="2x" className="text-warning mb-2" />
-                  <h3>{isEmployee 
-                    ? misIncidencias.filter(i => i.Estado === 'pendiente').length
-                    : incidencias.filter(i => i.Estado === 'pendiente').length}</h3>
-                  <small className="text-muted">Pendientes</small>
+                  <FontAwesomeIcon icon={faTimesCircle} size="2x" className="text-secondary mb-2" />
+                  <h3>{
+                    (isEmployee ? misIncidencias : incidencias).filter(i => !i.activo).length
+                  }</h3>
+                  <small className="text-muted">Inactivas</small>
                 </Card.Body>
               </Card>
             </Col>
             <Col md={3}>
-              <Card className="text-center shadow-sm border-success">
+              <Card className="text-center shadow-sm border-info">
                 <Card.Body>
-                  <FontAwesomeIcon icon={faCheckCircle} size="2x" className="text-success mb-2" />
-                  <h3>{isEmployee 
-                    ? misIncidencias.filter(i => i.Estado === 'resuelta').length
-                    : incidencias.filter(i => i.Estado === 'resuelta').length}</h3>
-                  <small className="text-muted">Resueltas</small>
+                  <FontAwesomeIcon icon={faUser} size="2x" className="text-info mb-2" />
+                  <h3>{empleadosSupervisados.length}</h3>
+                  <small className="text-muted">Empleados</small>
                 </Card.Body>
               </Card>
             </Col>
@@ -1036,7 +1092,7 @@ useEffect(() => {
                   <FontAwesomeIcon icon={faFileAlt} size="3x" className="text-muted mb-3" />
                   <h5>No hay incidencias registradas</h5>
                   <p className="text-muted mb-4">
-                    {searchTerm || filterEmpleado || filterTipo || filterEstado || filterFechaDesde || filterFechaHasta
+                    {searchTerm || filterEmpleado || filterTipo || filterActivo || filterFechaDesde || filterFechaHasta
                       ? 'Intenta con otros filtros de búsqueda'
                       : canCreate 
                         ? 'Comienza registrando una nueva incidencia' 
@@ -1055,7 +1111,7 @@ useEffect(() => {
                     <Table hover className="mb-0">
                       <thead className="bg-light">
                         <tr>
-                          <th>Incidencias</th>
+                          <th>Incidencia</th>
                           <th>Empleado</th>
                           <th>Tipo</th>
                           <th>Fecha</th>
@@ -1066,7 +1122,6 @@ useEffect(() => {
                       </thead>
                       <tbody>
                         {(isEmployee ? misIncidencias : incidencias).map((incidencia) => {
-                          // Validar que incidencia no sea undefined
                           if (!incidencia) return null;
                           
                           return (
@@ -1080,8 +1135,8 @@ useEffect(() => {
                                   {incidencia.Observaciones && (
                                     <small className="text-muted">
                                       <FontAwesomeIcon icon={faStickyNote} className="me-1" />
-                                      {incidencia.Observaciones.substring(0, 30)}
-                                      {incidencia.Observaciones.length > 30 ? '...' : ''}
+                                      {(incidencia.Observaciones || '').substring(0, 30)}
+                                      {(incidencia.Observaciones || '').length > 30 ? '...' : ''}
                                     </small>
                                   )}
                                 </div>
@@ -1113,16 +1168,13 @@ useEffect(() => {
                                 </div>
                               </td>
                               <td>
-                                <div className="d-flex flex-column">
-                                  {getEstadoBadge(incidencia.Estado)}
-                                  {getActivoBadge(incidencia.Activo)}
-                                </div>
+                                {getActivoBadge(incidencia.activo)}
                               </td>
                               {canViewAll && (
                                 <td>
                                   <div className="d-flex align-items-center">
                                     <FontAwesomeIcon icon={faUserShield} className="text-muted me-2" size="sm" />
-                                    <small>{incidencia.CreadorNombre}</small>
+                                    <small>{incidencia.CreadorEmail}</small>
                                   </div>
                                 </td>
                               )}
@@ -1153,7 +1205,7 @@ useEffect(() => {
                         
                         {[...Array(Math.min(5, totalPages))].map((_, idx) => {
                           const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + idx;
-                          if (page <= totalPages) {
+                          if (page <= totalPages && page >= 1) {
                             return (
                               <Pagination.Item
                                 key={page}
@@ -1185,7 +1237,7 @@ useEffect(() => {
         </Tab>
         
         {/* Tab de Tipos de Incidencia (solo admin/manager) */}
-        {(canViewTipos) && (
+        {canViewTipos && (
           <Tab 
             eventKey="tipos" 
             title={
@@ -1250,7 +1302,13 @@ useEffect(() => {
                                   {tipo.Descripcion || 'Sin descripción'}
                                 </div>
                               </td>
-                              <td>{getActivoBadge(tipo.Activo)}</td>
+                              <td>
+                                {tipo.Activo === 1 ? (
+                                  <Badge bg="success">Activo</Badge>
+                                ) : (
+                                  <Badge bg="secondary">Inactivo</Badge>
+                                )}
+                              </td>
                               {canManageTipos && (
                                 <td className="text-end">
                                   {renderAccionesTipo(tipo)}
@@ -1270,11 +1328,11 @@ useEffect(() => {
                       <FontAwesomeIcon icon={faInfoCircle} className="me-1" />
                       {isAdmin 
                         ? 'Administrador - Puede crear, editar y cambiar estado de tipos'
-                        : 'Manager - Solo puede ver tipos activos'}
+                        : 'Manager - Solo puede ver tipos'}
                     </small>
                     <small className="text-muted">
                       <FontAwesomeIcon icon={faFileAlt} className="me-1" />
-                      {tiposIncidencia.filter(t => t.Activo).length} activos de {tiposIncidencia.length} total
+                      {tiposIncidencia.filter(t => t.Activo === 1).length} activos de {tiposIncidencia.length} total
                     </small>
                   </div>
                 </Card.Footer>
@@ -1327,7 +1385,7 @@ useEffect(() => {
                 required
               >
                 <option value="">Selecciona un tipo</option>
-                {tiposIncidencia.filter(t => t.Activo).map((tipo) => (
+                {tiposIncidencia.filter(t => t.Activo === 1).map((tipo) => (
                   <option key={tipo.ID} value={tipo.ID}>
                     {tipo.Nombre}
                   </option>
@@ -1426,9 +1484,7 @@ useEffect(() => {
                 </div>
                 <h4>Incidencia #{selectedIncidencia.ID}</h4>
                 <div className="mb-3">
-                  {getEstadoBadge(selectedIncidencia.Estado)}
-                  {' '}
-                  {getActivoBadge(selectedIncidencia.Activo)}
+                  {getActivoBadge(selectedIncidencia.activo)}
                 </div>
               </div>
 
@@ -1469,13 +1525,25 @@ useEffect(() => {
                 
                 <ListGroup.Item className="d-flex justify-content-between align-items-center">
                   <span><strong>Registrada por:</strong></span>
-                  <span>{selectedIncidencia.CreadorNombre}</span>
+                  <span>{selectedIncidencia.CreadorEmail}</span>
                 </ListGroup.Item>
                 
                 <ListGroup.Item className="d-flex justify-content-between align-items-center">
                   <span><strong>Fecha de registro:</strong></span>
                   <span>{formatFecha(selectedIncidencia.FechaCreacion)}</span>
                 </ListGroup.Item>
+
+                {selectedIncidencia.EstadoSolicitud && (
+                  <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                    <span><strong>Estado de solicitud:</strong></span>
+                    <Badge bg={
+                      selectedIncidencia.EstadoSolicitud === 'aprobada' ? 'success' :
+                      selectedIncidencia.EstadoSolicitud === 'pendiente' ? 'warning' : 'secondary'
+                    }>
+                      {selectedIncidencia.EstadoSolicitud}
+                    </Badge>
+                  </ListGroup.Item>
+                )}
               </ListGroup>
             </div>
           )}
@@ -1521,7 +1589,7 @@ useEffect(() => {
               <Alert variant="info" className="mb-4">
                 <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
                 <strong>Nota:</strong> Solo puedes editar ciertos campos de la incidencia.
-                Para cambiar el empleado o reactivar/desactivar, usa las opciones correspondientes.
+                Para cambiar el empleado o activar/desactivar, usa las opciones correspondientes.
               </Alert>
 
               <Form.Group className="mb-3">
@@ -1530,7 +1598,7 @@ useEffect(() => {
                   value={editData.tipoIncidenciaId || selectedIncidencia.TipoIncidenciaID}
                   onChange={(e) => setEditData({...editData, tipoIncidenciaId: parseInt(e.target.value)})}
                 >
-                  {tiposIncidencia.filter(t => t.Activo).map((tipo) => (
+                  {tiposIncidencia.filter(t => t.Activo === 1).map((tipo) => (
                     <option key={tipo.ID} value={tipo.ID}>
                       {tipo.Nombre}
                     </option>
@@ -1554,7 +1622,7 @@ useEffect(() => {
                     <Form.Label>Fecha de la Incidencia</Form.Label>
                     <Form.Control
                       type="date"
-                      value={editData.fechaIncidencia || selectedIncidencia.FechaIncidencia}
+                      value={editData.fechaIncidencia || selectedIncidencia.FechaIncidencia.split('T')[0]}
                       onChange={(e) => setEditData({...editData, fechaIncidencia: e.target.value})}
                     />
                   </Form.Group>

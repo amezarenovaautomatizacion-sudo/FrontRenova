@@ -161,15 +161,6 @@ const Layout: React.FC = () => {
             style={{ width: '20px', textAlign: 'center' }}
           />
           <span className="flex-grow-1">{item.title}</span>
-          {item.badge && (
-            <Badge 
-              bg={isItemActive ? 'light' : 'primary'} 
-              className={`ms-2 rounded-pill ${isItemActive ? 'text-primary' : 'text-white'}`}
-              style={{ fontSize: '0.7rem' }}
-            >
-              {item.badge}
-            </Badge>
-          )}
         </Nav.Link>
       </Nav.Item>
     );
