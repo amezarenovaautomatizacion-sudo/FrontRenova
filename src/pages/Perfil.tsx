@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { empleadoService } from '../services/empleadoService';
+import { authService } from '../services/authService';
 import {
   Container,
   Row,
@@ -84,7 +84,7 @@ interface Jefe {
 interface ReauthModalProps {
   show: boolean;
   usuario: string;
-  onSuccess: () => void;
+  onSuccess: (contrasenia: string) => void;
   onCancel: () => void;
   title?: string;
   message?: string;
@@ -98,7 +98,6 @@ const ReauthModal: React.FC<ReauthModalProps> = ({
   title = 'Reautenticación Requerida',
   message = 'Por seguridad, necesitas verificar tu identidad para completar esta acción.'
 }) => {
-  const { login } = useAuth();
   const [contrasenia, setContrasenia] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -124,9 +123,7 @@ const ReauthModal: React.FC<ReauthModalProps> = ({
     try {
       setLoading(true);
       setError('');
-      
-      await login(usuario, contrasenia);
-      onSuccess();
+      onSuccess(contrasenia);
     } catch (err: any) {
       setError(err.message || 'Error en la autenticación');
     } finally {
@@ -312,6 +309,7 @@ const Perfil: React.FC = () => {
         return;
       }
       
+      // Cerrar el modal de cambio de contraseña y abrir el de reautenticación
       setShowPasswordModal(false);
       setShowReauthModal(true);
       
@@ -321,23 +319,34 @@ const Perfil: React.FC = () => {
     }
   };
 
-  const handleReauthSuccess = async () => {
-    setShowReauthModal(false);
-    await handlePasswordChangeAfterReauth();
+  const handleReauthSuccess = async (contraseniaConfirmada: string) => {
+    try {
+      // Actualizar passwordData.contraseniaActual con la contraseña confirmada
+      const datosActualizados = {
+        ...passwordData,
+        contraseniaActual: contraseniaConfirmada
+      };
+      
+      setShowReauthModal(false);
+      await handlePasswordChangeAfterReauth(datosActualizados);
+    } catch (error) {
+      console.error('Error en reautenticación:', error);
+      setError('Error en la verificación de identidad');
+    }
   };
 
-  const handlePasswordChangeAfterReauth = async () => {
+  const handlePasswordChangeAfterReauth = async (datos: typeof passwordData) => {
     try {
       if (!empleado) return;
       
       setLoading(true);
       setError('');
       
-      // Llamar a la API para cambiar contraseña
-      const response = await empleadoService.cambiarContrasenia(
-        empleado.ID, 
-        passwordData
-      );
+      // Llamar al servicio de autenticación para cambiar contraseña propia
+      const response = await authService.changeOwnPassword({
+        contraseniaActual: datos.contraseniaActual,
+        nuevaContrasenia: datos.nuevaContrasenia
+      });
       
       if (response.success) {
         setSuccess('Contraseña cambiada exitosamente');
@@ -359,6 +368,7 @@ const Perfil: React.FC = () => {
         setError(response.message || 'Error al cambiar la contraseña');
       }
     } catch (err: unknown) {
+      console.error('Error en cambio de contraseña:', err);
       const errorMessage = err instanceof Error ? err.message : 'Error al cambiar la contraseña';
       setError(errorMessage);
     } finally {
