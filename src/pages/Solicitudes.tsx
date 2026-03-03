@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Container,
@@ -72,6 +72,9 @@ import {
   faIdCard
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../services/api';
+import $ from 'jquery';
+import 'datatables.net-bs5';
+import 'datatables.net-responsive-bs5';
 
 // Interfaces actualizadas basadas en la API real
 interface Solicitud {
@@ -154,6 +157,9 @@ interface ReporteHorasExtras {
   Estado: string;
   Motivo: string;
   CreadoPor: string;
+  CorreoElectronico?: string;
+  PuestoNombre?: string;
+  DepartamentoNombre?: string;
 }
 
 interface DetalleSolicitudResponse {
@@ -177,8 +183,137 @@ interface DetalleAprobacion extends AprobacionPendiente {
   Puesto?: string;
 }
 
+// Funciones de utilidad para días hábiles
+const esFinDeSemana = (fecha: string): boolean => {
+  const date = new Date(fecha);
+  const diaSemana = date.getDay();
+  return diaSemana === 0 || diaSemana === 6; // 0 = domingo, 6 = sábado
+};
+
+const obtenerDiaHabilSiguiente = (fecha: Date): Date => {
+  const siguiente = new Date(fecha);
+  siguiente.setDate(siguiente.getDate() + 1);
+  
+  while (esFinDeSemana(siguiente.toISOString().split('T')[0])) {
+    siguiente.setDate(siguiente.getDate() + 1);
+  }
+  
+  return siguiente;
+};
+
+const obtenerDiaHabilAnterior = (fecha: Date): Date => {
+  const anterior = new Date(fecha);
+  anterior.setDate(anterior.getDate() - 1);
+  
+  while (esFinDeSemana(anterior.toISOString().split('T')[0])) {
+    anterior.setDate(anterior.getDate() - 1);
+  }
+  
+  return anterior;
+};
+
+const obtenerProximoDiaHabil = (fecha: string | Date): string => {
+  const date = typeof fecha === 'string' ? new Date(fecha) : fecha;
+  const diaHabil = obtenerDiaHabilSiguiente(date);
+  return diaHabil.toISOString().split('T')[0];
+};
+
+const obtenerDiaHabilMasCercano = (fecha: string | Date): string => {
+  const date = typeof fecha === 'string' ? new Date(fecha) : fecha;
+  
+  // Si ya es día hábil, devolver la misma fecha
+  if (!esFinDeSemana(date.toISOString().split('T')[0])) {
+    return date.toISOString().split('T')[0];
+  }
+  
+  // Si es fin de semana, obtener el próximo lunes
+  const diaSemana = date.getDay();
+  let diasASumar = 1;
+  
+  if (diaSemana === 0) { // Domingo
+    diasASumar = 1;
+  } else if (diaSemana === 6) { // Sábado
+    diasASumar = 2;
+  }
+  
+  const proximoLunes = new Date(date);
+  proximoLunes.setDate(date.getDate() + diasASumar);
+  
+  return proximoLunes.toISOString().split('T')[0];
+};
+
+const validarYCorregirFechasVacaciones = (
+  fechaInicio: string, 
+  fechaFin: string
+): { fechaInicio: string; fechaFin: string } => {
+  let inicio = new Date(fechaInicio);
+  let fin = new Date(fechaFin);
+  
+  // Si la fecha fin es anterior a la fecha inicio, intercambiarlas
+  if (fin < inicio) {
+    [inicio, fin] = [fin, inicio];
+  }
+  
+  // Asegurar que ambas fechas sean días hábiles
+  if (esFinDeSemana(inicio.toISOString().split('T')[0])) {
+    inicio = new Date(obtenerDiaHabilMasCercano(inicio));
+  }
+  
+  if (esFinDeSemana(fin.toISOString().split('T')[0])) {
+    fin = new Date(obtenerDiaHabilMasCercano(fin));
+  }
+  
+  // Si después de corregir, fin es menor que inicio, ajustar fin
+  if (fin < inicio) {
+    fin = new Date(inicio);
+    fin.setDate(fin.getDate() + 1);
+    while (esFinDeSemana(fin.toISOString().split('T')[0])) {
+      fin.setDate(fin.getDate() + 1);
+    }
+  }
+  
+  return {
+    fechaInicio: inicio.toISOString().split('T')[0],
+    fechaFin: fin.toISOString().split('T')[0]
+  };
+};
+
+const calcularDiasHabiles = (fechaInicio: string, fechaFin: string): number => {
+  const inicio = new Date(fechaInicio);
+  const fin = new Date(fechaFin);
+  let diasHabiles = 0;
+  const currentDate = new Date(inicio);
+  
+  while (currentDate <= fin) {
+    const diaSemana = currentDate.getDay();
+    if (diaSemana !== 0 && diaSemana !== 6) {
+      diasHabiles++;
+    }
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  
+  return diasHabiles;
+};
+
+const obtenerSiguienteDiaHabil = (fecha: Date): Date => {
+  const siguiente = new Date(fecha);
+  siguiente.setDate(siguiente.getDate() + 1);
+  
+  while (esFinDeSemana(siguiente.toISOString().split('T')[0])) {
+    siguiente.setDate(siguiente.getDate() + 1);
+  }
+  
+  return siguiente;
+};
+
 const Solicitudes: React.FC = () => {
   const { user, logout } = useAuth();
+  
+  // Refs para DataTables
+  const misSolicitudesTableRef = useRef<HTMLTableElement>(null);
+  const pendientesTableRef = useRef<HTMLTableElement>(null);
+  const aprobadasTableRef = useRef<HTMLTableElement>(null);
+  const horasExtrasTableRef = useRef<HTMLTableElement>(null);
   
   const getUserRol = () => {
     if (!user) return null;
@@ -204,13 +339,13 @@ const Solicitudes: React.FC = () => {
   const [success, setSuccess] = useState('');
   const [activeTab, setActiveTab] = useState('mis-solicitudes');
   
-// Estados para listados
-const [misSolicitudes, setMisSolicitudes] = useState<Solicitud[]>([]);
-const [solicitudesPendientes, setSolicitudesPendientes] = useState<AprobacionPendiente[]>([]);
-const [solicitudesAprobadas, setSolicitudesAprobadas] = useState<Solicitud[]>([]);
-const [reporteHorasExtras, setReporteHorasExtras] = useState<ReporteHorasExtras[]>([]);
-const [empleadosSelect, setEmpleadosSelect] = useState<any[]>([]);
-const [pendientesCount, setPendientesCount] = useState<number>(0); // <-- AGREGAR ESTA LÍNEA
+  // Estados para listados
+  const [misSolicitudes, setMisSolicitudes] = useState<Solicitud[]>([]);
+  const [solicitudesPendientes, setSolicitudesPendientes] = useState<AprobacionPendiente[]>([]);
+  const [solicitudesAprobadas, setSolicitudesAprobadas] = useState<Solicitud[]>([]);
+  const [reporteHorasExtras, setReporteHorasExtras] = useState<ReporteHorasExtras[]>([]);
+  const [empleadosSelect, setEmpleadosSelect] = useState<any[]>([]);
+  const [pendientesCount, setPendientesCount] = useState<number>(0);
   
   // Estados para formularios
   const [showVacacionesModal, setShowVacacionesModal] = useState(false);
@@ -273,7 +408,7 @@ const [pendientesCount, setPendientesCount] = useState<number>(0); // <-- AGREGA
     if (canViewAll) {
       loadEmpleadosSelect();
     }
-     if (canApprove) {
+    if (canApprove) {
       loadPendientesCount();
     }
   }, []);
@@ -281,39 +416,89 @@ const [pendientesCount, setPendientesCount] = useState<number>(0); // <-- AGREGA
   useEffect(() => {
     loadTabData();
   }, [activeTab, filterEstado, filterTipo, filterFechaDesde, filterFechaHasta]);
-  
 
-useEffect(() => {
-  if (!canApprove) return;
-  
-  // Actualizar cada 30 segundos
-  const interval = setInterval(() => {
-    loadPendientesCount();
-  }, 30000);
-  return () => clearInterval(interval);
-}, [canApprove]);
+  useEffect(() => {
+    if (!canApprove) return;
+    
+    // Actualizar cada 30 segundos
+    const interval = setInterval(() => {
+      loadPendientesCount();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [canApprove]);
 
-const loadTabData = () => {
-  switch (activeTab) {
-    case 'mis-solicitudes':
-      loadMisSolicitudes();
-      break;
-    case 'pendientes':
-      if (canApprove) loadSolicitudesPendientes();
-      break;
-    case 'aprobadas':
-      if (canViewAll) loadSolicitudesAprobadas();
-      break;
-    case 'horas-extras':
-      if (canViewReports) loadReporteHorasExtras();
-      break;
-  }
-  
-  // Siempre actualizar el contador de pendientes cuando se cambia de pestaña
-  if (canApprove && activeTab !== 'pendientes') {
-    loadPendientesCount();
-  }
-};
+  // Efecto para inicializar DataTables cuando los datos cambian
+  useEffect(() => {
+    if (activeTab === 'mis-solicitudes' && misSolicitudes.length > 0) {
+      initializeDataTable(misSolicitudesTableRef, 'mis-solicitudes-table');
+    }
+  }, [misSolicitudes, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'pendientes' && solicitudesPendientes.length > 0) {
+      initializeDataTable(pendientesTableRef, 'pendientes-table');
+    }
+  }, [solicitudesPendientes, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'aprobadas' && solicitudesAprobadas.length > 0) {
+      initializeDataTable(aprobadasTableRef, 'aprobadas-table');
+    }
+  }, [solicitudesAprobadas, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'horas-extras' && reporteHorasExtras.length > 0) {
+      initializeDataTable(horasExtrasTableRef, 'horas-extras-table');
+    }
+  }, [reporteHorasExtras, activeTab]);
+
+  const initializeDataTable = (tableRef: React.RefObject<HTMLTableElement>, tableId: string) => {
+    if (tableRef.current) {
+      // Destruir DataTable existente si la hay
+      if ($.fn.DataTable.isDataTable(`#${tableId}`)) {
+        $(`#${tableId}`).DataTable().destroy();
+      }
+      
+      // Inicializar nueva DataTable
+      $(`#${tableId}`).DataTable({
+        responsive: true,
+        language: {
+          url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json',
+        },
+        pageLength: 10,
+        lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "Todos"]],
+        order: [[2, 'desc']], // Ordenar por fecha por defecto
+        columnDefs: [
+          { orderable: false, targets: -1 } // No ordenar última columna (acciones)
+        ],
+        dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>' +
+             '<"row"<"col-sm-12"tr>>' +
+             '<"row"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
+      });
+    }
+  };
+
+  const loadTabData = () => {
+    switch (activeTab) {
+      case 'mis-solicitudes':
+        loadMisSolicitudes();
+        break;
+      case 'pendientes':
+        if (canApprove) loadSolicitudesPendientes();
+        break;
+      case 'aprobadas':
+        if (canViewAll) loadSolicitudesAprobadas();
+        break;
+      case 'horas-extras':
+        if (canViewReports) loadReporteHorasExtras();
+        break;
+    }
+    
+    // Siempre actualizar el contador de pendientes cuando se cambia de pestaña
+    if (canApprove && activeTab !== 'pendientes') {
+      loadPendientesCount();
+    }
+  };
   
   const loadDerechosVacacionales = async () => {
     try {
@@ -322,7 +507,6 @@ const loadTabData = () => {
       
       if (response.data.success) {
         const data = response.data.data;
-        // Calcular días totales si no vienen
         const diasTotales = data.DiasTotales || (data.DiasDisponibles + data.DiasTomados);
         
         setDerechosVacacionales({
@@ -370,10 +554,8 @@ const loadTabData = () => {
       
       let response;
       if (filterEstado) {
-        // Usar endpoint de solicitudes por estado
         response = await api.get(`/solicitudes/estado/${filterEstado}`);
       } else {
-        // Usar endpoint de todas mis solicitudes
         response = await api.get('/solicitudes/mis-solicitudes');
       }
       
@@ -382,7 +564,6 @@ const loadTabData = () => {
       if (response.data.success) {
         let solicitudes = response.data.data || [];
         
-        // Filtrar por tipo si se especificó
         if (filterTipo) {
           solicitudes = solicitudes.filter((s: Solicitud) => s.Tipo === filterTipo);
         }
@@ -399,30 +580,30 @@ const loadTabData = () => {
     }
   };
   
-const loadSolicitudesPendientes = async () => {
-  if (!canApprove) return;
-  
-  try {
-    setLoading(true);
-    setError('');
+  const loadSolicitudesPendientes = async () => {
+    if (!canApprove) return;
     
-    const response = await api.get('/solicitudes/aprobaciones/pendientes');
-    console.log('Aprobaciones pendientes respuesta:', response.data);
-    
-    if (response.data.success) {
-      const data = response.data.data || [];
-      setSolicitudesPendientes(data);
-      setPendientesCount(data.length); // <-- ACTUALIZAR EL CONTADOR
-    } else {
-      setError(response.data.message || 'Error cargando aprobaciones pendientes');
+    try {
+      setLoading(true);
+      setError('');
+      
+      const response = await api.get('/solicitudes/aprobaciones/pendientes');
+      console.log('Aprobaciones pendientes respuesta:', response.data);
+      
+      if (response.data.success) {
+        const data = response.data.data || [];
+        setSolicitudesPendientes(data);
+        setPendientesCount(data.length);
+      } else {
+        setError(response.data.message || 'Error cargando aprobaciones pendientes');
+      }
+    } catch (error: any) {
+      console.error('Error en loadSolicitudesPendientes:', error);
+      setError(error.response?.data?.message || 'Error cargando aprobaciones pendientes');
+    } finally {
+      setLoading(false);
     }
-  } catch (error: any) {
-    console.error('Error en loadSolicitudesPendientes:', error);
-    setError(error.response?.data?.message || 'Error cargando aprobaciones pendientes');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
   
   const loadSolicitudesAprobadas = async () => {
     if (!canViewAll) return;
@@ -431,7 +612,6 @@ const loadSolicitudesPendientes = async () => {
       setLoading(true);
       setError('');
       
-      // Usar parámetros de filtro
       const params = new URLSearchParams();
       if (filterEstado) params.append('estado', filterEstado);
       if (filterTipo) params.append('tipo', filterTipo);
@@ -440,7 +620,6 @@ const loadSolicitudesPendientes = async () => {
       console.log('Solicitudes aprobadas respuesta:', response.data);
       
       if (response.data.success) {
-        // La respuesta puede venir como data.data.solicitudes o directamente como data.data
         const data = response.data.data;
         setSolicitudesAprobadas(data?.solicitudes || data || []);
       } else {
@@ -482,11 +661,10 @@ const loadSolicitudesPendientes = async () => {
     }
   };
 
-    const loadPendientesCount = async () => {
+  const loadPendientesCount = async () => {
     if (!canApprove) return;
     
     try {
-      // Usar el mismo endpoint que carga las pendientes pero solo para contar
       const response = await api.get('/solicitudes/aprobaciones/pendientes');
       if (response.data.success) {
         const count = response.data.data?.length || 0;
@@ -505,15 +683,12 @@ const loadSolicitudesPendientes = async () => {
       
       console.log('Cargando detalle de solicitud:', solicitudId);
       
-      // Primero, buscar en mis solicitudes para tener datos básicos
       let solicitudBasica = misSolicitudes.find(s => s.ID === solicitudId);
       
-      // Si no está en mis solicitudes y es admin/manager, buscar en aprobadas
       if (!solicitudBasica && canViewAll) {
         solicitudBasica = solicitudesAprobadas.find(s => s.ID === solicitudId);
       }
       
-      // Intentar cargar detalles completos desde el endpoint
       let detalleCompleto = null;
       try {
         const response = await api.get(`/solicitudes/detalle/${solicitudId}`);
@@ -526,7 +701,6 @@ const loadSolicitudesPendientes = async () => {
         console.warn('No se pudo cargar detalle completo, usando datos básicos:', detailError);
       }
       
-      // Combinar datos
       const solicitudCombinada: Solicitud = {
         ...(solicitudBasica || {}),
         ...(detalleCompleto?.solicitud || {}),
@@ -547,7 +721,6 @@ const loadSolicitudesPendientes = async () => {
       console.error('Error en loadDetalleSolicitud:', error);
       setError(error.response?.data?.message || 'Error cargando detalle de solicitud');
       
-      // Mostrar modal con datos mínimos
       const solicitudMinima: Solicitud = {
         ID: solicitudId,
         EmpleadoID: 0,
@@ -581,11 +754,23 @@ const loadSolicitudesPendientes = async () => {
         return;
       }
       
-      const diasSolicitados = Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      // Validar que la fecha de inicio no sea fin de semana
+      if (esFinDeSemana(vacacionesData.fechaInicio)) {
+        setError('Las vacaciones no pueden comenzar en fin de semana. Por favor selecciona un día hábil.');
+        return;
+      }
+      
+      // Calcular días hábiles
+      const diasHabiles = calcularDiasHabiles(vacacionesData.fechaInicio, vacacionesData.fechaFin);
+      
+      if (diasHabiles <= 0) {
+        setError('El período seleccionado no contiene días hábiles');
+        return;
+      }
       
       // Verificar que tenga días disponibles
-      if (derechosVacacionales && diasSolicitados > derechosVacacionales.DiasDisponibles) {
-        setError(`Solo tienes ${derechosVacacionales.DiasDisponibles} días disponibles. Estás solicitando ${diasSolicitados} días.`);
+      if (derechosVacacionales && diasHabiles > derechosVacacionales.DiasDisponibles) {
+        setError(`Solo tienes ${derechosVacacionales.DiasDisponibles} días disponibles. Estás solicitando ${diasHabiles} días hábiles.`);
         return;
       }
       
@@ -593,7 +778,7 @@ const loadSolicitudesPendientes = async () => {
         ...vacacionesData,
         fechaInicio: inicio.toISOString().split('T')[0],
         fechaFin: fin.toISOString().split('T')[0],
-        diasSolicitados: diasSolicitados
+        diasSolicitados: diasHabiles
       };
       
       console.log('Enviando solicitud de vacaciones:', solicitudData);
@@ -639,6 +824,12 @@ const loadSolicitudesPendientes = async () => {
         return;
       }
       
+      // Validar que no sea fin de semana
+      if (esFinDeSemana(permisoData.fechaInicio)) {
+        setError('Los permisos no pueden solicitarse en fin de semana. Por favor selecciona un día hábil.');
+        return;
+      }
+      
       // Validar 24 horas de anticipación
       const fechaSeleccionada = new Date(permisoData.fechaInicio);
       const ahora = new Date();
@@ -662,7 +853,7 @@ const loadSolicitudesPendientes = async () => {
         setSuccess('Solicitud de permiso enviada exitosamente');
         setShowPermisoModal(false);
         setPermisoData({
-          fechaInicio: new Date().toISOString().split('T')[0],
+          fechaInicio: obtenerSiguienteDiaHabil(new Date()).toISOString().split('T')[0],
           motivo: '',
           conGoce: true,
           observaciones: ''
@@ -691,6 +882,12 @@ const loadSolicitudesPendientes = async () => {
       if (!horasExtrasData.empleadoId || !horasExtrasData.fechaInicio || 
           !horasExtrasData.horasSolicitadas || !horasExtrasData.motivo) {
         setError('Todos los campos son requeridos');
+        return;
+      }
+      
+      // Validar que no sea fin de semana
+      if (esFinDeSemana(horasExtrasData.fechaInicio)) {
+        setError('Las horas extras no pueden solicitarse en fin de semana. Por favor selecciona un día hábil.');
         return;
       }
       
@@ -732,96 +929,94 @@ const loadSolicitudesPendientes = async () => {
     }
   };
   
-const handleProcesarAprobacion = async () => {
-  try {
-    setError('');
-    setSuccess('');
-    
-    if (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5) {
-      setError('Se requiere un comentario explicativo de al menos 5 caracteres');
-      return;
-    }
-    
-    console.log('Procesando aprobación:', aprobacionData);
-    
-    const estadoAPI = aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
-    
-    const response = await api.patch(
-      `/solicitudes/aprobaciones/${aprobacionData.aprobacionId}/procesar`,
-      { 
-        estado: estadoAPI, 
-        comentarios: aprobacionData.comentarios 
-      }
-    );
-    
-    console.log('Respuesta procesar aprobación:', response.data);
-    
-    if (response.data.success) {
-      setSuccess(`Aprobación ${aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'} exitosamente`);
-      setShowApproveModal(false);
-      setAprobacionData({
-        aprobacionId: 0,
-        estado: 'aprobada',
-        comentarios: ''
-      });
+  const handleProcesarAprobacion = async () => {
+    try {
+      setError('');
+      setSuccess('');
       
-      // Actualizar datos
-      await loadSolicitudesPendientes(); // Esto ya actualiza el contador
-      loadSolicitudesAprobadas();
-      loadPendientesCount(); // <-- ACTUALIZAR EXPLÍCITAMENTE EL CONTADOR
-    } else {
-      setError(response.data.message || 'Error procesando aprobación');
+      if (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5) {
+        setError('Se requiere un comentario explicativo de al menos 5 caracteres');
+        return;
+      }
+      
+      console.log('Procesando aprobación:', aprobacionData);
+      
+      const estadoAPI = aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
+      
+      const response = await api.patch(
+        `/solicitudes/aprobaciones/${aprobacionData.aprobacionId}/procesar`,
+        { 
+          estado: estadoAPI, 
+          comentarios: aprobacionData.comentarios 
+        }
+      );
+      
+      console.log('Respuesta procesar aprobación:', response.data);
+      
+      if (response.data.success) {
+        setSuccess(`Aprobación ${aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'} exitosamente`);
+        setShowApproveModal(false);
+        setAprobacionData({
+          aprobacionId: 0,
+          estado: 'aprobada',
+          comentarios: ''
+        });
+        
+        await loadSolicitudesPendientes();
+        loadSolicitudesAprobadas();
+        loadPendientesCount();
+      } else {
+        setError(response.data.message || 'Error procesando aprobación');
+      }
+    } catch (error: any) {
+      console.error('Error en handleProcesarAprobacion:', error);
+      setError(error.response?.data?.message || 'Error procesando aprobación');
     }
-  } catch (error: any) {
-    console.error('Error en handleProcesarAprobacion:', error);
-    setError(error.response?.data?.message || 'Error procesando aprobación');
-  }
-};
+  };
   
-const handleEditarAprobacion = async () => {
-  try {
-    setError('');
-    setSuccess('');
-    
-    if (!editAprobacionData.comentarios || editAprobacionData.comentarios.trim().length < 10) {
-      setError('Se requiere un comentario explicativo de al menos 10 caracteres');
-      return;
-    }
-    
-    console.log('Editando aprobación:', editAprobacionData);
-    
-    const estadoAPI = editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
-    
-    const response = await api.patch(
-      `/solicitudes/aprobaciones/${editAprobacionData.aprobacionId}/editar`,
-      { 
-        estado: estadoAPI, 
-        comentarios: editAprobacionData.comentarios 
-      }
-    );
-    
-    console.log('Respuesta editar aprobación:', response.data);
-    
-    if (response.data.success) {
-      setSuccess(`Aprobación actualizada a ${editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'}`);
-      setShowEditAprobacionModal(false);
-      setEditAprobacionData({
-        aprobacionId: 0,
-        estado: 'aprobada',
-        comentarios: ''
-      });
+  const handleEditarAprobacion = async () => {
+    try {
+      setError('');
+      setSuccess('');
       
-      // Actualizar datos
-      await loadSolicitudesPendientes(); // Esto ya actualiza el contador
-      loadPendientesCount(); // <-- ACTUALIZAR EXPLÍCITAMENTE EL CONTADOR
-    } else {
-      setError(response.data.message || 'Error editando aprobación');
+      if (!editAprobacionData.comentarios || editAprobacionData.comentarios.trim().length < 10) {
+        setError('Se requiere un comentario explicativo de al menos 10 caracteres');
+        return;
+      }
+      
+      console.log('Editando aprobación:', editAprobacionData);
+      
+      const estadoAPI = editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
+      
+      const response = await api.patch(
+        `/solicitudes/aprobaciones/${editAprobacionData.aprobacionId}/editar`,
+        { 
+          estado: estadoAPI, 
+          comentarios: editAprobacionData.comentarios 
+        }
+      );
+      
+      console.log('Respuesta editar aprobación:', response.data);
+      
+      if (response.data.success) {
+        setSuccess(`Aprobación actualizada a ${editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'}`);
+        setShowEditAprobacionModal(false);
+        setEditAprobacionData({
+          aprobacionId: 0,
+          estado: 'aprobada',
+          comentarios: ''
+        });
+        
+        await loadSolicitudesPendientes();
+        loadPendientesCount();
+      } else {
+        setError(response.data.message || 'Error editando aprobación');
+      }
+    } catch (error: any) {
+      console.error('Error en handleEditarAprobacion:', error);
+      setError(error.response?.data?.message || 'Error editando aprobación');
     }
-  } catch (error: any) {
-    console.error('Error en handleEditarAprobacion:', error);
-    setError(error.response?.data?.message || 'Error editando aprobación');
-  }
-};
+  };
   
   const handleCancelarSolicitud = async (solicitudId: number) => {
     if (!window.confirm('¿Estás seguro de cancelar esta solicitud?')) {
@@ -852,7 +1047,6 @@ const handleEditarAprobacion = async () => {
   
   const openApproveModal = async (aprobacion: AprobacionPendiente) => {
     try {
-      // Cargar detalles adicionales de la solicitud
       let detallesCompletos: Partial<DetalleAprobacion> = {};
       
       try {
@@ -870,7 +1064,6 @@ const handleEditarAprobacion = async () => {
         console.warn('No se pudieron cargar detalles adicionales:', error);
       }
       
-      // Combinar datos
       const aprobacionCompleta: DetalleAprobacion = {
         ...aprobacion,
         ...detallesCompletos
@@ -885,7 +1078,6 @@ const handleEditarAprobacion = async () => {
       setShowApproveModal(true);
     } catch (error) {
       console.error('Error cargando detalles de aprobación:', error);
-      // Si falla, usar los datos que ya tenemos
       setSelectedAprobacion(aprobacion);
       setAprobacionData({
         aprobacionId: aprobacion.AprobacionID,
@@ -908,13 +1100,10 @@ const handleEditarAprobacion = async () => {
   
   const getEstadoBadge = (estado: string) => {
     const estados: Record<string, { bg: string, text: string, icon: any }> = {
-      // Estados para SOLICITUDES
       pendiente: { bg: 'warning', text: 'Pendiente', icon: faHourglassHalf },
       aprobada: { bg: 'success', text: 'Aprobada', icon: faCheckCircle },
       rechazada: { bg: 'danger', text: 'Rechazada', icon: faTimesCircle },
       cancelada: { bg: 'secondary', text: 'Cancelada', icon: faBan },
-      
-      // Estados para APROBACIONES (valores que vienen del trigger)
       aprobado: { bg: 'success', text: 'Aprobado', icon: faCheckCircle },
       rechazado: { bg: 'danger', text: 'Rechazado', icon: faTimesCircle }
     };
@@ -978,7 +1167,6 @@ const handleEditarAprobacion = async () => {
     }
   };
   
-  // Función para formatear el detalle de la solicitud según el tipo
   const getDetalleSolicitud = (aprobacion: DetalleAprobacion) => {
     if (aprobacion.Tipo === 'vacaciones') {
       const dias = aprobacion.DiasSolicitados || 0;
@@ -995,7 +1183,7 @@ const handleEditarAprobacion = async () => {
             <Col xs={7}><strong>{fechaInicio} → {fechaFin}</strong></Col>
           </Row>
           <Row className="mb-2">
-            <Col xs={5} className="text-muted">Días solicitados:</Col>
+            <Col xs={5} className="text-muted">Días hábiles solicitados:</Col>
             <Col xs={7}>
               <Badge bg="primary" className="fs-6">{dias} {dias === 1 ? 'día' : 'días'}</Badge>
             </Col>
@@ -1053,7 +1241,6 @@ const handleEditarAprobacion = async () => {
     return null;
   };
   
-  // Calcular estadísticas
   const estadisticasVacaciones = derechosVacacionales ? {
     total: derechosVacacionales.DiasTotales,
     tomados: derechosVacacionales.DiasTomados,
@@ -1064,162 +1251,312 @@ const handleEditarAprobacion = async () => {
       : 0
   } : null;
   
-  // Calcular días solicitados en formulario
   const calcularDiasSolicitados = () => {
     if (!vacacionesData.fechaInicio || !vacacionesData.fechaFin) return 0;
-    
-    const inicio = new Date(vacacionesData.fechaInicio);
-    const fin = new Date(vacacionesData.fechaFin);
-    
-    if (inicio > fin) return 0;
-    
-    return Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    return calcularDiasHabiles(vacacionesData.fechaInicio, vacacionesData.fechaFin);
   };
   
-  // Calcular fecha mínima para permisos (24 horas después)
   const calcularFechaMinimaPermiso = () => {
     const ahora = new Date();
     const fechaMinima = new Date(ahora.getTime() + 24 * 60 * 60 * 1000);
+    
+    while (esFinDeSemana(fechaMinima.toISOString().split('T')[0])) {
+      fechaMinima.setDate(fechaMinima.getDate() + 1);
+    }
+    
     return fechaMinima.toISOString().split('T')[0];
   };
-  
-  // Renderizar botones de acción
-const renderActionButtons = () => {
-  const sinDiasVacaciones = derechosVacacionales?.DiasDisponibles <= 0;
-  
-  return (
-    <ButtonGroup>
-      {canCreateVacaciones && (
-        <Button 
-          variant="primary" 
-          onClick={() => setShowVacacionesModal(true)}
-          disabled={sinDiasVacaciones}
-          title={sinDiasVacaciones ? "No tienes días de vacaciones disponibles" : "Solicitar vacaciones"}
-        >
-          <FontAwesomeIcon icon={faCalendarDay} className="me-2" />
-          Vacaciones
-          {sinDiasVacaciones && (
-            <Badge bg="danger" className="ms-2">
-              <FontAwesomeIcon icon={faExclamationTriangle} size="sm" />
-            </Badge>
-          )}
-        </Button>
-      )}
+
+  // Función mejorada para manejar cambio en fecha inicio de vacaciones
+  const handleFechaInicioVacacionesChange = (fecha: string) => {
+    // Si la fecha está vacía, simplemente actualizar
+    if (!fecha) {
+      setVacacionesData(prev => ({
+        ...prev,
+        fechaInicio: fecha
+      }));
+      return;
+    }
+
+    // Corregir a día hábil si es necesario
+    const fechaCorregida = obtenerDiaHabilMasCercano(fecha);
+    
+    setVacacionesData(prev => {
+      let newData = {
+        ...prev,
+        fechaInicio: fechaCorregida
+      };
       
-      {canCreatePermiso && (
-        <Button variant="info" onClick={() => setShowPermisoModal(true)}>
-          <FontAwesomeIcon icon={faCalendarCheck} className="me-2" />
-          Permiso
-        </Button>
-      )}
+      // Si ya hay fecha fin, validar y corregir ambas fechas
+      if (prev.fechaFin) {
+        const fechasCorregidas = validarYCorregirFechasVacaciones(
+          fechaCorregida, 
+          prev.fechaFin
+        );
+        newData = {
+          ...newData,
+          fechaInicio: fechasCorregidas.fechaInicio,
+          fechaFin: fechasCorregidas.fechaFin
+        };
+      }
       
-      {canCreateHorasExtras && (
-        <Button variant="warning" onClick={() => setShowHorasExtrasModal(true)}>
-          <FontAwesomeIcon icon={faClock} className="me-2" />
-          Horas Extras
-        </Button>
-      )}
-    </ButtonGroup>
-  );
-};
+      return newData;
+    });
+  };
+
+  // Función mejorada para manejar cambio en fecha fin de vacaciones
+  const handleFechaFinVacacionesChange = (fecha: string) => {
+    // Si la fecha está vacía, simplemente actualizar
+    if (!fecha) {
+      setVacacionesData(prev => ({
+        ...prev,
+        fechaFin: fecha
+      }));
+      return;
+    }
+
+    // Corregir a día hábil si es necesario
+    const fechaCorregida = obtenerDiaHabilMasCercano(fecha);
+    
+    setVacacionesData(prev => {
+      // Si ya hay fecha inicio, validar y corregir ambas fechas
+      if (prev.fechaInicio) {
+        const fechasCorregidas = validarYCorregirFechasVacaciones(
+          prev.fechaInicio, 
+          fechaCorregida
+        );
+        return {
+          ...prev,
+          fechaInicio: fechasCorregidas.fechaInicio,
+          fechaFin: fechasCorregidas.fechaFin
+        };
+      }
+      
+      return {
+        ...prev,
+        fechaFin: fechaCorregida
+      };
+    });
+  };
+
+  // Función mejorada para manejar cambio en fecha de permiso
+  const handleFechaPermisoChange = (fecha: string) => {
+    // Si la fecha está vacía, simplemente actualizar
+    if (!fecha) {
+      setPermisoData(prev => ({
+        ...prev,
+        fechaInicio: fecha
+      }));
+      return;
+    }
+
+    // Corregir a día hábil si es necesario
+    const fechaCorregida = obtenerDiaHabilMasCercano(fecha);
+    
+    setPermisoData(prev => ({
+      ...prev,
+      fechaInicio: fechaCorregida
+    }));
+  };
+
+  // Función mejorada para manejar cambio en fecha de horas extras
+  const handleFechaHorasExtrasChange = (fecha: string) => {
+    // Si la fecha está vacía, simplemente actualizar
+    if (!fecha) {
+      setHorasExtrasData(prev => ({
+        ...prev,
+        fechaInicio: fecha
+      }));
+      return;
+    }
+
+    // Corregir a día hábil si es necesario
+    const fechaCorregida = obtenerDiaHabilMasCercano(fecha);
+    
+    setHorasExtrasData(prev => ({
+      ...prev,
+      fechaInicio: fechaCorregida
+    }));
+  };
+
+  // Función para manejar el cambio en fecha inicio de vacaciones (input directo)
+  const handleFechaInicioInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fecha = e.target.value;
+    handleFechaInicioVacacionesChange(fecha);
+  };
+
+  // Función para manejar el cambio en fecha fin de vacaciones (input directo)
+  const handleFechaFinInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fecha = e.target.value;
+    handleFechaFinVacacionesChange(fecha);
+  };
+
+  // Función para manejar el cambio en fecha de permiso (input directo)
+  const handleFechaPermisoInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fecha = e.target.value;
+    handleFechaPermisoChange(fecha);
+  };
+
+  // Función para manejar el cambio en fecha de horas extras (input directo)
+  const handleFechaHorasExtrasInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fecha = e.target.value;
+    handleFechaHorasExtrasChange(fecha);
+  };
+
+  // Función para validar que una fecha sea día hábil en el calendario
+  const esDiaHabil = (date: Date): boolean => {
+    const diaSemana = date.getDay();
+    return diaSemana !== 0 && diaSemana !== 6;
+  };
+
+  // Función para obtener los atributos del input de fecha
+  const getDateInputProps = (minDate?: string, excludeWeekends: boolean = true) => {
+    const props: any = {
+      type: "date"
+    };
+    
+    if (minDate) {
+      props.min = minDate;
+    }
+    
+    // Si queremos excluir fines de semana, podemos agregar una validación personalizada
+    // pero no podemos deshabilitar días específicos en un input nativo de fecha
+    // Por eso tenemos la corrección automática en los cambios
+    
+    return props;
+  };
   
-  // Renderizar cards de estadísticas
-const renderStatsCards = () => {
-  return (
-    <Row className="mb-4">
-      {/* Vacaciones */}
-      {estadisticasVacaciones && (
+  const renderActionButtons = () => {
+    const sinDiasVacaciones = derechosVacacionales?.DiasDisponibles <= 0;
+    
+    return (
+      <ButtonGroup>
+        {canCreateVacaciones && (
+          <Button 
+            variant="primary" 
+            onClick={() => setShowVacacionesModal(true)}
+            disabled={sinDiasVacaciones}
+            title={sinDiasVacaciones ? "No tienes días de vacaciones disponibles" : "Solicitar vacaciones"}
+          >
+            <FontAwesomeIcon icon={faCalendarDay} className="me-2" />
+            Vacaciones
+            {sinDiasVacaciones && (
+              <Badge bg="danger" className="ms-2">
+                <FontAwesomeIcon icon={faExclamationTriangle} size="sm" />
+              </Badge>
+            )}
+          </Button>
+        )}
+        
+        {canCreatePermiso && (
+          <Button variant="info" onClick={() => setShowPermisoModal(true)}>
+            <FontAwesomeIcon icon={faCalendarCheck} className="me-2" />
+            Permiso
+          </Button>
+        )}
+        
+        {canCreateHorasExtras && (
+          <Button variant="warning" onClick={() => setShowHorasExtrasModal(true)}>
+            <FontAwesomeIcon icon={faClock} className="me-2" />
+            Horas Extras
+          </Button>
+        )}
+      </ButtonGroup>
+    );
+  };
+  
+  const renderStatsCards = () => {
+    return (
+      <Row className="mb-4">
+        {estadisticasVacaciones && (
+          <Col md={4} className="mb-3">
+            <Card className={`border-${estadisticasVacaciones.disponibles <= 0 ? 'danger' : 'primary'} border-2 shadow-sm h-100`}>
+              <Card.Body>
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <div>
+                    <FontAwesomeIcon 
+                      icon={faCalendarDay} 
+                      size="2x" 
+                      className={estadisticasVacaciones.disponibles <= 0 ? 'text-danger' : 'text-primary'} 
+                    />
+                  </div>
+                  <div className="text-end">
+                    <h3 className={`mb-0 ${estadisticasVacaciones.disponibles <= 0 ? 'text-danger' : ''}`}>
+                      {estadisticasVacaciones.disponibles}
+                    </h3>
+                    <small className="text-muted">Días disponibles</small>
+                  </div>
+                </div>
+                <div className="progress mb-2" style={{ height: '8px' }}>
+                  <div 
+                    className={`progress-bar ${estadisticasVacaciones.disponibles <= 0 ? 'bg-danger' : 'bg-primary'}`}
+                    role="progressbar" 
+                    style={{ width: `${estadisticasVacaciones.porcentaje}%` }}
+                  ></div>
+                </div>
+                <div className="d-flex justify-content-between">
+                  <small className="text-muted">Tomados: {estadisticasVacaciones.tomados}</small>
+                  <small className="text-muted">Total: {estadisticasVacaciones.total}</small>
+                </div>
+                {estadisticasVacaciones.disponibles <= 0 && (
+                  <div className="mt-2">
+                    <Badge bg="danger" className="w-100 py-2">
+                      <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                      No tienes días de vacaciones disponibles
+                    </Badge>
+                  </div>
+                )}
+                {estadisticasVacaciones.pendientes > 0 && (
+                  <div className="mt-2 small">
+                    <Badge bg="warning" className="me-1">Pendientes: {estadisticasVacaciones.pendientes}</Badge>
+                  </div>
+                )}
+              </Card.Body>
+            </Card>
+          </Col>
+        )}
+        
         <Col md={4} className="mb-3">
-          <Card className={`border-${estadisticasVacaciones.disponibles <= 0 ? 'danger' : 'primary'} border-2 shadow-sm h-100`}>
+          <Card className="border-warning border-2 shadow-sm h-100">
             <Card.Body>
               <div className="d-flex justify-content-between align-items-center mb-3">
                 <div>
-                  <FontAwesomeIcon 
-                    icon={faCalendarDay} 
-                    size="2x" 
-                    className={estadisticasVacaciones.disponibles <= 0 ? 'text-danger' : 'text-primary'} 
-                  />
+                  <FontAwesomeIcon icon={faHourglassHalf} size="2x" className="text-warning" />
                 </div>
                 <div className="text-end">
-                  <h3 className={`mb-0 ${estadisticasVacaciones.disponibles <= 0 ? 'text-danger' : ''}`}>
-                    {estadisticasVacaciones.disponibles}
+                  <h3 className="mb-0">
+                    {misSolicitudes.filter(s => s.Estado === 'pendiente').length}
                   </h3>
-                  <small className="text-muted">Días disponibles</small>
+                  <small className="text-muted">Pendientes</small>
                 </div>
               </div>
-              <div className="progress mb-2" style={{ height: '8px' }}>
-                <div 
-                  className={`progress-bar ${estadisticasVacaciones.disponibles <= 0 ? 'bg-danger' : 'bg-primary'}`}
-                  role="progressbar" 
-                  style={{ width: `${estadisticasVacaciones.porcentaje}%` }}
-                ></div>
-              </div>
-              <div className="d-flex justify-content-between">
-                <small className="text-muted">Tomados: {estadisticasVacaciones.tomados}</small>
-                <small className="text-muted">Total: {estadisticasVacaciones.total}</small>
-              </div>
-              {estadisticasVacaciones.disponibles <= 0 && (
-                <div className="mt-2">
-                  <Badge bg="danger" className="w-100 py-2">
-                    <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
-                    No tienes días de vacaciones disponibles
-                  </Badge>
-                </div>
-              )}
-              {estadisticasVacaciones.pendientes > 0 && (
-                <div className="mt-2 small">
-                  <Badge bg="warning" className="me-1">Pendientes: {estadisticasVacaciones.pendientes}</Badge>
-                </div>
-              )}
+              <small className="text-muted d-block">Mis solicitudes en revisión</small>
             </Card.Body>
           </Card>
         </Col>
-      )}
-      
-      {/* Mis Solicitudes Pendientes */}
-      <Col md={4} className="mb-3">
-        <Card className="border-warning border-2 shadow-sm h-100">
-          <Card.Body>
-            <div className="d-flex justify-content-between align-items-center mb-3">
-              <div>
-                <FontAwesomeIcon icon={faHourglassHalf} size="2x" className="text-warning" />
+        
+        <Col md={4} className="mb-3">
+          <Card className="border-success border-2 shadow-sm h-100">
+            <Card.Body>
+              <div className="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                  <FontAwesomeIcon icon={faCheckCircle} size="2x" className="text-success" />
+                </div>
+                <div className="text-end">
+                  <h3 className="mb-0">
+                    {misSolicitudes.filter(s => s.Estado === 'aprobada').length}
+                  </h3>
+                  <small className="text-muted">Aprobadas</small>
+                </div>
               </div>
-              <div className="text-end">
-                <h3 className="mb-0">
-                  {misSolicitudes.filter(s => s.Estado === 'pendiente').length}
-                </h3>
-                <small className="text-muted">Pendientes</small>
-              </div>
-            </div>
-            <small className="text-muted d-block">Mis solicitudes en revisión</small>
-          </Card.Body>
-        </Card>
-      </Col>
-      
-      {/* Mis Solicitudes Aprobadas */}
-      <Col md={4} className="mb-3">
-        <Card className="border-success border-2 shadow-sm h-100">
-          <Card.Body>
-            <div className="d-flex justify-content-between align-items-center mb-3">
-              <div>
-                <FontAwesomeIcon icon={faCheckCircle} size="2x" className="text-success" />
-              </div>
-              <div className="text-end">
-                <h3 className="mb-0">
-                  {misSolicitudes.filter(s => s.Estado === 'aprobada').length}
-                </h3>
-                <small className="text-muted">Aprobadas</small>
-              </div>
-            </div>
-            <small className="text-muted d-block">Solicitudes aprobadas</small>
-          </Card.Body>
-        </Card>
-      </Col>
-    </Row>
-  );
-};
+              <small className="text-muted d-block">Solicitudes aprobadas</small>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+    );
+  };
   
-  // Renderizar filtros
   const renderFilters = () => {
     return (
       <Row className="mb-3">
@@ -1301,7 +1638,6 @@ const renderStatsCards = () => {
     );
   };
   
-  // Renderizar contenido según pestaña
   const renderTabContent = () => {
     switch (activeTab) {
       case 'mis-solicitudes':
@@ -1339,7 +1675,12 @@ const renderStatsCards = () => {
     
     return (
       <div className="table-responsive">
-        <Table hover className="mb-0">
+        <table 
+          ref={misSolicitudesTableRef}
+          id="mis-solicitudes-table"
+          className="table table-hover table-striped mb-0"
+          style={{ width: '100%' }}
+        >
           <thead className="bg-light">
             <tr>
               <th>Tipo</th>
@@ -1347,7 +1688,7 @@ const renderStatsCards = () => {
               <th>Periodo / Detalles</th>
               <th>Motivo</th>
               <th>Estado</th>
-              <th className="text-end">Acciones</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -1371,7 +1712,7 @@ const renderStatsCards = () => {
                         )}
                       </div>
                       {solicitud.DiasSolicitados && (
-                        <small className="text-muted">{solicitud.DiasSolicitados} días</small>
+                        <small className="text-muted">{solicitud.DiasSolicitados} días hábiles</small>
                       )}
                     </div>
                   )}
@@ -1402,7 +1743,7 @@ const renderStatsCards = () => {
                   </div>
                 </td>
                 <td>{getEstadoBadge(solicitud.Estado)}</td>
-                <td className="text-end">
+                <td>
                   <ButtonGroup size="sm">
                     <Button
                       variant="outline-primary"
@@ -1426,7 +1767,7 @@ const renderStatsCards = () => {
               </tr>
             ))}
           </tbody>
-        </Table>
+        </table>
       </div>
     );
   };
@@ -1455,7 +1796,12 @@ const renderStatsCards = () => {
     
     return (
       <div className="table-responsive">
-        <Table hover className="mb-0">
+        <table 
+          ref={pendientesTableRef}
+          id="pendientes-table"
+          className="table table-hover table-striped mb-0"
+          style={{ width: '100%' }}
+        >
           <thead className="bg-light">
             <tr>
               <th>Empleado</th>
@@ -1463,8 +1809,8 @@ const renderStatsCards = () => {
               <th>Fecha Solicitud</th>
               <th>Detalles</th>
               <th>Motivo</th>
-              <th>Orden Aprobación</th>
-              <th className="text-end">Acciones</th>
+              <th>Orden</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -1483,7 +1829,7 @@ const renderStatsCards = () => {
                       <div className="small">
                         {formatDate(aprobacion.FechaInicio!)} → {formatDate(aprobacion.FechaFin!)}
                       </div>
-                      <small className="text-muted">{aprobacion.DiasSolicitados} días</small>
+                      <small className="text-muted">{aprobacion.DiasSolicitados} días hábiles</small>
                     </div>
                   )}
                   {aprobacion.Tipo === 'permiso' && (
@@ -1511,7 +1857,7 @@ const renderStatsCards = () => {
                 <td>
                   <Badge bg="secondary">{aprobacion.OrdenAprobacion}°</Badge>
                 </td>
-                <td className="text-end">
+                <td>
                   <ButtonGroup size="sm">
                     <Button
                       variant="outline-success"
@@ -1533,7 +1879,7 @@ const renderStatsCards = () => {
               </tr>
             ))}
           </tbody>
-        </Table>
+        </table>
       </div>
     );
   };
@@ -1562,7 +1908,12 @@ const renderStatsCards = () => {
     
     return (
       <div className="table-responsive">
-        <Table hover className="mb-0">
+        <table 
+          ref={aprobadasTableRef}
+          id="aprobadas-table"
+          className="table table-hover table-striped mb-0"
+          style={{ width: '100%' }}
+        >
           <thead className="bg-light">
             <tr>
               <th>Empleado</th>
@@ -1571,7 +1922,7 @@ const renderStatsCards = () => {
               <th>Periodo / Detalles</th>
               <th>Motivo</th>
               <th>Estado</th>
-              <th className="text-end">Acciones</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -1601,7 +1952,7 @@ const renderStatsCards = () => {
                         )}
                       </div>
                       {solicitud.DiasSolicitados && (
-                        <small className="text-muted">{solicitud.DiasSolicitados} días</small>
+                        <small className="text-muted">{solicitud.DiasSolicitados} días hábiles</small>
                       )}
                     </div>
                   )}
@@ -1631,7 +1982,7 @@ const renderStatsCards = () => {
                   </div>
                 </td>
                 <td>{getEstadoBadge(solicitud.Estado)}</td>
-                <td className="text-end">
+                <td>
                   <Button
                     variant="outline-primary"
                     size="sm"
@@ -1644,228 +1995,223 @@ const renderStatsCards = () => {
               </tr>
             ))}
           </tbody>
-        </Table>
+        </table>
       </div>
     );
   };
   
-const renderHorasExtrasContent = () => {
-  if (!canViewReports) return null;
-  
-  if (loading) {
-    return (
-      <div className="text-center py-5">
-        <Spinner animation="border" variant="primary" />
-        <p className="mt-3">Cargando reporte de horas extras...</p>
-      </div>
-    );
-  }
-  
-  if (reporteHorasExtras.length === 0) {
-    return (
-      <div className="text-center py-5">
-        <FontAwesomeIcon icon={faBusinessTime} size="3x" className="text-muted mb-3" />
-        <h5>No hay horas extras registradas</h5>
-        <p className="text-muted">No hay solicitudes de horas extras en el periodo seleccionado</p>
-      </div>
-    );
-  }
-  
-  // Calcular total de horas asegurándonos de convertir a número
-  const totalHoras = reporteHorasExtras.reduce((sum, item) => {
-    // Convertir HorasSolicitadas a número (puede venir como string o número)
-    const horas = typeof item.HorasSolicitadas === 'string' 
-      ? parseFloat(item.HorasSolicitadas) 
-      : (item.HorasSolicitadas || 0);
-    return sum + horas;
-  }, 0);
-  
-  const totalAprobadas = reporteHorasExtras.filter(item => item.Estado === 'aprobada').length;
-  const totalPendientes = reporteHorasExtras.filter(item => item.Estado === 'pendiente').length;
-  const totalRechazadas = reporteHorasExtras.filter(item => item.Estado === 'rechazada').length;
-  
-  return (
-    <>
-      <Card className="mb-3">
-        <Card.Body className="bg-light">
-          <Row>
-            <Col md={3}>
-              <div className="text-center">
-                <h4 className="text-primary">{reporteHorasExtras.length}</h4>
-                <small className="text-muted">Total Solicitudes</small>
-              </div>
-            </Col>
-            <Col md={3}>
-              <div className="text-center">
-                <h4 className="text-success">{totalHoras.toFixed(1)}</h4>
-                <small className="text-muted">Horas Totales</small>
-              </div>
-            </Col>
-            <Col md={2}>
-              <div className="text-center">
-                <h4 className="text-success">{totalAprobadas}</h4>
-                <small className="text-muted">Aprobadas</small>
-              </div>
-            </Col>
-            <Col md={2}>
-              <div className="text-center">
-                <h4 className="text-warning">{totalPendientes}</h4>
-                <small className="text-muted">Pendientes</small>
-              </div>
-            </Col>
-            <Col md={2}>
-              <div className="text-center">
-                <h4 className="text-danger">{totalRechazadas}</h4>
-                <small className="text-muted">Rechazadas</small>
-              </div>
-            </Col>
-          </Row>
-        </Card.Body>
-      </Card>
-      
-      <div className="table-responsive">
-        <Table hover className="mb-0">
-          <thead className="bg-light">
-            <tr>
-              <th>Empleado</th>
-              <th>Fecha</th>
-              <th>Horas Solicitadas</th>
-              <th>Motivo</th>
-              <th>Estado</th>
-              <th>Departamento</th>
-              <th>Puesto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reporteHorasExtras.map((item) => {
-              // Convertir horas a número para mostrarlas correctamente
-              const horas = typeof item.HorasSolicitadas === 'string' 
-                ? parseFloat(item.HorasSolicitadas) 
-                : (item.HorasSolicitadas || 0);
-              
-              return (
-                <tr key={item.ID}>
-                  <td>
-                    <div className="fw-medium">{item.EmpleadoNombre}</div>
-                    <small className="text-muted">{item.CorreoElectronico}</small>
-                  </td>
-                  <td>
-                    <div className="small">{formatDate(item.FechaInicio)}</div>
-                  </td>
-                  <td>
-                    <Badge bg="warning" className="fs-6">
-                      {horas.toFixed(1)} hrs
-                    </Badge>
-                  </td>
-                  <td>
-                    <div className="text-truncate" style={{ maxWidth: '200px' }} title={item.Motivo}>
-                      {item.Motivo}
-                    </div>
-                  </td>
-                  <td>{getEstadoBadge(item.Estado)}</td>
-                  <td>
-                    <small>{item.PuestoNombre || 'No asignado'}</small>
-                  </td>
-                  <td>
-                    <small className="text-muted">{item.PuestoNombre || 'No asignado'}</small>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      </div>
-    </>
-  );
-};
-
-  return (
-  <Container fluid className="py-4">
-    {/* Header */}
-    <Row className="mb-4">
-      <Col>
-        <div className="d-flex justify-content-between align-items-center">
-          <div>
-            <h2 className="mb-0">
-              <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
-              Gestión de Solicitudes
-            </h2>
-            <p className="text-muted mb-0">
-              {isAdmin ? '🔐 Administrador - Gestión completa' : 
-               isManager ? '👨‍💼 Manager - Aprobaciones y reportes' : 
-               '👤 Empleado - Mis solicitudes'}
-            </p>
-          </div>
-          
-          <div className="d-flex gap-2">
-            <Button 
-              variant="outline-primary" 
-              onClick={loadTabData}
-              disabled={loading}
-            >
-              <FontAwesomeIcon icon={faSync} className="me-2" />
-              Actualizar
-            </Button>
-            {renderActionButtons()}
-          </div>
-        </div>
-      </Col>
-    </Row>
-
-    {/* Alerta de días disponibles */}
-    {estadisticasVacaciones && estadisticasVacaciones.disponibles <= 0 && isEmployee && (
-      <Alert variant="danger" className="mb-3">
-        <div className="d-flex align-items-center">
-          <FontAwesomeIcon icon={faExclamationTriangle} size="2x" className="me-3" />
-          <div>
-            <h5 className="alert-heading mb-1">No tienes días de vacaciones disponibles</h5>
-            <p className="mb-0">
-              Has utilizado todos tus {estadisticasVacaciones.total} días de vacaciones de este año.
-              {estadisticasVacaciones.pendientes > 0 && (
-                <span className="d-block mt-1">
-                  <Badge bg="warning">Tienes {estadisticasVacaciones.pendientes} días pendientes de aprobación</Badge>
-                </span>
-              )}
-            </p>
-          </div>
-        </div>
-      </Alert>
-    )}
-
-    {estadisticasVacaciones && estadisticasVacaciones.disponibles < 0 && (
-      <Alert variant="warning" className="mb-3">
-        <div className="d-flex align-items-center">
-          <FontAwesomeIcon icon={faExclamationTriangle} size="2x" className="me-3 text-warning" />
-          <div>
-            <h5 className="alert-heading mb-1">Has excedido tus días de vacaciones</h5>
-            <p className="mb-0">
-              Has tomado {Math.abs(estadisticasVacaciones.disponibles)} días adicionales.
-              Por favor, contacta a Recursos Humanos para regularizar tu situación.
-            </p>
-          </div>
-        </div>
-      </Alert>
-    )}
-
-    {/* Alertas */}
-    {error && (
-      <Alert variant="danger" dismissible onClose={() => setError('')}>
-        <FontAwesomeIcon icon={faTimesCircle} className="me-2" />
-        {error}
-      </Alert>
-    )}
+  const renderHorasExtrasContent = () => {
+    if (!canViewReports) return null;
     
-    {success && (
-      <Alert variant="success" dismissible onClose={() => setSuccess('')}>
-        <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
-        {success}
-      </Alert>
-    )}
+    if (loading) {
+      return (
+        <div className="text-center py-5">
+          <Spinner animation="border" variant="primary" />
+          <p className="mt-3">Cargando reporte de horas extras...</p>
+        </div>
+      );
+    }
+    
+    if (reporteHorasExtras.length === 0) {
+      return (
+        <div className="text-center py-5">
+          <FontAwesomeIcon icon={faBusinessTime} size="3x" className="text-muted mb-3" />
+          <h5>No hay horas extras registradas</h5>
+          <p className="text-muted">No hay solicitudes de horas extras en el periodo seleccionado</p>
+        </div>
+      );
+    }
+    
+    const totalHoras = reporteHorasExtras.reduce((sum, item) => {
+      const horas = typeof item.HorasSolicitadas === 'string' 
+        ? parseFloat(item.HorasSolicitadas) 
+        : (item.HorasSolicitadas || 0);
+      return sum + horas;
+    }, 0);
+    
+    const totalAprobadas = reporteHorasExtras.filter(item => item.Estado === 'aprobada').length;
+    const totalPendientes = reporteHorasExtras.filter(item => item.Estado === 'pendiente').length;
+    const totalRechazadas = reporteHorasExtras.filter(item => item.Estado === 'rechazada').length;
+    
+    return (
+      <>
+        <Card className="mb-3">
+          <Card.Body className="bg-light">
+            <Row>
+              <Col md={3}>
+                <div className="text-center">
+                  <h4 className="text-primary">{reporteHorasExtras.length}</h4>
+                  <small className="text-muted">Total Solicitudes</small>
+                </div>
+              </Col>
+              <Col md={3}>
+                <div className="text-center">
+                  <h4 className="text-success">{totalHoras.toFixed(1)}</h4>
+                  <small className="text-muted">Horas Totales</small>
+                </div>
+              </Col>
+              <Col md={2}>
+                <div className="text-center">
+                  <h4 className="text-success">{totalAprobadas}</h4>
+                  <small className="text-muted">Aprobadas</small>
+                </div>
+              </Col>
+              <Col md={2}>
+                <div className="text-center">
+                  <h4 className="text-warning">{totalPendientes}</h4>
+                  <small className="text-muted">Pendientes</small>
+                </div>
+              </Col>
+              <Col md={2}>
+                <div className="text-center">
+                  <h4 className="text-danger">{totalRechazadas}</h4>
+                  <small className="text-muted">Rechazadas</small>
+                </div>
+              </Col>
+            </Row>
+          </Card.Body>
+        </Card>
+        
+        <div className="table-responsive">
+          <table 
+            ref={horasExtrasTableRef}
+            id="horas-extras-table"
+            className="table table-hover table-striped mb-0"
+            style={{ width: '100%' }}
+          >
+            <thead className="bg-light">
+              <tr>
+                <th>Empleado</th>
+                <th>Fecha</th>
+                <th>Horas</th>
+                <th>Motivo</th>
+                <th>Estado</th>
+                <th>Puesto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reporteHorasExtras.map((item) => {
+                const horas = typeof item.HorasSolicitadas === 'string' 
+                  ? parseFloat(item.HorasSolicitadas) 
+                  : (item.HorasSolicitadas || 0);
+                
+                return (
+                  <tr key={item.ID}>
+                    <td>
+                      <div className="fw-medium">{item.EmpleadoNombre}</div>
+                      {item.CorreoElectronico && (
+                        <small className="text-muted d-block">{item.CorreoElectronico}</small>
+                      )}
+                    </td>
+                    <td>
+                      <div className="small">{formatDate(item.FechaInicio)}</div>
+                    </td>
+                    <td>
+                      <Badge bg="warning" className="fs-6">
+                        {horas.toFixed(1)} hrs
+                      </Badge>
+                    </td>
+                    <td>
+                      <div className="text-truncate" style={{ maxWidth: '200px' }} title={item.Motivo}>
+                        {item.Motivo}
+                      </div>
+                    </td>
+                    <td>{getEstadoBadge(item.Estado)}</td>
+                    <td>
+                      <small>{item.PuestoNombre || 'No asignado'}</small>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </>
+    );
+  };
 
-    {/* Estadísticas */}
-    {renderStatsCards()}
+  return (
+    <Container fluid className="py-4">
+      <Row className="mb-4">
+        <Col>
+          <div className="d-flex justify-content-between align-items-center">
+            <div>
+              <h2 className="mb-0">
+                <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
+                Gestión de Solicitudes
+              </h2>
+              <p className="text-muted mb-0">
+                {isAdmin ? '🔐 Administrador - Gestión completa' : 
+                 isManager ? '👨‍💼 Manager - Aprobaciones y reportes' : 
+                 '👤 Empleado - Mis solicitudes'}
+              </p>
+            </div>
+            
+            <div className="d-flex gap-2">
+              <Button 
+                variant="outline-primary" 
+                onClick={loadTabData}
+                disabled={loading}
+              >
+                <FontAwesomeIcon icon={faSync} className={loading ? 'fa-spin' : ''} me="2" />
+                Actualizar
+              </Button>
+              {renderActionButtons()}
+            </div>
+          </div>
+        </Col>
+      </Row>
 
-      {/* Tabs principales */}
+      {estadisticasVacaciones && estadisticasVacaciones.disponibles <= 0 && isEmployee && (
+        <Alert variant="danger" className="mb-3">
+          <div className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faExclamationTriangle} size="2x" className="me-3" />
+            <div>
+              <h5 className="alert-heading mb-1">No tienes días de vacaciones disponibles</h5>
+              <p className="mb-0">
+                Has utilizado todos tus {estadisticasVacaciones.total} días de vacaciones de este año.
+                {estadisticasVacaciones.pendientes > 0 && (
+                  <span className="d-block mt-1">
+                    <Badge bg="warning">Tienes {estadisticasVacaciones.pendientes} días pendientes de aprobación</Badge>
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+        </Alert>
+      )}
+
+      {estadisticasVacaciones && estadisticasVacaciones.disponibles < 0 && (
+        <Alert variant="warning" className="mb-3">
+          <div className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faExclamationTriangle} size="2x" className="me-3 text-warning" />
+            <div>
+              <h5 className="alert-heading mb-1">Has excedido tus días de vacaciones</h5>
+              <p className="mb-0">
+                Has tomado {Math.abs(estadisticasVacaciones.disponibles)} días adicionales.
+                Por favor, contacta a Recursos Humanos para regularizar tu situación.
+              </p>
+            </div>
+          </div>
+        </Alert>
+      )}
+
+      {error && (
+        <Alert variant="danger" dismissible onClose={() => setError('')}>
+          <FontAwesomeIcon icon={faTimesCircle} className="me-2" />
+          {error}
+        </Alert>
+      )}
+      
+      {success && (
+        <Alert variant="success" dismissible onClose={() => setSuccess('')}>
+          <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
+          {success}
+        </Alert>
+      )}
+
+      {renderStatsCards()}
+
       <Card className="shadow-sm">
         <Card.Body className="p-0">
           <Tabs
@@ -1895,7 +2241,7 @@ const renderHorasExtrasContent = () => {
                 <span>
                   <FontAwesomeIcon icon={faUserClock} className="me-2" />
                   Por Aprobar
-                  {pendientesCount > 0 && ( // <-- USAR pendientesCount EN VEZ DE solicitudesPendientes.length
+                  {pendientesCount > 0 && (
                     <Badge bg="danger" className="ms-2">{pendientesCount}</Badge>
                   )}
                 </span>
@@ -1903,7 +2249,7 @@ const renderHorasExtrasContent = () => {
                 <div className="p-3">
                   <Alert variant="info" className="mb-3">
                     <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-                    Tienes {pendientesCount} solicitudes pendientes de aprobación {/* <-- USAR pendientesCount */}
+                    Tienes {pendientesCount} solicitudes pendientes de aprobación
                   </Alert>
                   {renderTabContent()}
                 </div>
@@ -1941,144 +2287,163 @@ const renderHorasExtrasContent = () => {
         </Card.Body>
       </Card>
 
-{/* Modal de Vacaciones */}
-<Modal show={showVacacionesModal} onHide={() => setShowVacacionesModal(false)} size="lg">
-  <Modal.Header closeButton className="bg-primary text-white">
-    <Modal.Title>
-      <FontAwesomeIcon icon={faCalendarDay} className="me-2" />
-      Solicitar Vacaciones
-    </Modal.Title>
-  </Modal.Header>
-  <Modal.Body>
-    {estadisticasVacaciones && (
-      <Alert 
-        variant={estadisticasVacaciones.disponibles <= 0 ? "danger" : "info"} 
-        className="mb-4"
-      >
-        <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-        <div>
-          <strong>Resumen de tus vacaciones:</strong>
-          <div className="mt-2">
-            <span className="me-3">
-              <strong>Días disponibles:</strong> 
-              <span className={estadisticasVacaciones.disponibles <= 0 ? 'text-danger fw-bold' : ''}>
-                {' '}{estadisticasVacaciones.disponibles}
-              </span>
-            </span>
-            <span className="me-3"><strong>Días tomados:</strong> {estadisticasVacaciones.tomados}</span>
-            <span><strong>Total días:</strong> {estadisticasVacaciones.total}</span>
-          </div>
-          {estadisticasVacaciones.pendientes > 0 && (
-            <div className="mt-1">
-              <Badge bg="warning">Días pendientes de aprobación: {estadisticasVacaciones.pendientes}</Badge>
-            </div>
+      {/* Modal de Vacaciones */}
+      <Modal show={showVacacionesModal} onHide={() => setShowVacacionesModal(false)} size="lg">
+        <Modal.Header closeButton className="bg-primary text-white">
+          <Modal.Title>
+            <FontAwesomeIcon icon={faCalendarDay} className="me-2" />
+            Solicitar Vacaciones
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {estadisticasVacaciones && (
+            <Alert 
+              variant={estadisticasVacaciones.disponibles <= 0 ? "danger" : "info"} 
+              className="mb-4"
+            >
+              <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+              <div>
+                <strong>Resumen de tus vacaciones:</strong>
+                <div className="mt-2">
+                  <span className="me-3">
+                    <strong>Días disponibles:</strong> 
+                    <span className={estadisticasVacaciones.disponibles <= 0 ? 'text-danger fw-bold' : ''}>
+                      {' '}{estadisticasVacaciones.disponibles}
+                    </span>
+                  </span>
+                  <span className="me-3"><strong>Días tomados:</strong> {estadisticasVacaciones.tomados}</span>
+                  <span><strong>Total días:</strong> {estadisticasVacaciones.total}</span>
+                </div>
+                {estadisticasVacaciones.pendientes > 0 && (
+                  <div className="mt-1">
+                    <Badge bg="warning">Días pendientes de aprobación: {estadisticasVacaciones.pendientes}</Badge>
+                  </div>
+                )}
+                {estadisticasVacaciones.disponibles <= 0 && (
+                  <div className="mt-2 text-danger">
+                    <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                    <strong>No puedes solicitar vacaciones porque no tienes días disponibles.</strong>
+                  </div>
+                )}
+              </div>
+            </Alert>
           )}
-          {estadisticasVacaciones.disponibles <= 0 && (
-            <div className="mt-2 text-danger">
-              <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
-              <strong>No puedes solicitar vacaciones porque no tienes días disponibles.</strong>
-            </div>
+          
+          <Alert variant="info" className="mb-3">
+            <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+            <strong>Importante:</strong> Solo se cuentan días hábiles (lunes a viernes). 
+            Si seleccionas un fin de semana, se ajustará automáticamente al siguiente día hábil.
+            Si la fecha fin es anterior a la fecha inicio, se intercambiarán automáticamente.
+          </Alert>
+          
+          <Form>
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Fecha de Inicio *</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={vacacionesData.fechaInicio}
+                    onChange={handleFechaInicioInputChange}
+                    min={new Date().toISOString().split('T')[0]}
+                    disabled={estadisticasVacaciones?.disponibles <= 0}
+                    required
+                  />
+                  {vacacionesData.fechaInicio && esFinDeSemana(vacacionesData.fechaInicio) && (
+                    <Form.Text className="text-warning">
+                      <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                      Se ajustará a {obtenerDiaHabilMasCercano(vacacionesData.fechaInicio)}
+                    </Form.Text>
+                  )}
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Fecha de Fin *</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={vacacionesData.fechaFin}
+                    onChange={handleFechaFinInputChange}
+                    min={vacacionesData.fechaInicio || new Date().toISOString().split('T')[0]}
+                    disabled={estadisticasVacaciones?.disponibles <= 0 || !vacacionesData.fechaInicio}
+                    required
+                  />
+                  {vacacionesData.fechaFin && esFinDeSemana(vacacionesData.fechaFin) && (
+                    <Form.Text className="text-warning">
+                      <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                      Se ajustará a {obtenerDiaHabilMasCercano(vacacionesData.fechaFin)}
+                    </Form.Text>
+                  )}
+                </Form.Group>
+              </Col>
+            </Row>
+            
+            <Form.Group className="mb-3">
+              <Form.Label>Motivo *</Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={3}
+                value={vacacionesData.motivo}
+                onChange={(e) => setVacacionesData({...vacacionesData, motivo: e.target.value})}
+                placeholder="Describe el motivo de tu solicitud de vacaciones..."
+                disabled={estadisticasVacaciones?.disponibles <= 0}
+                required
+              />
+            </Form.Group>
+            
+            <Form.Group className="mb-3">
+              <Form.Label>Observaciones (Opcional)</Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={2}
+                value={vacacionesData.observaciones}
+                onChange={(e) => setVacacionesData({...vacacionesData, observaciones: e.target.value})}
+                placeholder="Observaciones adicionales..."
+                disabled={estadisticasVacaciones?.disponibles <= 0}
+              />
+            </Form.Group>
+          </Form>
+          
+          {vacacionesData.fechaInicio && vacacionesData.fechaFin && (
+            <Alert 
+              variant={
+                calcularDiasSolicitados() > (estadisticasVacaciones?.disponibles || 0) 
+                  ? "danger" 
+                  : "secondary"
+              } 
+              className="mt-3"
+            >
+              <FontAwesomeIcon icon={faCalculator} className="me-2" />
+              <div>
+                <strong>Días hábiles solicitados:</strong> {calcularDiasSolicitados()} días
+                {estadisticasVacaciones && calcularDiasSolicitados() > estadisticasVacaciones.disponibles && (
+                  <div className="text-danger mt-1">
+                    ⚠️ Estás solicitando más días de los que tienes disponibles
+                  </div>
+                )}
+              </div>
+            </Alert>
           )}
-        </div>
-      </Alert>
-    )}
-    
-    <Form>
-      <Row>
-        <Col md={6}>
-          <Form.Group className="mb-3">
-            <Form.Label>Fecha de Inicio *</Form.Label>
-            <Form.Control
-              type="date"
-              value={vacacionesData.fechaInicio}
-              onChange={(e) => setVacacionesData({...vacacionesData, fechaInicio: e.target.value})}
-              min={new Date().toISOString().split('T')[0]}
-              disabled={estadisticasVacaciones?.disponibles <= 0}
-              required
-            />
-          </Form.Group>
-        </Col>
-        <Col md={6}>
-          <Form.Group className="mb-3">
-            <Form.Label>Fecha de Fin *</Form.Label>
-            <Form.Control
-              type="date"
-              value={vacacionesData.fechaFin}
-              onChange={(e) => setVacacionesData({...vacacionesData, fechaFin: e.target.value})}
-              min={vacacionesData.fechaInicio}
-              disabled={estadisticasVacaciones?.disponibles <= 0}
-              required
-            />
-          </Form.Group>
-        </Col>
-      </Row>
-      
-      <Form.Group className="mb-3">
-        <Form.Label>Motivo *</Form.Label>
-        <Form.Control
-          as="textarea"
-          rows={3}
-          value={vacacionesData.motivo}
-          onChange={(e) => setVacacionesData({...vacacionesData, motivo: e.target.value})}
-          placeholder="Describe el motivo de tu solicitud de vacaciones..."
-          disabled={estadisticasVacaciones?.disponibles <= 0}
-          required
-        />
-      </Form.Group>
-      
-      <Form.Group className="mb-3">
-        <Form.Label>Observaciones (Opcional)</Form.Label>
-        <Form.Control
-          as="textarea"
-          rows={2}
-          value={vacacionesData.observaciones}
-          onChange={(e) => setVacacionesData({...vacacionesData, observaciones: e.target.value})}
-          placeholder="Observaciones adicionales..."
-          disabled={estadisticasVacaciones?.disponibles <= 0}
-        />
-      </Form.Group>
-    </Form>
-    
-    {vacacionesData.fechaInicio && vacacionesData.fechaFin && (
-      <Alert 
-        variant={
-          calcularDiasSolicitados() > (estadisticasVacaciones?.disponibles || 0) 
-            ? "danger" 
-            : "secondary"
-        } 
-        className="mt-3"
-      >
-        <FontAwesomeIcon icon={faCalculator} className="me-2" />
-        <div>
-          <strong>Días solicitados:</strong> {calcularDiasSolicitados()} días
-          {estadisticasVacaciones && calcularDiasSolicitados() > estadisticasVacaciones.disponibles && (
-            <div className="text-danger mt-1">
-              ⚠️ Estás solicitando más días de los que tienes disponibles
-            </div>
-          )}
-        </div>
-      </Alert>
-    )}
-  </Modal.Body>
-  <Modal.Footer>
-    <Button variant="secondary" onClick={() => setShowVacacionesModal(false)}>
-      Cancelar
-    </Button>
-    <Button 
-      variant="primary" 
-      onClick={handleSolicitarVacaciones}
-      disabled={
-        !vacacionesData.fechaInicio || 
-        !vacacionesData.fechaFin || 
-        !vacacionesData.motivo ||
-        (estadisticasVacaciones?.disponibles <= 0)
-      }
-    >
-      <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
-      Enviar Solicitud
-    </Button>
-  </Modal.Footer>
-</Modal>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowVacacionesModal(false)}>
+            Cancelar
+          </Button>
+          <Button 
+            variant="primary" 
+            onClick={handleSolicitarVacaciones}
+            disabled={
+              !vacacionesData.fechaInicio || 
+              !vacacionesData.fechaFin || 
+              !vacacionesData.motivo ||
+              (estadisticasVacaciones?.disponibles <= 0)
+            }
+          >
+            <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
+            Enviar Solicitud
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       {/* Modal de Permiso */}
       <Modal show={showPermisoModal} onHide={() => setShowPermisoModal(false)}>
@@ -2089,18 +2454,31 @@ const renderHorasExtrasContent = () => {
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
+          <Alert variant="info" className="mb-3">
+            <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+            <strong>Importante:</strong> Los permisos solo pueden solicitarse en días hábiles (lunes a viernes) 
+            y con al menos 24 horas de anticipación. Si seleccionas un fin de semana, se ajustará automáticamente 
+            al siguiente día hábil.
+          </Alert>
+          
           <Form>
             <Form.Group className="mb-3">
               <Form.Label>Fecha *</Form.Label>
               <Form.Control
                 type="date"
                 value={permisoData.fechaInicio}
-                onChange={(e) => setPermisoData({...permisoData, fechaInicio: e.target.value})}
+                onChange={handleFechaPermisoInputChange}
                 min={calcularFechaMinimaPermiso()}
                 required
               />
-              <Form.Text className="text-muted">
-                Los permisos deben solicitarse con al menos 24 horas de anticipación
+              {permisoData.fechaInicio && esFinDeSemana(permisoData.fechaInicio) && (
+                <Form.Text className="text-warning">
+                  <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                  Se ajustará a {obtenerDiaHabilMasCercano(permisoData.fechaInicio)}
+                </Form.Text>
+              )}
+              <Form.Text className="text-muted d-block">
+                Los permisos deben solicitarse con al menos 24 horas de anticipación en días hábiles
               </Form.Text>
             </Form.Group>
             
@@ -2171,6 +2549,12 @@ const renderHorasExtrasContent = () => {
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
+          <Alert variant="warning" className="mb-3">
+            <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+            <strong>Importante:</strong> Las horas extras solo pueden solicitarse en días hábiles (lunes a viernes). 
+            Si seleccionas un fin de semana, se ajustará automáticamente al siguiente día hábil.
+          </Alert>
+          
           <Form>
             <Form.Group className="mb-3">
               <Form.Label>Empleado *</Form.Label>
@@ -2193,9 +2577,16 @@ const renderHorasExtrasContent = () => {
               <Form.Control
                 type="date"
                 value={horasExtrasData.fechaInicio}
-                onChange={(e) => setHorasExtrasData({...horasExtrasData, fechaInicio: e.target.value})}
+                onChange={handleFechaHorasExtrasInputChange}
+                min={new Date().toISOString().split('T')[0]}
                 required
               />
+              {horasExtrasData.fechaInicio && esFinDeSemana(horasExtrasData.fechaInicio) && (
+                <Form.Text className="text-warning">
+                  <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                  Se ajustará a {obtenerDiaHabilMasCercano(horasExtrasData.fechaInicio)}
+                </Form.Text>
+              )}
             </Form.Group>
             
             <Form.Group className="mb-3">
@@ -2263,7 +2654,6 @@ const renderHorasExtrasContent = () => {
         <Modal.Body>
           {selectedAprobacion && (
             <>
-              {/* Encabezado del empleado */}
               <div className="text-center mb-4">
                 <FontAwesomeIcon 
                   icon={selectedAprobacion.Tipo === 'vacaciones' ? faCalendarDay : 
@@ -2282,10 +2672,8 @@ const renderHorasExtrasContent = () => {
                 </div>
               </div>
 
-              {/* Detalles específicos según el tipo */}
               {getDetalleSolicitud(selectedAprobacion)}
 
-              {/* Información general */}
               <Card className="mb-3">
                 <Card.Header className="bg-light">
                   <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
@@ -2341,7 +2729,6 @@ const renderHorasExtrasContent = () => {
                 </Card.Body>
               </Card>
 
-              {/* Formulario de aprobación */}
               <Form>
                 <Form.Group className="mb-3">
                   <Form.Label className="fw-bold">
@@ -2404,8 +2791,7 @@ const renderHorasExtrasContent = () => {
             variant={aprobacionData.estado === 'aprobada' ? 'success' : 'danger'} 
             onClick={handleProcesarAprobacion}
             disabled={
-              (aprobacionData.estado === 'rechazado' && (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5)) ||
-              (aprobacionData.estado === 'aprobada' && false) // Siempre habilitado para aprobar
+              (aprobacionData.estado === 'rechazado' && (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5))
             }
           >
             <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
@@ -2430,7 +2816,6 @@ const renderHorasExtrasContent = () => {
           
           {selectedAprobacion && (
             <>
-              {/* Encabezado */}
               <div className="text-center mb-4">
                 <h4>{selectedAprobacion.EmpleadoNombre}</h4>
                 <div className="mb-3">
@@ -2438,10 +2823,8 @@ const renderHorasExtrasContent = () => {
                 </div>
               </div>
 
-              {/* Detalles específicos */}
               {getDetalleSolicitud(selectedAprobacion)}
 
-              {/* Información de la solicitud */}
               <Card className="mb-3">
                 <Card.Body>
                   <p className="mb-2"><strong>Motivo:</strong> {selectedAprobacion.Motivo}</p>
@@ -2452,7 +2835,6 @@ const renderHorasExtrasContent = () => {
                 </Card.Body>
               </Card>
 
-              {/* Formulario de edición */}
               <Form>
                 <Form.Group className="mb-3">
                   <Form.Label className="fw-bold">Nueva Decisión *</Form.Label>
@@ -2571,7 +2953,7 @@ const renderHorasExtrasContent = () => {
                           {selectedSolicitud.DiasSolicitados && (
                             <ListGroup.Item>
                               <div className="d-flex justify-content-between">
-                                <strong><FontAwesomeIcon icon={faCalculator} className="me-2" /> Días Solicitados:</strong>
+                                <strong><FontAwesomeIcon icon={faCalculator} className="me-2" /> Días Hábiles Solicitados:</strong>
                                 <span>{selectedSolicitud.DiasSolicitados} días</span>
                               </div>
                             </ListGroup.Item>
