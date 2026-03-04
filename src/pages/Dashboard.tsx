@@ -631,10 +631,6 @@ const Dashboard: React.FC = () => {
               </p>
             </div>
             <div className="bg-light p-3 rounded">
-              <small className="text-muted d-block">
-                <FontAwesomeIcon icon={faUserCircle} className="me-1" />
-                {user?.usuario}
-              </small>
               <small className="text-muted">
                 {new Date().toLocaleDateString('es-ES', { 
                   weekday: 'long', 

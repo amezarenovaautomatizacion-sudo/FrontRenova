@@ -7,18 +7,16 @@ import {
   Card,
   Button,
   Badge,
-  ListGroup,
   Spinner,
   Alert,
   Nav,
-  Dropdown,
   ButtonGroup,
   Modal,
   Form,
-  Pagination,
-  Table
+  InputGroup
 } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import DataTable from 'react-data-table-component';
 import {
   faBell,
   faCheckCircle,
@@ -32,7 +30,6 @@ import {
   faCheck,
   faEye,
   faFilter,
-  faEllipsisV,
   faSync,
   faGlobe,
   faUserPlus,
@@ -40,7 +37,6 @@ import {
   faUmbrellaBeach,
   faCalendarCheck,
   faUserCircle,
-  faTag,
   faBullhorn,
   faEnvelopeOpenText,
   faPaperPlane,
@@ -48,9 +44,16 @@ import {
   faInbox,
   faHistory,
   faUserCheck,
-  faCalendarAlt
+  faCalendarAlt,
+  faSort,
+  faDownload,
+  faSearch,
+  faPrint
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../services/api';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 interface Notificacion {
   ID: number;
@@ -139,6 +142,87 @@ interface PaginationInfo {
   totalPages: number;
 }
 
+// Estilos personalizados para DataTable
+const customStyles = {
+  headRow: {
+    style: {
+      backgroundColor: 'var(--bg-secondary)',
+      borderBottom: '2px solid var(--border-color)',
+    },
+  },
+  headCells: {
+    style: {
+      fontSize: '14px',
+      fontWeight: '600',
+      color: 'var(--text-primary)',
+      padding: '12px 8px',
+    },
+  },
+  rows: {
+    style: {
+      fontSize: '14px',
+      color: 'var(--text-primary)',
+      backgroundColor: 'var(--bg-primary)',
+      '&:hover': {
+        backgroundColor: 'var(--bg-soft)',
+        cursor: 'pointer',
+      },
+    },
+  },
+  pagination: {
+    style: {
+      borderTop: '1px solid var(--border-color)',
+      marginTop: '0',
+      backgroundColor: 'var(--bg-primary)',
+      color: 'var(--text-primary)',
+    },
+    pageButtonsStyle: {
+      color: 'var(--text-primary)',
+      fill: 'var(--text-primary)',
+      '&:hover:not(:disabled)': {
+        backgroundColor: 'var(--bg-soft)',
+      },
+      '&:focus': {
+        outline: 'none',
+      },
+    },
+  },
+  noData: {
+    style: {
+      color: 'var(--text-muted)',
+      backgroundColor: 'var(--bg-primary)',
+    },
+  },
+  progress: {
+    style: {
+      backgroundColor: 'var(--bg-primary)',
+    },
+  },
+};
+
+// Componente para los filtros personalizados
+const FilterComponent = ({ filterText, onFilter, onClear, placeholder }: any) => (
+  <div className="d-flex align-items-center">
+    <InputGroup style={{ minWidth: '300px' }}>
+      <InputGroup.Text>
+        <FontAwesomeIcon icon={faSearch} />
+      </InputGroup.Text>
+      <Form.Control
+        type="text"
+        placeholder={placeholder || "Buscar..."}
+        value={filterText}
+        onChange={onFilter}
+        className="border-start-0"
+      />
+      {filterText && (
+        <Button variant="outline-secondary" onClick={onClear}>
+          Limpiar
+        </Button>
+      )}
+    </InputGroup>
+  </div>
+);
+
 const Notificaciones: React.FC = () => {
   const { user } = useAuth();
   
@@ -146,8 +230,11 @@ const Notificaciones: React.FC = () => {
   const canCreateGeneral = isAdmin;
   
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([]);
+  const [filteredNotificaciones, setFilteredNotificaciones] = useState<Notificacion[]>([]);
   const [notificacionesGenerales, setNotificacionesGenerales] = useState<NotificacionGeneral[]>([]);
+  const [filteredNotificacionesGenerales, setFilteredNotificacionesGenerales] = useState<NotificacionGeneral[]>([]);
   const [vistasNotificaciones, setVistasNotificaciones] = useState<VistaNotificacion[]>([]);
+  const [filteredVistasNotificaciones, setFilteredVistasNotificaciones] = useState<VistaNotificacion[]>([]);
   const [tiposNotificacion, setTiposNotificacion] = useState<TipoNotificacion[]>([]);
   const [resumen, setResumen] = useState<ResumenNotificaciones>({
     total: 0,
@@ -178,6 +265,19 @@ const Notificaciones: React.FC = () => {
   const [activeTab, setActiveTab] = useState('personales');
   const [activeSubTab, setActiveSubTab] = useState('todas');
   const [activeVistasTab, setActiveVistasTab] = useState('generales');
+  
+  // Estados para DataTable
+  const [filterText, setFilterText] = useState('');
+  const [filterTextGenerales, setFilterTextGenerales] = useState('');
+  const [filterTextVistas, setFilterTextVistas] = useState('');
+  const [resetPaginationToggle, setResetPaginationToggle] = useState(false);
+  const [resetPaginationToggleGenerales, setResetPaginationToggleGenerales] = useState(false);
+  const [resetPaginationToggleVistas, setResetPaginationToggleVistas] = useState(false);
+  const [selectedRows, setSelectedRows] = useState<any[]>([]);
+  const [toggleCleared, setToggleCleared] = useState(false);
+  const [perPage, setPerPage] = useState(10);
+  const [perPageGenerales, setPerPageGenerales] = useState(10);
+  const [perPageVistas, setPerPageVistas] = useState(10);
   
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
@@ -282,7 +382,7 @@ const Notificaciones: React.FC = () => {
       
       const params = new URLSearchParams({
         page: pagination.page.toString(),
-        limit: pagination.limit.toString()
+        limit: '100'
       });
       
       if (activeSubTab === 'no_vistas') {
@@ -311,6 +411,7 @@ const Notificaciones: React.FC = () => {
         });
         
         setNotificaciones(notificacionesOrdenadas);
+        setFilteredNotificaciones(notificacionesOrdenadas);
         setPagination({
           page: data.pagination?.page || pagination.page,
           limit: data.pagination?.limit || pagination.limit,
@@ -322,10 +423,11 @@ const Notificaciones: React.FC = () => {
       console.error('Error cargando notificaciones:', error);
       setError('Error al cargar las notificaciones');
       setNotificaciones([]);
+      setFilteredNotificaciones([]);
     } finally {
       setLoading(prev => ({ ...prev, notificaciones: false }));
     }
-  }, [pagination.page, pagination.limit, filtros.tipo, filtros.prioridad, filtros.importante, activeSubTab, orden]);
+  }, [pagination.page, filtros.tipo, filtros.prioridad, filtros.importante, activeSubTab, orden]);
 
   const cargarNotificacionesGenerales = useCallback(async () => {
     try {
@@ -333,7 +435,7 @@ const Notificaciones: React.FC = () => {
       
       const params = new URLSearchParams({
         page: paginationGenerales.page.toString(),
-        limit: paginationGenerales.limit.toString()
+        limit: '100'
       });
       
       if (filtrosGenerales.importante) params.append('importante', 'true');
@@ -343,7 +445,9 @@ const Notificaciones: React.FC = () => {
       
       if (response.data.success) {
         const data = response.data.data;
-        setNotificacionesGenerales(data.notificaciones || []);
+        const notificacionesData = data.notificaciones || [];
+        setNotificacionesGenerales(notificacionesData);
+        setFilteredNotificacionesGenerales(notificacionesData);
         setPaginationGenerales({
           page: data.pagination?.page || paginationGenerales.page,
           limit: data.pagination?.limit || paginationGenerales.limit,
@@ -354,10 +458,11 @@ const Notificaciones: React.FC = () => {
     } catch (error) {
       console.error('Error cargando notificaciones generales:', error);
       setNotificacionesGenerales([]);
+      setFilteredNotificacionesGenerales([]);
     } finally {
       setLoading(prev => ({ ...prev, generales: false }));
     }
-  }, [paginationGenerales.page, paginationGenerales.limit, filtrosGenerales.importante, filtrosGenerales.vista]);
+  }, [paginationGenerales.page, filtrosGenerales.importante, filtrosGenerales.vista]);
 
   const cargarVistasNotificaciones = useCallback(async () => {
     try {
@@ -365,7 +470,7 @@ const Notificaciones: React.FC = () => {
       
       const params = new URLSearchParams({
         page: paginationVistas.page.toString(),
-        limit: paginationVistas.limit.toString(),
+        limit: '100',
         tipo: activeVistasTab
       });
       
@@ -377,7 +482,9 @@ const Notificaciones: React.FC = () => {
       
       if (response.data.success) {
         const data = response.data.data;
-        setVistasNotificaciones(data.vistas || []);
+        const vistasData = data.vistas || [];
+        setVistasNotificaciones(vistasData);
+        setFilteredVistasNotificaciones(vistasData);
         setPaginationVistas({
           page: data.pagination?.page || paginationVistas.page,
           limit: data.pagination?.limit || paginationVistas.limit,
@@ -388,10 +495,64 @@ const Notificaciones: React.FC = () => {
     } catch (error) {
       console.error('Error cargando vistas de notificaciones:', error);
       setVistasNotificaciones([]);
+      setFilteredVistasNotificaciones([]);
     } finally {
       setLoading(prev => ({ ...prev, vistas: false }));
     }
-  }, [paginationVistas.page, paginationVistas.limit, filtrosVistas.fechaInicio, filtrosVistas.fechaFin, filtrosVistas.usuario, activeVistasTab]);
+  }, [paginationVistas.page, filtrosVistas.fechaInicio, filtrosVistas.fechaFin, filtrosVistas.usuario, activeVistasTab]);
+
+  // Filtrado en tiempo real para notificaciones personales
+  useEffect(() => {
+    if (!filterText) {
+      setFilteredNotificaciones(notificaciones);
+    } else {
+      const filtered = notificaciones.filter(notif => {
+        const searchTerm = filterText.toLowerCase();
+        return (
+          notif.Titulo.toLowerCase().includes(searchTerm) ||
+          (notif.Mensaje && notif.Mensaje.toLowerCase().includes(searchTerm)) ||
+          (notif.Tipo && notif.Tipo.toLowerCase().includes(searchTerm)) ||
+          (notif.Usuario && notif.Usuario.toLowerCase().includes(searchTerm)) ||
+          (notif.NombreEmpleado && notif.NombreEmpleado.toLowerCase().includes(searchTerm))
+        );
+      });
+      setFilteredNotificaciones(filtered);
+    }
+  }, [filterText, notificaciones]);
+
+  // Filtrado en tiempo real para notificaciones generales
+  useEffect(() => {
+    if (!filterTextGenerales) {
+      setFilteredNotificacionesGenerales(notificacionesGenerales);
+    } else {
+      const filtered = notificacionesGenerales.filter(notif => {
+        const searchTerm = filterTextGenerales.toLowerCase();
+        return (
+          notif.Titulo.toLowerCase().includes(searchTerm) ||
+          (notif.Mensaje && notif.Mensaje.toLowerCase().includes(searchTerm)) ||
+          (notif.CreadorNombre && notif.CreadorNombre.toLowerCase().includes(searchTerm))
+        );
+      });
+      setFilteredNotificacionesGenerales(filtered);
+    }
+  }, [filterTextGenerales, notificacionesGenerales]);
+
+  // Filtrado en tiempo real para vistas
+  useEffect(() => {
+    if (!filterTextVistas) {
+      setFilteredVistasNotificaciones(vistasNotificaciones);
+    } else {
+      const filtered = vistasNotificaciones.filter(vista => {
+        const searchTerm = filterTextVistas.toLowerCase();
+        return (
+          (vista.Usuario && vista.Usuario.toLowerCase().includes(searchTerm)) ||
+          (vista.NombreEmpleado && vista.NombreEmpleado.toLowerCase().includes(searchTerm)) ||
+          (vista.Titulo && vista.Titulo.toLowerCase().includes(searchTerm))
+        );
+      });
+      setFilteredVistasNotificaciones(filtered);
+    }
+  }, [filterTextVistas, vistasNotificaciones]);
 
   useEffect(() => {
     cargarResumen();
@@ -409,7 +570,6 @@ const Notificaciones: React.FC = () => {
   }, [
     activeTab,
     pagination.page,
-    pagination.limit,
     filtros.tipo,
     filtros.prioridad,
     filtros.importante,
@@ -425,7 +585,6 @@ const Notificaciones: React.FC = () => {
   }, [
     activeTab,
     paginationGenerales.page,
-    paginationGenerales.limit,
     filtrosGenerales.importante,
     filtrosGenerales.vista,
     cargarNotificacionesGenerales
@@ -439,7 +598,6 @@ const Notificaciones: React.FC = () => {
     activeTab,
     activeVistasTab,
     paginationVistas.page,
-    paginationVistas.limit,
     filtrosVistas.fechaInicio,
     filtrosVistas.fechaFin,
     filtrosVistas.usuario,
@@ -448,22 +606,22 @@ const Notificaciones: React.FC = () => {
   ]);
 
   useEffect(() => {
-  const refrescarNotificaciones = () => {
-    console.log('🔄 Refrescando notificaciones por evento WebSocket');
-    if (activeTab === 'personales') {
-      cargarNotificaciones();
-    } else if (activeTab === 'generales') {
-      cargarNotificacionesGenerales();
-    }
-    cargarResumen();
-  };
+    const refrescarNotificaciones = () => {
+      console.log('🔄 Refrescando notificaciones por evento WebSocket');
+      if (activeTab === 'personales') {
+        cargarNotificaciones();
+      } else if (activeTab === 'generales') {
+        cargarNotificacionesGenerales();
+      }
+      cargarResumen();
+    };
 
-  window.addEventListener('refrescar-notificaciones', refrescarNotificaciones);
-  
-  return () => {
-    window.removeEventListener('refrescar-notificaciones', refrescarNotificaciones);
-  };
-}, [activeTab, cargarNotificaciones, cargarNotificacionesGenerales, cargarResumen]);
+    window.addEventListener('refrescar-notificaciones', refrescarNotificaciones);
+    
+    return () => {
+      window.removeEventListener('refrescar-notificaciones', refrescarNotificaciones);
+    };
+  }, [activeTab, cargarNotificaciones, cargarNotificacionesGenerales, cargarResumen]);
 
   const marcarComoVista = async (notificacionId: number) => {
     try {
@@ -471,6 +629,13 @@ const Notificaciones: React.FC = () => {
       
       if (response.data.success) {
         setNotificaciones(prev =>
+          prev.map(n =>
+            n.ID === notificacionId
+              ? { ...n, Estado: 'vista', FechaVista: new Date().toISOString() }
+              : n
+          )
+        );
+        setFilteredNotificaciones(prev =>
           prev.map(n =>
             n.ID === notificacionId
               ? { ...n, Estado: 'vista', FechaVista: new Date().toISOString() }
@@ -494,6 +659,13 @@ const Notificaciones: React.FC = () => {
       
       if (response.data.success) {
         setNotificacionesGenerales(prev =>
+          prev.map(n =>
+            n.ID === notificacionId
+              ? { ...n, YaVista: 1, FechaVista: new Date().toISOString() }
+              : n
+          )
+        );
+        setFilteredNotificacionesGenerales(prev =>
           prev.map(n =>
             n.ID === notificacionId
               ? { ...n, YaVista: 1, FechaVista: new Date().toISOString() }
@@ -524,9 +696,11 @@ const Notificaciones: React.FC = () => {
       if (response.data.success) {
         if (isGeneral) {
           setNotificacionesGenerales(prev => prev.filter(n => n.ID !== notificacionAEliminar.ID));
+          setFilteredNotificacionesGenerales(prev => prev.filter(n => n.ID !== notificacionAEliminar.ID));
           cargarNotificacionesGenerales();
         } else {
           setNotificaciones(prev => prev.filter(n => n.ID !== notificacionAEliminar.ID));
+          setFilteredNotificaciones(prev => prev.filter(n => n.ID !== notificacionAEliminar.ID));
           cargarResumen();
         }
         if (isAdmin) cargarResumenVistas();
@@ -547,6 +721,13 @@ const Notificaciones: React.FC = () => {
       
       if (response.data.success) {
         setNotificaciones(prev =>
+          prev.map(n => ({
+            ...n,
+            Estado: 'vista',
+            FechaVista: new Date().toISOString()
+          }))
+        );
+        setFilteredNotificaciones(prev =>
           prev.map(n => ({
             ...n,
             Estado: 'vista',
@@ -706,6 +887,303 @@ const Notificaciones: React.FC = () => {
     return 'YaVista' in notificacion;
   };
 
+  // Definición de columnas para DataTable - Notificaciones Personales
+  const columnsPersonales = [
+    {
+      name: 'Estado',
+      selector: (row: Notificacion) => row.Estado,
+      sortable: true,
+      cell: (row: Notificacion) => getEstadoBadge(row.Estado),
+      width: '100px',
+    },
+    {
+      name: 'Prioridad',
+      selector: (row: Notificacion) => row.Prioridad,
+      sortable: true,
+      cell: (row: Notificacion) => getBadgePrioridad(row.Prioridad),
+      width: '100px',
+    },
+    {
+      name: 'Título',
+      selector: (row: Notificacion) => row.Titulo,
+      sortable: true,
+      cell: (row: Notificacion) => (
+        <div className="d-flex align-items-center">
+          <div 
+            className="rounded-circle d-flex align-items-center justify-content-center me-2"
+            style={{
+              width: '30px',
+              height: '30px',
+              backgroundColor: `var(--bs-${getColorNotificacion(row.Tipo, row.Prioridad, row.Estado)}-bg)`,
+              color: `var(--bs-${getColorNotificacion(row.Tipo, row.Prioridad, row.Estado)})`
+            }}
+          >
+            <FontAwesomeIcon 
+              icon={getIconoNotificacion(row.Tipo, row.Prioridad)} 
+              size="sm"
+            />
+          </div>
+          <div>
+            <strong>{row.Titulo}</strong>
+            <div className="small text-muted">{row.Tipo?.replace(/_/g, ' ')}</div>
+          </div>
+        </div>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Mensaje',
+      selector: (row: Notificacion) => row.Mensaje,
+      sortable: true,
+      cell: (row: Notificacion) => (
+        <div className="text-truncate" style={{ maxWidth: '300px' }}>
+          {row.Mensaje && row.Mensaje.length > 100
+            ? `${row.Mensaje.substring(0, 100)}...`
+            : row.Mensaje}
+        </div>
+      ),
+      grow: 3,
+    },
+    {
+      name: 'Fecha',
+      selector: (row: Notificacion) => row.createdAt,
+      sortable: true,
+      cell: (row: Notificacion) => (
+        <div>
+          <div>{formatFechaHora(row.createdAt)}</div>
+          <small className="text-muted">{formatFechaRelativa(row.createdAt)}</small>
+        </div>
+      ),
+    },
+    {
+      name: 'Destinatario',
+      selector: (row: Notificacion) => row.NombreEmpleado || row.Usuario || '',
+      sortable: true,
+      cell: (row: Notificacion) => (
+        <div>
+          <div>{row.NombreEmpleado || 'Usuario'}</div>
+          {row.Usuario && <small className="text-muted">@{row.Usuario}</small>}
+        </div>
+      ),
+    },
+    {
+      name: 'Acciones',
+      cell: (row: Notificacion) => (
+        <ButtonGroup size="sm">
+          <Button
+            variant="outline-primary"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedNotificacion(row);
+              setShowDetalleModal(true);
+              if (row.Estado === 'no_vista') {
+                marcarComoVista(row.ID);
+              }
+            }}
+            title="Ver detalles"
+            className="hover-bg-soft"
+          >
+            <FontAwesomeIcon icon={faEye} />
+          </Button>
+          <Button
+            variant="outline-danger"
+            onClick={(e) => {
+              e.stopPropagation();
+              setNotificacionAEliminar(row);
+              setShowEliminarModal(true);
+            }}
+            title="Eliminar"
+            className="hover-bg-soft"
+          >
+            <FontAwesomeIcon icon={faTrash} />
+          </Button>
+        </ButtonGroup>
+      ),
+      ignoreRowClick: true,
+      allowOverflow: true,
+    },
+  ];
+
+  // Definición de columnas para DataTable - Notificaciones Generales
+  const columnsGenerales = [
+    {
+      name: 'Estado',
+      selector: (row: NotificacionGeneral) => row.YaVista === 1 ? 'Vista' : 'No vista',
+      sortable: true,
+      cell: (row: NotificacionGeneral) => (
+        <Badge bg={row.YaVista === 1 ? 'secondary' : 'success'} pill>
+          {row.YaVista === 1 ? 'Vista' : 'No vista'}
+        </Badge>
+      ),
+      width: '100px',
+    },
+    {
+      name: 'Importancia',
+      selector: (row: NotificacionGeneral) => row.Importante ? 'Importante' : 'Normal',
+      sortable: true,
+      cell: (row: NotificacionGeneral) => row.Importante ? (
+        <Badge bg="danger" pill>IMPORTANTE</Badge>
+      ) : (
+        <Badge bg="secondary" pill>Normal</Badge>
+      ),
+      width: '100px',
+    },
+    {
+      name: 'Título',
+      selector: (row: NotificacionGeneral) => row.Titulo,
+      sortable: true,
+      cell: (row: NotificacionGeneral) => (
+        <div className="d-flex align-items-center">
+          <div 
+            className="rounded-circle d-flex align-items-center justify-content-center me-2"
+            style={{
+              width: '30px',
+              height: '30px',
+              backgroundColor: `var(--bs-${row.Importante ? 'danger' : 'info'}-bg)`,
+              color: `var(--bs-${row.Importante ? 'danger' : 'info'})`
+            }}
+          >
+            <FontAwesomeIcon 
+              icon={row.Importante ? faExclamationCircle : faGlobe} 
+              size="sm"
+            />
+          </div>
+          <strong>{row.Titulo}</strong>
+        </div>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Mensaje',
+      selector: (row: NotificacionGeneral) => row.Mensaje,
+      sortable: true,
+      cell: (row: NotificacionGeneral) => (
+        <div className="text-truncate" style={{ maxWidth: '300px' }}>
+          {row.Mensaje && row.Mensaje.length > 100
+            ? `${row.Mensaje.substring(0, 100)}...`
+            : row.Mensaje}
+        </div>
+      ),
+      grow: 3,
+    },
+    {
+      name: 'Fecha',
+      selector: (row: NotificacionGeneral) => row.createdAt,
+      sortable: true,
+      cell: (row: NotificacionGeneral) => (
+        <div>
+          <div>{formatFechaHora(row.createdAt)}</div>
+          <small className="text-muted">{formatFechaRelativa(row.createdAt)}</small>
+        </div>
+      ),
+    },
+    {
+      name: 'Creado por',
+      selector: (row: NotificacionGeneral) => row.CreadorNombre || 'Sistema',
+      sortable: true,
+      cell: (row: NotificacionGeneral) => (
+        <div>{row.CreadorNombre || 'Sistema'}</div>
+      ),
+    },
+    {
+      name: 'Acciones',
+      cell: (row: NotificacionGeneral) => (
+        <ButtonGroup size="sm">
+          <Button
+            variant="outline-primary"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedNotificacion(row);
+              setShowDetalleModal(true);
+              if (row.YaVista === 0) {
+                marcarGeneralComoVista(row.ID);
+              }
+            }}
+            title="Ver detalles"
+            className="hover-bg-soft"
+          >
+            <FontAwesomeIcon icon={faEye} />
+          </Button>
+          {canCreateGeneral && (
+            <Button
+              variant="outline-danger"
+              onClick={(e) => {
+                e.stopPropagation();
+                setNotificacionAEliminar(row);
+                setShowEliminarModal(true);
+              }}
+              title="Eliminar"
+              className="hover-bg-soft"
+            >
+              <FontAwesomeIcon icon={faTrash} />
+            </Button>
+          )}
+        </ButtonGroup>
+      ),
+      ignoreRowClick: true,
+      allowOverflow: true,
+    },
+  ];
+
+  // Definición de columnas para DataTable - Vistas
+  const columnsVistas = [
+    {
+      name: 'Usuario',
+      selector: (row: VistaNotificacion) => row.NombreEmpleado || row.Usuario,
+      sortable: true,
+      cell: (row: VistaNotificacion) => (
+        <div>
+          <div className="fw-bold">{row.NombreEmpleado || row.Usuario}</div>
+          <small className="text-muted">@{row.Usuario}</small>
+        </div>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Notificación',
+      selector: (row: VistaNotificacion) => row.Titulo,
+      sortable: true,
+      cell: (row: VistaNotificacion) => (
+        <div>
+          <div>{row.Titulo}</div>
+          <small className="text-muted">{row.Tipo === 'generales' ? 'General' : 'Personal'}</small>
+        </div>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Fecha de Vista',
+      selector: (row: VistaNotificacion) => row.FechaVista,
+      sortable: true,
+      cell: (row: VistaNotificacion) => (
+        <div>
+          <div>{formatFechaHora(row.FechaVista)}</div>
+          <small className="text-muted">{formatFechaRelativa(row.FechaVista)}</small>
+        </div>
+      ),
+    },
+    {
+      name: 'Acciones',
+      cell: (row: VistaNotificacion) => (
+        <Button
+          variant="outline-info"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedVista(row);
+            setShowDetalleVistaModal(true);
+          }}
+          title="Ver detalles"
+          className="hover-bg-soft"
+        >
+          <FontAwesomeIcon icon={faEye} />
+        </Button>
+      ),
+      ignoreRowClick: true,
+      allowOverflow: true,
+    },
+  ];
+
   if (!user) {
     return (
       <Container fluid className="py-4">
@@ -718,57 +1196,64 @@ const Notificaciones: React.FC = () => {
   }
 
   return (
-    <Container fluid className="grow py-4">
+    <Container fluid className="py-4">
       <Row className="mb-4">
         <Col>
           <div className="d-flex justify-content-between align-items-center">
             <div>
-              <h2 className="mb-0">
-                <FontAwesomeIcon icon={faBell} className="me-2 text-primary" />
+              <h2 className="mb-0 text-primary">
+                <FontAwesomeIcon icon={faBell} className="me-2" />
                 Centro de Notificaciones
               </h2>
-              <p className="text-muted mb-0">
-                <FontAwesomeIcon icon={faUserCircle} className="me-1" />
-                {user?.usuario} • {user?.rol}
-              </p>
             </div>
             
-            <ButtonGroup>
+            <div className="d-flex gap-2">
               {canCreateGeneral && (
                 <Button 
                   variant="success" 
                   onClick={() => setShowCrearGeneralModal(true)}
+                  className="shadow-sm"
                 >
                   <FontAwesomeIcon icon={faBullhorn} className="me-2" />
                   Nueva Notificación General
                 </Button>
               )}
-              <Button 
-                variant="outline-primary" 
-                onClick={() => {
-                  if (activeTab === 'personales') {
-                    setPagination(prev => ({ ...prev, page: 1 }));
-                    cargarNotificaciones();
-                  } else if (activeTab === 'generales') {
-                    setPaginationGenerales(prev => ({ ...prev, page: 1 }));
-                    cargarNotificacionesGenerales();
-                  } else if (activeTab === 'vistas' && isAdmin) {
-                    setPaginationVistas(prev => ({ ...prev, page: 1 }));
-                    cargarVistasNotificaciones();
-                  }
-                }}
-                disabled={loading.notificaciones || loading.generales || loading.vistas}
-              >
-                <FontAwesomeIcon icon={faSync} className="me-2" spin={loading.notificaciones || loading.generales || loading.vistas} />
-                Actualizar
-              </Button>
-            </ButtonGroup>
+              <ButtonGroup className="shadow-sm">
+                <Button 
+                  variant="outline-primary" 
+                  onClick={() => {
+                    if (activeTab === 'personales') {
+                      cargarNotificaciones();
+                    } else if (activeTab === 'generales') {
+                      cargarNotificacionesGenerales();
+                    } else if (activeTab === 'vistas' && isAdmin) {
+                      cargarVistasNotificaciones();
+                    }
+                  }}
+                  disabled={loading.notificaciones || loading.generales || loading.vistas}
+                  className="hover-bg-soft"
+                >
+                  <FontAwesomeIcon icon={faSync} className={`me-2 ${loading.notificaciones || loading.generales || loading.vistas ? 'fa-spin' : ''}`} />
+                  Actualizar
+                </Button>
+                {activeTab === 'personales' && resumen.no_vistas > 0 && (
+                  <Button 
+                    variant="outline-success"
+                    onClick={marcarTodasComoVistas}
+                    className="hover-bg-soft"
+                  >
+                    <FontAwesomeIcon icon={faCheck} className="me-2" />
+                    Marcar todas como vistas
+                  </Button>
+                )}
+              </ButtonGroup>
+            </div>
           </div>
         </Col>
       </Row>
 
       {error && (
-        <Alert variant="danger" dismissible onClose={() => setError('')} className="mb-4">
+        <Alert variant="danger" dismissible onClose={() => setError('')} className="mb-4 shadow-sm">
           <div className="d-flex align-items-center">
             <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
             <strong className="me-2">Error:</strong>
@@ -778,7 +1263,7 @@ const Notificaciones: React.FC = () => {
       )}
       
       {success && (
-        <Alert variant="success" dismissible onClose={() => setSuccess('')} className="mb-4">
+        <Alert variant="success" dismissible onClose={() => setSuccess('')} className="mb-4 shadow-sm">
           <div className="d-flex align-items-center">
             <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
             <strong className="me-2">Éxito:</strong>
@@ -806,6 +1291,15 @@ const Notificaciones: React.FC = () => {
                 <Badge bg="info" className="ms-2">{paginationGenerales.total}</Badge>
               </Nav.Link>
             </Nav.Item>
+            {isAdmin && (
+              <Nav.Item>
+                <Nav.Link eventKey="vistas">
+                  <FontAwesomeIcon icon={faHistory} className="me-2" />
+                  Historial de Vistas
+                  <Badge bg="secondary" className="ms-2">{paginationVistas.total}</Badge>
+                </Nav.Link>
+              </Nav.Item>
+            )}
           </Nav>
         </Card.Header>
 
@@ -815,7 +1309,7 @@ const Notificaciones: React.FC = () => {
               {!loading.resumen && (
                 <Row className="mb-4">
                   <Col md={3}>
-                    <Card className="shadow-sm border-0 bg-primary">
+                    <Card className="shadow-sm border-0 bg-primary text-white">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
@@ -830,7 +1324,7 @@ const Notificaciones: React.FC = () => {
                     </Card>
                   </Col>
                   <Col md={3}>
-                    <Card className="shadow-sm border-0 bg-danger">
+                    <Card className="shadow-sm border-0 bg-danger text-white">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
@@ -841,23 +1335,11 @@ const Notificaciones: React.FC = () => {
                             <FontAwesomeIcon icon={faEnvelopeOpen} size="2x" />
                           </div>
                         </div>
-                        <div className="mt-3">
-                          <Button 
-                            variant="light" 
-                            size="sm" 
-                            className="text-danger w-100"
-                            onClick={marcarTodasComoVistas}
-                            disabled={resumen.no_vistas === 0}
-                          >
-                            <FontAwesomeIcon icon={faCheck} className="me-2" />
-                            Marcar todas como vistas
-                          </Button>
-                        </div>
                       </Card.Body>
                     </Card>
                   </Col>
                   <Col md={3}>
-                    <Card className="shadow-sm border-0 bg-warning">
+                    <Card className="shadow-sm border-0 bg-warning text-white">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
@@ -872,7 +1354,7 @@ const Notificaciones: React.FC = () => {
                     </Card>
                   </Col>
                   <Col md={3}>
-                    <Card className="shadow-sm border-0 bg-info">
+                    <Card className="shadow-sm border-0 bg-info text-white">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
@@ -974,180 +1456,106 @@ const Notificaciones: React.FC = () => {
                 </Card.Body>
               </Card>
 
-              {loading.notificaciones ? (
-                <div className="text-center py-5">
-                  <Spinner animation="border" variant="primary" />
-                  <p className="mt-3 text-muted">Cargando notificaciones...</p>
-                </div>
-              ) : notificaciones.length === 0 ? (
-                <div className="text-center py-5">
-                  <div className="mb-3">
-                    <FontAwesomeIcon icon={faBellSlash} size="3x" className="text-muted" />
-                  </div>
-                  <h5 className="fw-normal">No hay notificaciones</h5>
-                  <p className="text-muted">
-                    {activeSubTab === 'no_vistas' 
-                      ? 'No tienes notificaciones sin ver' 
-                      : activeSubTab === 'importantes'
-                      ? 'No tienes notificaciones importantes'
-                      : 'No hay notificaciones para mostrar'}
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <ListGroup variant="flush">
-                    {notificaciones.map((notificacion) => (
-                      <ListGroup.Item 
-                        key={notificacion.ID}
-                        className={`py-3 px-0 border-bottom ${notificacion.Estado === 'no_vista' ? 'bg-light' : ''}`}
-                        action
-                        onClick={() => {
-                          setSelectedNotificacion(notificacion);
-                          setShowDetalleModal(true);
-                          if (notificacion.Estado === 'no_vista') {
-                            marcarComoVista(notificacion.ID);
-                          }
-                        }}
-                      >
-                        <Row>
-                          <Col xs="auto" className="d-flex align-items-center">
-                            <div 
-                              className="rounded-circle d-flex align-items-center justify-content-center"
-                              style={{
-                                width: '50px',
-                                height: '50px',
-                                backgroundColor: `var(--bs-${getColorNotificacion(notificacion.Tipo, notificacion.Prioridad, notificacion.Estado)}-bg)`,
-                                color: `var(--bs-${getColorNotificacion(notificacion.Tipo, notificacion.Prioridad, notificacion.Estado)})`
-                              }}
-                            >
-                              <FontAwesomeIcon 
-                                icon={getIconoNotificacion(notificacion.Tipo, notificacion.Prioridad)} 
-                                size="lg"
-                              />
-                            </div>
-                          </Col>
-                          
-                          <Col className="d-flex flex-column">
-                            <div className="d-flex justify-content-between align-items-start">
-                              <div>
-                                <div className="d-flex align-items-center mb-1">
-                                  <h6 className="mb-0 fw-bold">{notificacion.Titulo}</h6>
-                                  {notificacion.Prioridad === 'urgente' && (
-                                    <Badge bg="danger" className="ms-2">URGENTE</Badge>
-                                  )}
-                                  {notificacion.Prioridad === 'alta' && (
-                                    <Badge bg="warning" className="ms-2">ALTA</Badge>
-                                  )}
-                                </div>
-                                <p className="text-muted small mb-2">
-                                  {notificacion.Mensaje && notificacion.Mensaje.length > 120
-                                    ? `${notificacion.Mensaje.substring(0, 120)}...`
-                                    : notificacion.Mensaje}
-                                </p>
-                                <div className="d-flex align-items-center gap-3">
-                                  <small className="text-muted">
-                                    <FontAwesomeIcon icon={faClock} className="me-1" />
-                                    {formatFechaRelativa(notificacion.createdAt)}
-                                  </small>
-                                  <small className="text-muted">
-                                    <FontAwesomeIcon icon={faTag} className="me-1" />
-                                    {notificacion.Tipo?.replace(/_/g, ' ')}
-                                  </small>
-                                </div>
-                              </div>
-                              
-                              <div className="d-flex align-items-center">
-                                {getEstadoBadge(notificacion.Estado)}
-                                {getBadgePrioridad(notificacion.Prioridad)}
-                                
-                                <Dropdown className="ms-2">
-                                  <Dropdown.Toggle variant="link" size="sm" className="text-muted no-arrow">
-                                    <FontAwesomeIcon icon={faEllipsisV} />
-                                  </Dropdown.Toggle>
-                                  
-                                  <Dropdown.Menu align="end">
-                                    <Dropdown.Item 
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setNotificacionAEliminar(notificacion);
-                                        setShowEliminarModal(true);
-                                      }}
-                                      className="text-danger"
-                                    >
-                                      <FontAwesomeIcon icon={faTrash} className="me-2" />
-                                      Eliminar
-                                    </Dropdown.Item>
-                                  </Dropdown.Menu>
-                                </Dropdown>
-                              </div>
-                            </div>
-                          </Col>
-                        </Row>
-                      </ListGroup.Item>
-                    ))}
-                  </ListGroup>
-                  
-                  {pagination.totalPages > 1 && (
-                    <div className="d-flex justify-content-between align-items-center mt-4">
-                      <div>
-                        <small className="text-muted">
-                          Mostrando {((pagination.page - 1) * pagination.limit) + 1} a{' '}
-                          {Math.min(pagination.page * pagination.limit, pagination.total)} de{' '}
-                          {pagination.total} notificaciones
-                        </small>
-                      </div>
-                      
-                      <Pagination>
-                        <Pagination.First 
-                          onClick={() => setPagination(prev => ({ ...prev, page: 1 }))}
-                          disabled={pagination.page === 1}
-                        />
-                        <Pagination.Prev 
-                          onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
-                          disabled={pagination.page === 1}
-                        />
-                        
-                        {[...Array(Math.min(5, pagination.totalPages))].map((_, idx) => {
-                          let page = pagination.page - 2 + idx;
-                          if (page < 1) page = 1 + idx;
-                          if (page > pagination.totalPages) page = pagination.totalPages - (4 - idx);
-                          if (page < 1) page = 1;
-                          
-                          return (
-                            <Pagination.Item
-                              key={page}
-                              active={page === pagination.page}
-                              onClick={() => setPagination(prev => ({ ...prev, page }))}
-                            >
-                              {page}
-                            </Pagination.Item>
-                          );
-                        })}
-                        
-                        <Pagination.Next 
-                          onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-                          disabled={pagination.page === pagination.totalPages}
-                        />
-                        <Pagination.Last 
-                          onClick={() => setPagination(prev => ({ ...prev, page: pagination.totalPages }))}
-                          disabled={pagination.page === pagination.totalPages}
-                        />
-                      </Pagination>
-                      
-                      <Form.Select
-                        size="sm"
-                        style={{ width: 'auto' }}
-                        value={pagination.limit}
-                        onChange={(e) => setPagination(prev => ({ ...prev, limit: parseInt(e.target.value), page: 1 }))}
-                      >
-                        <option value="10">10 / página</option>
-                        <option value="25">25 / página</option>
-                        <option value="50">50 / página</option>
-                      </Form.Select>
+              <Card className="shadow-sm border-0 mb-4">
+                <Card.Body className="p-0">
+                  <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
+                    <div>
+                      <h6 className="mb-0">
+                        <FontAwesomeIcon icon={faFilter} className="me-2 text-primary" />
+                        Búsqueda y filtros
+                      </h6>
                     </div>
+                  </div>
+                  <div className="p-3">
+                    <FilterComponent
+                      filterText={filterText}
+                      onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterText(e.target.value)}
+                      onClear={() => setFilterText('')}
+                      placeholder="Buscar por título, mensaje, tipo, destinatario..."
+                    />
+                  </div>
+                </Card.Body>
+              </Card>
+
+              <Card className="shadow-sm border-0">
+                <Card.Body className="p-0">
+                  {loading.notificaciones ? (
+                    <div className="text-center py-5">
+                      <Spinner animation="border" variant="primary" />
+                      <p className="mt-3 text-muted">Cargando notificaciones...</p>
+                    </div>
+                  ) : filteredNotificaciones.length === 0 ? (
+                    <div className="text-center py-5">
+                      <div className="mb-3">
+                        <FontAwesomeIcon icon={faBellSlash} size="3x" className="text-muted" />
+                      </div>
+                      <h5 className="fw-normal">No hay notificaciones</h5>
+                      <p className="text-muted">
+                        {filterText 
+                          ? 'No se encontraron resultados para tu búsqueda'
+                          : activeSubTab === 'no_vistas' 
+                          ? 'No tienes notificaciones sin ver' 
+                          : activeSubTab === 'importantes'
+                          ? 'No tienes notificaciones importantes'
+                          : 'No hay notificaciones para mostrar'}
+                      </p>
+                    </div>
+                  ) : (
+                    <DataTable
+                      columns={columnsPersonales}
+                      data={filteredNotificaciones}
+                      pagination
+                      paginationPerPage={perPage}
+                      paginationRowsPerPageOptions={[5, 10, 15, 20, 25, 50, 100]}
+                      onChangeRowsPerPage={(newPerPage) => setPerPage(newPerPage)}
+                      highlightOnHover
+                      pointerOnHover
+                      selectableRows
+                      selectableRowsHighlight
+                      onSelectedRowsChange={(state) => setSelectedRows(state.selectedRows)}
+                      clearSelectedRows={toggleCleared}
+                      onRowClicked={(row) => {
+                        setSelectedNotificacion(row);
+                        setShowDetalleModal(true);
+                        if (row.Estado === 'no_vista') {
+                          marcarComoVista(row.ID);
+                        }
+                      }}
+                      responsive
+                      customStyles={customStyles}
+                      progressPending={loading.notificaciones}
+                      progressComponent={
+                        <div className="text-center py-5">
+                          <Spinner animation="border" variant="primary" />
+                          <p className="mt-3 text-muted">Cargando datos...</p>
+                        </div>
+                      }
+                      sortIcon={
+                        <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
+                      }
+                      noDataComponent={
+                        <div className="text-center py-5">
+                          <FontAwesomeIcon icon={faBellSlash} size="3x" className="text-muted mb-3" />
+                          <h5>No hay notificaciones</h5>
+                          <p className="text-muted">No se encontraron notificaciones para mostrar</p>
+                        </div>
+                      }
+                    />
                   )}
-                </>
-              )}
+                </Card.Body>
+                <Card.Footer className="bg-light border-top">
+                  <div className="d-flex justify-content-between align-items-center">
+                    <small className="text-muted">
+                      <FontAwesomeIcon icon={faBell} className="me-1" />
+                      Total: {filteredNotificaciones.length} notificaciones
+                    </small>
+                    <small className="text-muted">
+                      <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                      {selectedRows.length > 0 ? `${selectedRows.length} seleccionados` : 'Ninguno seleccionado'}
+                    </small>
+                  </div>
+                </Card.Footer>
+              </Card>
             </>
           )}
 
@@ -1203,175 +1611,323 @@ const Notificaciones: React.FC = () => {
                 </Card.Body>
               </Card>
 
-              {loading.generales ? (
-                <div className="text-center py-5">
-                  <Spinner animation="border" variant="primary" />
-                  <p className="mt-3 text-muted">Cargando notificaciones generales...</p>
-                </div>
-              ) : notificacionesGenerales.length === 0 ? (
-                <div className="text-center py-5">
-                  <div className="mb-3">
-                    <FontAwesomeIcon icon={faGlobe} size="3x" className="text-muted" />
-                  </div>
-                  <h5 className="fw-normal">No hay notificaciones generales</h5>
-                  <p className="text-muted">
-                    {canCreateGeneral 
-                      ? 'Crea la primera notificación general usando el botón "Nueva Notificación General"'
-                      : 'No hay notificaciones generales disponibles'}
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <ListGroup variant="flush">
-                    {notificacionesGenerales.map((notificacion) => (
-                      <ListGroup.Item 
-                        key={notificacion.ID}
-                        className={`py-3 px-0 border-bottom ${notificacion.YaVista === 0 ? 'bg-light' : ''}`}
-                        action
-                        onClick={() => {
-                          setSelectedNotificacion(notificacion);
-                          setShowDetalleModal(true);
-                          if (notificacion.YaVista === 0) {
-                            marcarGeneralComoVista(notificacion.ID);
-                          }
-                        }}
-                      >
-                        <Row>
-                          <Col xs="auto" className="d-flex align-items-center">
-                            <div 
-                              className="rounded-circle d-flex align-items-center justify-content-center"
-                              style={{
-                                width: '50px',
-                                height: '50px',
-                                backgroundColor: `var(--bs-${notificacion.Importante ? 'danger' : 'info'}-bg)`,
-                                color: `var(--bs-${notificacion.Importante ? 'danger' : 'info'})`
-                              }}
-                            >
-                              <FontAwesomeIcon 
-                                icon={notificacion.Importante ? faExclamationCircle : faGlobe} 
-                                size="lg"
-                              />
-                            </div>
-                          </Col>
-                          
-                          <Col className="d-flex flex-column">
-                            <div className="d-flex justify-content-between align-items-start">
-                              <div>
-                                <div className="d-flex align-items-center mb-1">
-                                  <h6 className="mb-0 fw-bold">{notificacion.Titulo}</h6>
-                                  {notificacion.Importante && (
-                                    <Badge bg="danger" className="ms-2">IMPORTANTE</Badge>
-                                  )}
-                                </div>
-                                <p className="text-muted small mb-2">
-                                  {notificacion.Mensaje && notificacion.Mensaje.length > 120
-                                    ? `${notificacion.Mensaje.substring(0, 120)}...`
-                                    : notificacion.Mensaje}
-                                </p>
-                                <div className="d-flex align-items-center gap-3">
-                                  <small className="text-muted">
-                                    <FontAwesomeIcon icon={faClock} className="me-1" />
-                                    {formatFechaRelativa(notificacion.createdAt)}
-                                  </small>
-                                  <small className="text-muted">
-                                    <FontAwesomeIcon icon={faUserCircle} className="me-1" />
-                                    {notificacion.CreadorNombre || 'Sistema'}
-                                  </small>
-                                </div>
-                              </div>
-                              
-                              <div className="d-flex align-items-center">
-                                <Badge 
-                                  bg={notificacion.YaVista === 1 ? 'secondary' : 'success'} 
-                                  pill
-                                >
-                                  {notificacion.YaVista === 1 ? 'Vista' : 'No vista'}
-                                </Badge>
-                                
-                                {canCreateGeneral && (
-                                  <Dropdown className="ms-2">
-                                    <Dropdown.Toggle variant="link" size="sm" className="text-muted no-arrow">
-                                      <FontAwesomeIcon icon={faEllipsisV} />
-                                    </Dropdown.Toggle>
-                                    
-                                    <Dropdown.Menu align="end">
-                                      <Dropdown.Item 
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setNotificacionAEliminar(notificacion);
-                                          setShowEliminarModal(true);
-                                        }}
-                                        className="text-danger"
-                                      >
-                                        <FontAwesomeIcon icon={faTrash} className="me-2" />
-                                        Eliminar
-                                      </Dropdown.Item>
-                                    </Dropdown.Menu>
-                                  </Dropdown>
-                                )}
-                              </div>
-                            </div>
-                          </Col>
-                        </Row>
-                      </ListGroup.Item>
-                    ))}
-                  </ListGroup>
-                  
-                  {paginationGenerales.totalPages > 1 && (
-                    <div className="d-flex justify-content-between align-items-center mt-4">
-                      <div>
-                        <small className="text-muted">
-                          Mostrando {((paginationGenerales.page - 1) * paginationGenerales.limit) + 1} a{' '}
-                          {Math.min(paginationGenerales.page * paginationGenerales.limit, paginationGenerales.total)} de{' '}
-                          {paginationGenerales.total} notificaciones
-                        </small>
-                      </div>
-                      
-                      <Pagination>
-                        <Pagination.First 
-                          onClick={() => setPaginationGenerales(prev => ({ ...prev, page: 1 }))}
-                          disabled={paginationGenerales.page === 1}
-                        />
-                        <Pagination.Prev 
-                          onClick={() => setPaginationGenerales(prev => ({ ...prev, page: prev.page - 1 }))}
-                          disabled={paginationGenerales.page === 1}
-                        />
-                        
-                        {[...Array(Math.min(5, paginationGenerales.totalPages))].map((_, idx) => {
-                          let page = paginationGenerales.page - 2 + idx;
-                          if (page < 1) page = 1 + idx;
-                          if (page > paginationGenerales.totalPages) page = paginationGenerales.totalPages - (4 - idx);
-                          if (page < 1) page = 1;
-                          
-                          return (
-                            <Pagination.Item
-                              key={page}
-                              active={page === paginationGenerales.page}
-                              onClick={() => setPaginationGenerales(prev => ({ ...prev, page }))}
-                            >
-                              {page}
-                            </Pagination.Item>
-                          );
-                        })}
-                        
-                        <Pagination.Next 
-                          onClick={() => setPaginationGenerales(prev => ({ ...prev, page: prev.page + 1 }))}
-                          disabled={paginationGenerales.page === paginationGenerales.totalPages}
-                        />
-                        <Pagination.Last 
-                          onClick={() => setPaginationGenerales(prev => ({ ...prev, page: paginationGenerales.totalPages }))}
-                          disabled={paginationGenerales.page === paginationGenerales.totalPages}
-                        />
-                      </Pagination>
+              <Card className="shadow-sm border-0 mb-4">
+                <Card.Body className="p-0">
+                  <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
+                    <div>
+                      <h6 className="mb-0">
+                        <FontAwesomeIcon icon={faFilter} className="me-2 text-primary" />
+                        Búsqueda
+                      </h6>
                     </div>
+                  </div>
+                  <div className="p-3">
+                    <FilterComponent
+                      filterText={filterTextGenerales}
+                      onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterTextGenerales(e.target.value)}
+                      onClear={() => setFilterTextGenerales('')}
+                      placeholder="Buscar por título, mensaje, creador..."
+                    />
+                  </div>
+                </Card.Body>
+              </Card>
+
+              <Card className="shadow-sm border-0">
+                <Card.Body className="p-0">
+                  {loading.generales ? (
+                    <div className="text-center py-5">
+                      <Spinner animation="border" variant="primary" />
+                      <p className="mt-3 text-muted">Cargando notificaciones generales...</p>
+                    </div>
+                  ) : filteredNotificacionesGenerales.length === 0 ? (
+                    <div className="text-center py-5">
+                      <div className="mb-3">
+                        <FontAwesomeIcon icon={faGlobe} size="3x" className="text-muted" />
+                      </div>
+                      <h5 className="fw-normal">No hay notificaciones generales</h5>
+                      <p className="text-muted">
+                        {filterTextGenerales
+                          ? 'No se encontraron resultados para tu búsqueda'
+                          : canCreateGeneral 
+                          ? 'Crea la primera notificación general usando el botón "Nueva Notificación General"'
+                          : 'No hay notificaciones generales disponibles'}
+                      </p>
+                    </div>
+                  ) : (
+                    <DataTable
+                      columns={columnsGenerales}
+                      data={filteredNotificacionesGenerales}
+                      pagination
+                      paginationPerPage={perPageGenerales}
+                      paginationRowsPerPageOptions={[5, 10, 15, 20, 25, 50, 100]}
+                      onChangeRowsPerPage={(newPerPage) => setPerPageGenerales(newPerPage)}
+                      highlightOnHover
+                      pointerOnHover
+                      selectableRows
+                      selectableRowsHighlight
+                      onSelectedRowsChange={(state) => setSelectedRows(state.selectedRows)}
+                      clearSelectedRows={toggleCleared}
+                      onRowClicked={(row) => {
+                        setSelectedNotificacion(row);
+                        setShowDetalleModal(true);
+                        if (row.YaVista === 0) {
+                          marcarGeneralComoVista(row.ID);
+                        }
+                      }}
+                      responsive
+                      customStyles={customStyles}
+                      progressPending={loading.generales}
+                      progressComponent={
+                        <div className="text-center py-5">
+                          <Spinner animation="border" variant="primary" />
+                          <p className="mt-3 text-muted">Cargando datos...</p>
+                        </div>
+                      }
+                      sortIcon={
+                        <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
+                      }
+                      noDataComponent={
+                        <div className="text-center py-5">
+                          <FontAwesomeIcon icon={faGlobe} size="3x" className="text-muted mb-3" />
+                          <h5>No hay notificaciones generales</h5>
+                          <p className="text-muted">No se encontraron notificaciones para mostrar</p>
+                        </div>
+                      }
+                    />
                   )}
-                </>
-              )}
+                </Card.Body>
+                <Card.Footer className="bg-light border-top">
+                  <div className="d-flex justify-content-between align-items-center">
+                    <small className="text-muted">
+                      <FontAwesomeIcon icon={faGlobe} className="me-1" />
+                      Total: {filteredNotificacionesGenerales.length} notificaciones
+                    </small>
+                    <small className="text-muted">
+                      <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                      {selectedRows.length > 0 ? `${selectedRows.length} seleccionados` : 'Ninguno seleccionado'}
+                    </small>
+                  </div>
+                </Card.Footer>
+              </Card>
+            </>
+          )}
+
+          {activeTab === 'vistas' && isAdmin && (
+            <>
+              <Card className="bg-light border-0 mb-4">
+                <Card.Body>
+                  <Nav variant="pills" className="mb-3" activeKey={activeVistasTab} onSelect={(k) => setActiveVistasTab(k || 'generales')}>
+                    <Nav.Item>
+                      <Nav.Link eventKey="generales">Vistas Generales</Nav.Link>
+                    </Nav.Item>
+                    <Nav.Item>
+                      <Nav.Link eventKey="personales">Vistas Personales</Nav.Link>
+                    </Nav.Item>
+                  </Nav>
+
+                  {!loading.resumenVistas && (
+                    <Row className="mb-3">
+                      <Col md={3}>
+                        <Card className="shadow-sm border-0 bg-primary text-white">
+                          <Card.Body>
+                            <div className="d-flex justify-content-between align-items-center">
+                              <div>
+                                <small>Total vistas</small>
+                                <h3 className="mb-0">{resumenVistas.total_vistas}</h3>
+                              </div>
+                              <FontAwesomeIcon icon={faEye} size="2x" />
+                            </div>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                      <Col md={3}>
+                        <Card className="shadow-sm border-0 bg-success text-white">
+                          <Card.Body>
+                            <div className="d-flex justify-content-between align-items-center">
+                              <div>
+                                <small>Hoy</small>
+                                <h3 className="mb-0">{resumenVistas.vistas_hoy}</h3>
+                              </div>
+                              <FontAwesomeIcon icon={faCalendarAlt} size="2x" />
+                            </div>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                      <Col md={3}>
+                        <Card className="shadow-sm border-0 bg-info text-white">
+                          <Card.Body>
+                            <div className="d-flex justify-content-between align-items-center">
+                              <div>
+                                <small>Esta semana</small>
+                                <h3 className="mb-0">{resumenVistas.vistas_semana}</h3>
+                              </div>
+                              <FontAwesomeIcon icon={faHistory} size="2x" />
+                            </div>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                      <Col md={3}>
+                        <Card className="shadow-sm border-0 bg-warning text-white">
+                          <Card.Body>
+                            <div className="d-flex justify-content-between align-items-center">
+                              <div>
+                                <small>Usuarios activos</small>
+                                <h3 className="mb-0">{resumenVistas.usuarios_activos}</h3>
+                              </div>
+                              <FontAwesomeIcon icon={faUserCheck} size="2x" />
+                            </div>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                    </Row>
+                  )}
+
+                  <div className="d-flex justify-content-between align-items-center">
+                    <div className="d-flex align-items-center">
+                      <FontAwesomeIcon icon={faFilter} className="me-2 text-primary" />
+                      <h6 className="mb-0">Filtros</h6>
+                    </div>
+                    <Button 
+                      variant="outline-secondary" 
+                      size="sm"
+                      onClick={() => setMostrarFiltrosVistas(!mostrarFiltrosVistas)}
+                    >
+                      {mostrarFiltrosVistas ? 'Ocultar' : 'Mostrar'}
+                    </Button>
+                  </div>
+                  
+                  {mostrarFiltrosVistas && (
+                    <Row className="mt-3">
+                      <Col md={4}>
+                        <Form.Group>
+                          <Form.Label className="small">Fecha desde</Form.Label>
+                          <Form.Control
+                            type="date"
+                            size="sm"
+                            value={filtrosVistas.fechaInicio}
+                            onChange={(e) => setFiltrosVistas({...filtrosVistas, fechaInicio: e.target.value})}
+                          />
+                        </Form.Group>
+                      </Col>
+                      <Col md={4}>
+                        <Form.Group>
+                          <Form.Label className="small">Fecha hasta</Form.Label>
+                          <Form.Control
+                            type="date"
+                            size="sm"
+                            value={filtrosVistas.fechaFin}
+                            onChange={(e) => setFiltrosVistas({...filtrosVistas, fechaFin: e.target.value})}
+                          />
+                        </Form.Group>
+                      </Col>
+                      <Col md={4}>
+                        <Form.Group>
+                          <Form.Label className="small">Usuario</Form.Label>
+                          <Form.Control
+                            type="text"
+                            size="sm"
+                            placeholder="Buscar usuario..."
+                            value={filtrosVistas.usuario}
+                            onChange={(e) => setFiltrosVistas({...filtrosVistas, usuario: e.target.value})}
+                          />
+                        </Form.Group>
+                      </Col>
+                    </Row>
+                  )}
+                </Card.Body>
+              </Card>
+
+              <Card className="shadow-sm border-0 mb-4">
+                <Card.Body className="p-0">
+                  <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
+                    <div>
+                      <h6 className="mb-0">
+                        <FontAwesomeIcon icon={faFilter} className="me-2 text-primary" />
+                        Búsqueda
+                      </h6>
+                    </div>
+                  </div>
+                  <div className="p-3">
+                    <FilterComponent
+                      filterText={filterTextVistas}
+                      onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterTextVistas(e.target.value)}
+                      onClear={() => setFilterTextVistas('')}
+                      placeholder="Buscar por usuario, notificación..."
+                    />
+                  </div>
+                </Card.Body>
+              </Card>
+
+              <Card className="shadow-sm border-0">
+                <Card.Body className="p-0">
+                  {loading.vistas ? (
+                    <div className="text-center py-5">
+                      <Spinner animation="border" variant="primary" />
+                      <p className="mt-3 text-muted">Cargando vistas...</p>
+                    </div>
+                  ) : filteredVistasNotificaciones.length === 0 ? (
+                    <div className="text-center py-5">
+                      <div className="mb-3">
+                        <FontAwesomeIcon icon={faHistory} size="3x" className="text-muted" />
+                      </div>
+                      <h5 className="fw-normal">No hay vistas registradas</h5>
+                      <p className="text-muted">
+                        {filterTextVistas
+                          ? 'No se encontraron resultados para tu búsqueda'
+                          : 'No hay registros de vistas de notificaciones'}
+                      </p>
+                    </div>
+                  ) : (
+                    <DataTable
+                      columns={columnsVistas}
+                      data={filteredVistasNotificaciones}
+                      pagination
+                      paginationPerPage={perPageVistas}
+                      paginationRowsPerPageOptions={[5, 10, 15, 20, 25, 50, 100]}
+                      onChangeRowsPerPage={(newPerPage) => setPerPageVistas(newPerPage)}
+                      highlightOnHover
+                      pointerOnHover
+                      onRowClicked={(row) => {
+                        setSelectedVista(row);
+                        setShowDetalleVistaModal(true);
+                      }}
+                      responsive
+                      customStyles={customStyles}
+                      progressPending={loading.vistas}
+                      progressComponent={
+                        <div className="text-center py-5">
+                          <Spinner animation="border" variant="primary" />
+                          <p className="mt-3 text-muted">Cargando datos...</p>
+                        </div>
+                      }
+                      sortIcon={
+                        <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
+                      }
+                      noDataComponent={
+                        <div className="text-center py-5">
+                          <FontAwesomeIcon icon={faHistory} size="3x" className="text-muted mb-3" />
+                          <h5>No hay vistas registradas</h5>
+                          <p className="text-muted">No se encontraron registros de vistas</p>
+                        </div>
+                      }
+                    />
+                  )}
+                </Card.Body>
+                <Card.Footer className="bg-light border-top">
+                  <div className="d-flex justify-content-between align-items-center">
+                    <small className="text-muted">
+                      <FontAwesomeIcon icon={faHistory} className="me-1" />
+                      Total: {filteredVistasNotificaciones.length} vistas
+                    </small>
+                  </div>
+                </Card.Footer>
+              </Card>
             </>
           )}
         </Card.Body>
       </Card>
 
+      {/* Modal de Detalle */}
       <Modal show={showDetalleModal} onHide={() => setShowDetalleModal(false)} size="lg" centered>
         <Modal.Header closeButton className="bg-light">
           <Modal.Title>
@@ -1490,6 +2046,7 @@ const Notificaciones: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
+      {/* Modal de Detalle de Vista */}
       <Modal show={showDetalleVistaModal} onHide={() => setShowDetalleVistaModal(false)} centered>
         <Modal.Header closeButton className="bg-light">
           <Modal.Title>
@@ -1542,8 +2099,9 @@ const Notificaciones: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
+      {/* Modal de Crear Notificación General */}
       <Modal show={showCrearGeneralModal} onHide={() => setShowCrearGeneralModal(false)} size="lg" centered>
-        <Modal.Header closeButton className="bg-success">
+        <Modal.Header closeButton className="bg-success text-white">
           <Modal.Title>
             <FontAwesomeIcon icon={faBullhorn} className="me-2" />
             Nueva Notificación General
@@ -1647,6 +2205,7 @@ const Notificaciones: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
+      {/* Modal de Eliminar */}
       <Modal show={showEliminarModal} onHide={() => setShowEliminarModal(false)} centered>
         <Modal.Header closeButton className="border-bottom-0">
           <Modal.Title className="text-danger">

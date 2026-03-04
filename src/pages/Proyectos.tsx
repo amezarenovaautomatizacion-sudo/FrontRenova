@@ -2046,12 +2046,6 @@ const openProyecto = async (proyecto: Proyecto) => {
                 <FontAwesomeIcon icon={faProjectDiagram} className="me-2 text-primary" />
                 Gestión de Proyectos
               </h2>
-              <p className="text-muted mb-0 d-flex align-items-center">
-                {isAdmin && <><FontAwesomeIcon icon={faCrown} className="me-2 text-danger" />Administrador - Gestión completa</>}
-                {isManager && <><FontAwesomeIcon icon={faUserTie} className="me-2 text-warning" />Manager - Administra tus proyectos</>}
-                {isEmployee && <><FontAwesomeIcon icon={faUser} className="me-2 text-info" />Empleado - Visualiza tus tareas asignadas</>}
-                {miEmpleadoId && ` (ID: ${miEmpleadoId})`}
-              </p>
             </div>
             
             <div className="d-flex gap-2">

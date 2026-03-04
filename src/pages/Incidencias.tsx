@@ -6,20 +6,19 @@ import {
   Col,
   Card,
   Button,
-  Table,
   Form,
   Modal,
   Alert,
   Spinner,
   Badge,
   InputGroup,
-  Pagination,
   Tabs,
   Tab,
   ButtonGroup,
   ListGroup
 } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import DataTable from 'react-data-table-component';
 import {
   faFileAlt,
   faPlus,
@@ -41,9 +40,16 @@ import {
   faStickyNote,
   faBan,
   faListAlt,
-  faClipboardList
+  faClipboardList,
+  faSort,
+  faDownload,
+  faPrint,
+  faSpinner
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../services/api';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 // Interfaces actualizadas según la API real
 interface TipoIncidencia {
@@ -129,6 +135,87 @@ interface UpdateIncidenciaData {
   observaciones?: string;
 }
 
+// Estilos personalizados para DataTable
+const customStyles = {
+  headRow: {
+    style: {
+      backgroundColor: 'var(--bg-secondary)',
+      borderBottom: '2px solid var(--border-color)',
+    },
+  },
+  headCells: {
+    style: {
+      fontSize: '14px',
+      fontWeight: '600',
+      color: 'var(--text-primary)',
+      padding: '12px 8px',
+    },
+  },
+  rows: {
+    style: {
+      fontSize: '14px',
+      color: 'var(--text-primary)',
+      backgroundColor: 'var(--bg-primary)',
+      '&:hover': {
+        backgroundColor: 'var(--bg-soft)',
+        cursor: 'pointer',
+      },
+    },
+  },
+  pagination: {
+    style: {
+      borderTop: '1px solid var(--border-color)',
+      marginTop: '0',
+      backgroundColor: 'var(--bg-primary)',
+      color: 'var(--text-primary)',
+    },
+    pageButtonsStyle: {
+      color: 'var(--text-primary)',
+      fill: 'var(--text-primary)',
+      '&:hover:not(:disabled)': {
+        backgroundColor: 'var(--bg-soft)',
+      },
+      '&:focus': {
+        outline: 'none',
+      },
+    },
+  },
+  noData: {
+    style: {
+      color: 'var(--text-muted)',
+      backgroundColor: 'var(--bg-primary)',
+    },
+  },
+  progress: {
+    style: {
+      backgroundColor: 'var(--bg-primary)',
+    },
+  },
+};
+
+// Componente para los filtros personalizados
+const FilterComponent = ({ filterText, onFilter, onClear, placeholder }: any) => (
+  <div className="d-flex align-items-center">
+    <InputGroup style={{ minWidth: '300px' }}>
+      <InputGroup.Text>
+        <FontAwesomeIcon icon={faSearch} />
+      </InputGroup.Text>
+      <Form.Control
+        type="text"
+        placeholder={placeholder || "Buscar..."}
+        value={filterText}
+        onChange={onFilter}
+        className="border-start-0"
+      />
+      {filterText && (
+        <Button variant="outline-secondary" onClick={onClear}>
+          Limpiar
+        </Button>
+      )}
+    </InputGroup>
+  </div>
+);
+
 const Incidencias: React.FC = () => {
   const { user } = useAuth();
   const userRol = user?.rol || '';
@@ -147,13 +234,26 @@ const Incidencias: React.FC = () => {
   
   const [activeTab, setActiveTab] = useState('incidencias');
   const [incidencias, setIncidencias] = useState<Incidencia[]>([]);
+  const [filteredIncidencias, setFilteredIncidencias] = useState<Incidencia[]>([]);
   const [misIncidencias, setMisIncidencias] = useState<Incidencia[]>([]);
+  const [filteredMisIncidencias, setFilteredMisIncidencias] = useState<Incidencia[]>([]);
   const [tiposIncidencia, setTiposIncidencia] = useState<TipoIncidencia[]>([]);
+  const [filteredTiposIncidencia, setFilteredTiposIncidencia] = useState<TipoIncidencia[]>([]);
   const [empleadosSupervisados, setEmpleadosSupervisados] = useState<EmpleadoSelect[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingTipos, setLoadingTipos] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  
+  // Estados para DataTable
+  const [filterText, setFilterText] = useState('');
+  const [filterTextTipos, setFilterTextTipos] = useState('');
+  const [resetPaginationToggle, setResetPaginationToggle] = useState(false);
+  const [resetPaginationToggleTipos, setResetPaginationToggleTipos] = useState(false);
+  const [selectedRows, setSelectedRows] = useState<any[]>([]);
+  const [toggleCleared, setToggleCleared] = useState(false);
+  const [perPage, setPerPage] = useState(10);
+  const [perPageTipos, setPerPageTipos] = useState(10);
   
   // Estados para modales
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -230,15 +330,18 @@ const Incidencias: React.FC = () => {
         }));
         
         setIncidencias(mappedIncidencias);
+        setFilteredIncidencias(mappedIncidencias);
         setTotalPages(response.data.data.pagination?.totalPages || 1);
       } else {
         setError(response.data.message || 'Error cargando incidencias');
         setIncidencias([]);
+        setFilteredIncidencias([]);
       }
     } catch (error: unknown) {
       console.error('Error cargando incidencias:', error);
       setError('Error cargando incidencias');
       setIncidencias([]);
+      setFilteredIncidencias([]);
     } finally {
       setLoading(false);
     }
@@ -277,14 +380,17 @@ const Incidencias: React.FC = () => {
         }));
         
         setMisIncidencias(mappedMisIncidencias);
+        setFilteredMisIncidencias(mappedMisIncidencias);
       } else {
         setError(response.data.message || 'Error cargando tus incidencias');
         setMisIncidencias([]);
+        setFilteredMisIncidencias([]);
       }
     } catch (error: unknown) {
       console.error('Error cargando mis incidencias:', error);
       setError('Error cargando tus incidencias');
       setMisIncidencias([]);
+      setFilteredMisIncidencias([]);
     } finally {
       setLoading(false);
     }
@@ -302,6 +408,7 @@ const Incidencias: React.FC = () => {
       
       if (response.data.success) {
         setTiposIncidencia(response.data.data || []);
+        setFilteredTiposIncidencia(response.data.data || []);
       } else {
         setError(response.data.message || 'Error cargando tipos de incidencia');
       }
@@ -327,6 +434,57 @@ const Incidencias: React.FC = () => {
       console.error('Error cargando empleados supervisados:', error);
     }
   }, [canCreate]);
+
+  // Filtrado en tiempo real para incidencias (admin/manager)
+  useEffect(() => {
+    if (!filterText) {
+      setFilteredIncidencias(incidencias);
+    } else {
+      const filtered = incidencias.filter(inc => {
+        const searchTerm = filterText.toLowerCase();
+        return (
+          inc.Descripcion.toLowerCase().includes(searchTerm) ||
+          inc.EmpleadoNombre.toLowerCase().includes(searchTerm) ||
+          inc.TipoIncidenciaNombre.toLowerCase().includes(searchTerm) ||
+          (inc.Observaciones && inc.Observaciones.toLowerCase().includes(searchTerm))
+        );
+      });
+      setFilteredIncidencias(filtered);
+    }
+  }, [filterText, incidencias]);
+
+  // Filtrado en tiempo real para mis incidencias (employee)
+  useEffect(() => {
+    if (!filterText) {
+      setFilteredMisIncidencias(misIncidencias);
+    } else {
+      const filtered = misIncidencias.filter(inc => {
+        const searchTerm = filterText.toLowerCase();
+        return (
+          inc.Descripcion.toLowerCase().includes(searchTerm) ||
+          inc.TipoIncidenciaNombre.toLowerCase().includes(searchTerm) ||
+          (inc.Observaciones && inc.Observaciones.toLowerCase().includes(searchTerm))
+        );
+      });
+      setFilteredMisIncidencias(filtered);
+    }
+  }, [filterText, misIncidencias]);
+
+  // Filtrado en tiempo real para tipos de incidencia
+  useEffect(() => {
+    if (!filterTextTipos) {
+      setFilteredTiposIncidencia(tiposIncidencia);
+    } else {
+      const filtered = tiposIncidencia.filter(tipo => {
+        const searchTerm = filterTextTipos.toLowerCase();
+        return (
+          tipo.Nombre.toLowerCase().includes(searchTerm) ||
+          (tipo.Descripcion && tipo.Descripcion.toLowerCase().includes(searchTerm))
+        );
+      });
+      setFilteredTiposIncidencia(filtered);
+    }
+  }, [filterTextTipos, tiposIncidencia]);
 
   // Efecto principal
   useEffect(() => {
@@ -665,6 +823,72 @@ const Incidencias: React.FC = () => {
     setShowEditTipoModal(true);
   };
 
+  // ==================== FUNCIONES DE EXPORTACIÓN ====================
+
+  const exportToExcel = (data: any[], filename: string) => {
+    try {
+      if (data.length === 0) {
+        setError('No hay datos para exportar');
+        return;
+      }
+
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Incidencias');
+      XLSX.writeFile(workbook, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      
+      setSuccess('Exportación completada exitosamente');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      console.error('Error exportando a Excel:', error);
+      setError('Error al exportar a Excel');
+    }
+  };
+
+  const exportToPDF = (data: any[], columns: any[], filename: string) => {
+    try {
+      if (data.length === 0) {
+        setError('No hay datos para exportar');
+        return;
+      }
+
+      const doc = new jsPDF();
+      
+      doc.setFontSize(18);
+      doc.setTextColor(255, 193, 7); // Color warning
+      doc.text(`Reporte de ${filename}`, 14, 22);
+      doc.setFontSize(11);
+      doc.setTextColor(44, 62, 80);
+      doc.text(`Generado: ${new Date().toLocaleDateString('es-MX')}`, 14, 32);
+      doc.text(`Total de registros: ${data.length}`, 14, 38);
+
+      const tableColumn = columns.map(col => col.name);
+      const tableRows = data.map(item => 
+        columns.map(col => {
+          const value = col.selector(item);
+          return value !== undefined && value !== null ? String(value) : '';
+        })
+      );
+
+      (doc as any).autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: 45,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [255, 193, 7], textColor: [0, 0, 0] },
+        alternateRowStyles: { fillColor: [245, 245, 245] }
+      });
+
+      doc.save(`${filename}_${new Date().toISOString().split('T')[0]}.pdf`);
+      
+      setSuccess('Exportación completada exitosamente');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      console.error('Error exportando a PDF:', error);
+      setError('Error al exportar a PDF');
+    }
+  };
+
   // Función para obtener badge de activo/inactivo
   const getActivoBadge = (activo: boolean) => {
     return activo ? (
@@ -695,88 +919,356 @@ const Incidencias: React.FC = () => {
     }
   };
 
-  // Función para renderizar acciones de incidencia
-  const renderAccionesIncidencia = (incidencia: Incidencia) => {
-    return (
-      <ButtonGroup size="sm">
-        <Button
-          variant="outline-primary"
-          onClick={() => openViewModal(incidencia)}
-          title="Ver detalles"
-        >
-          <FontAwesomeIcon icon={faEye} />
-        </Button>
-        
-        {canEdit && (
-          <Button
-            variant="outline-warning"
-            onClick={() => openEditModal(incidencia)}
-            title="Editar"
-          >
-            <FontAwesomeIcon icon={faEdit} />
-          </Button>
-        )}
-        
-        {canDelete && (
-          <Button
-            variant="outline-danger"
-            onClick={() => openDeleteModal(incidencia)}
-            title="Eliminar"
-          >
-            <FontAwesomeIcon icon={faTrash} />
-          </Button>
-        )}
-        
-        {canChangeStatus && (
-          <Button
-            variant={incidencia.activo ? "outline-danger" : "outline-success"}
-            onClick={() => handleToggleStatusIncidencia(incidencia)}
-            title={incidencia.activo ? "Desactivar" : "Activar"}
-          >
-            <FontAwesomeIcon icon={incidencia.activo ? faTimesCircle : faCheckCircle} />
-          </Button>
-        )}
-      </ButtonGroup>
-    );
+  const formatFechaHora = (fecha: string) => {
+    if (!fecha) return 'N/A';
+    try {
+      const date = new Date(fecha);
+      if (isNaN(date.getTime())) return 'Fecha inválida';
+      return date.toLocaleDateString('es-MX', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return 'Fecha inválida';
+    }
   };
 
-  // Función para renderizar acciones de tipo
-  const renderAccionesTipo = (tipo: TipoIncidencia) => {
-    return (
-      <ButtonGroup size="sm">
-        <Button
-          variant="outline-primary"
-          onClick={() => {
-            setSelectedTipo(tipo);
-            setShowViewModal(true);
-          }}
-          title="Ver detalles"
-        >
-          <FontAwesomeIcon icon={faEye} />
-        </Button>
-        
-        {canManageTipos && (
-          <Button
-            variant="outline-warning"
-            onClick={() => openEditTipoModal(tipo)}
-            title="Editar"
-          >
-            <FontAwesomeIcon icon={faEdit} />
-          </Button>
-        )}
-        
-        {canManageTipos && (
-          <Button
-            variant={tipo.Activo ? "outline-danger" : "outline-success"}
-            onClick={() => handleToggleStatusTipo(tipo)}
-            title={tipo.Activo ? "Desactivar" : "Activar"}
-          >
-            <FontAwesomeIcon icon={tipo.Activo ? faTimesCircle : faCheckCircle} />
-          </Button>
-        )}
-      </ButtonGroup>
-    );
+  const formatFechaRelativa = (fecha: string) => {
+    if (!fecha) return '';
+    try {
+      const date = new Date(fecha);
+      const ahora = new Date();
+      const diffMs = ahora.getTime() - date.getTime();
+      const diffMin = Math.floor(diffMs / 60000);
+      const diffHoras = Math.floor(diffMs / 3600000);
+      const diffDias = Math.floor(diffMs / 86400000);
+      
+      if (diffMin < 1) return 'Ahora mismo';
+      if (diffMin < 60) return `Hace ${diffMin} minutos`;
+      if (diffHoras < 24) return `Hace ${diffHoras} horas`;
+      if (diffDias === 1) return 'Ayer';
+      if (diffDias < 7) return `Hace ${diffDias} días`;
+      return formatFechaHora(fecha);
+    } catch {
+      return formatFechaHora(fecha);
+    }
   };
+
+  // Definición de columnas para DataTable - Incidencias (admin/manager)
+  const columnsIncidencias = [
+    {
+      name: 'ID',
+      selector: (row: Incidencia) => row.ID,
+      sortable: true,
+      width: '80px',
+    },
+    {
+      name: 'Empleado',
+      selector: (row: Incidencia) => row.EmpleadoNombre,
+      sortable: true,
+      cell: (row: Incidencia) => (
+        <div className="d-flex align-items-center">
+          <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center me-2" 
+               style={{width: '30px', height: '30px'}}>
+            <FontAwesomeIcon icon={faUserCircle} className="text-white" size="sm" />
+          </div>
+          <div>
+            <div>{row.EmpleadoNombre}</div>
+            <small className="text-muted">ID: {row.EmpleadoID}</small>
+          </div>
+        </div>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Tipo',
+      selector: (row: Incidencia) => row.TipoIncidenciaNombre,
+      sortable: true,
+      cell: (row: Incidencia) => (
+        <Badge bg="info">{row.TipoIncidenciaNombre}</Badge>
+      ),
+    },
+    {
+      name: 'Descripción',
+      selector: (row: Incidencia) => row.Descripcion,
+      sortable: true,
+      cell: (row: Incidencia) => (
+        <div className="text-truncate" style={{ maxWidth: '250px' }}>
+          <div>{row.Descripcion.substring(0, 50)}{row.Descripcion.length > 50 ? '...' : ''}</div>
+          {row.Observaciones && (
+            <small className="text-muted">
+              <FontAwesomeIcon icon={faStickyNote} className="me-1" />
+              {row.Observaciones.substring(0, 30)}{row.Observaciones.length > 30 ? '...' : ''}
+            </small>
+          )}
+        </div>
+      ),
+      grow: 3,
+    },
+    {
+      name: 'Fecha',
+      selector: (row: Incidencia) => row.FechaIncidencia,
+      sortable: true,
+      cell: (row: Incidencia) => (
+        <div>
+          <div>{formatFecha(row.FechaIncidencia)}</div>
+          {row.HoraIncidencia && (
+            <small className="text-muted">
+              <FontAwesomeIcon icon={faClock} className="me-1" />
+              {row.HoraIncidencia}
+            </small>
+          )}
+        </div>
+      ),
+    },
+    {
+      name: 'Estado',
+      selector: (row: Incidencia) => row.activo ? 'Activo' : 'Inactivo',
+      sortable: true,
+      cell: (row: Incidencia) => getActivoBadge(row.activo),
+    },
+    {
+      name: 'Registrada por',
+      selector: (row: Incidencia) => row.CreadorEmail,
+      sortable: true,
+      cell: (row: Incidencia) => (
+        <div className="d-flex align-items-center">
+          <FontAwesomeIcon icon={faUserShield} className="text-muted me-2" size="sm" />
+          <small>{row.CreadorEmail}</small>
+        </div>
+      ),
+    },
+    {
+      name: 'Acciones',
+      cell: (row: Incidencia) => (
+        <ButtonGroup size="sm">
+          <Button
+            variant="outline-primary"
+            onClick={(e) => {
+              e.stopPropagation();
+              openViewModal(row);
+            }}
+            title="Ver detalles"
+            className="hover-bg-soft"
+          >
+            <FontAwesomeIcon icon={faEye} />
+          </Button>
+          
+          {canEdit && (
+            <Button
+              variant="outline-warning"
+              onClick={(e) => {
+                e.stopPropagation();
+                openEditModal(row);
+              }}
+              title="Editar"
+              className="hover-bg-soft"
+            >
+              <FontAwesomeIcon icon={faEdit} />
+            </Button>
+          )}
+          
+          {canDelete && (
+            <Button
+              variant="outline-danger"
+              onClick={(e) => {
+                e.stopPropagation();
+                openDeleteModal(row);
+              }}
+              title="Eliminar"
+              className="hover-bg-soft"
+            >
+              <FontAwesomeIcon icon={faTrash} />
+            </Button>
+          )}
+          
+          {canChangeStatus && (
+            <Button
+              variant={row.activo ? "outline-danger" : "outline-success"}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleStatusIncidencia(row);
+              }}
+              title={row.activo ? "Desactivar" : "Activar"}
+              className="hover-bg-soft"
+            >
+              <FontAwesomeIcon icon={row.activo ? faTimesCircle : faCheckCircle} />
+            </Button>
+          )}
+        </ButtonGroup>
+      ),
+      ignoreRowClick: true,
+      allowOverflow: true,
+    },
+  ];
+
+  // Definición de columnas para DataTable - Mis Incidencias (employee)
+  const columnsMisIncidencias = [
+    {
+      name: 'ID',
+      selector: (row: Incidencia) => row.ID,
+      sortable: true,
+      width: '80px',
+    },
+    {
+      name: 'Tipo',
+      selector: (row: Incidencia) => row.TipoIncidenciaNombre,
+      sortable: true,
+      cell: (row: Incidencia) => (
+        <Badge bg="info">{row.TipoIncidenciaNombre}</Badge>
+      ),
+    },
+    {
+      name: 'Descripción',
+      selector: (row: Incidencia) => row.Descripcion,
+      sortable: true,
+      cell: (row: Incidencia) => (
+        <div className="text-truncate" style={{ maxWidth: '300px' }}>
+          <div>{row.Descripcion.substring(0, 50)}{row.Descripcion.length > 50 ? '...' : ''}</div>
+          {row.Observaciones && (
+            <small className="text-muted">
+              <FontAwesomeIcon icon={faStickyNote} className="me-1" />
+              {row.Observaciones.substring(0, 30)}{row.Observaciones.length > 30 ? '...' : ''}
+            </small>
+          )}
+        </div>
+      ),
+      grow: 3,
+    },
+    {
+      name: 'Fecha',
+      selector: (row: Incidencia) => row.FechaIncidencia,
+      sortable: true,
+      cell: (row: Incidencia) => (
+        <div>
+          <div>{formatFecha(row.FechaIncidencia)}</div>
+          {row.HoraIncidencia && (
+            <small className="text-muted">
+              <FontAwesomeIcon icon={faClock} className="me-1" />
+              {row.HoraIncidencia}
+            </small>
+          )}
+        </div>
+      ),
+    },
+    {
+      name: 'Estado',
+      selector: (row: Incidencia) => row.activo ? 'Activo' : 'Inactivo',
+      sortable: true,
+      cell: (row: Incidencia) => getActivoBadge(row.activo),
+    },
+    {
+      name: 'Registrada por',
+      selector: (row: Incidencia) => row.CreadorEmail,
+      sortable: true,
+      cell: (row: Incidencia) => (
+        <div className="d-flex align-items-center">
+          <FontAwesomeIcon icon={faUserShield} className="text-muted me-2" size="sm" />
+          <small>{row.CreadorEmail}</small>
+        </div>
+      ),
+    },
+    {
+      name: 'Acciones',
+      cell: (row: Incidencia) => (
+        <ButtonGroup size="sm">
+          <Button
+            variant="outline-primary"
+            onClick={(e) => {
+              e.stopPropagation();
+              openViewModal(row);
+            }}
+            title="Ver detalles"
+            className="hover-bg-soft"
+          >
+            <FontAwesomeIcon icon={faEye} />
+          </Button>
+        </ButtonGroup>
+      ),
+      ignoreRowClick: true,
+      allowOverflow: true,
+    },
+  ];
+
+  // Definición de columnas para DataTable - Tipos de Incidencia
+  const columnsTipos = [
+    {
+      name: 'ID',
+      selector: (row: TipoIncidencia) => row.ID,
+      sortable: true,
+      width: '80px',
+    },
+    {
+      name: 'Nombre',
+      selector: (row: TipoIncidencia) => row.Nombre,
+      sortable: true,
+      cell: (row: TipoIncidencia) => (
+        <strong>{row.Nombre}</strong>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Descripción',
+      selector: (row: TipoIncidencia) => row.Descripcion || '',
+      sortable: true,
+      cell: (row: TipoIncidencia) => (
+        <div className="text-muted">
+          {row.Descripcion || 'Sin descripción'}
+        </div>
+      ),
+      grow: 3,
+    },
+    {
+      name: 'Estado',
+      selector: (row: TipoIncidencia) => row.Activo ? 'Activo' : 'Inactivo',
+      sortable: true,
+      cell: (row: TipoIncidencia) => (
+        row.Activo === 1 ? (
+          <Badge bg="success">Activo</Badge>
+        ) : (
+          <Badge bg="secondary">Inactivo</Badge>
+        )
+      ),
+    },
+    {
+      name: 'Acciones',
+      cell: (row: TipoIncidencia) => (
+        <ButtonGroup size="sm">
+          {canManageTipos && (
+            <>
+              <Button
+                variant="outline-warning"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEditTipoModal(row);
+                }}
+                title="Editar"
+                className="hover-bg-soft"
+              >
+                <FontAwesomeIcon icon={faEdit} />
+              </Button>
+              <Button
+                variant={row.Activo ? "outline-danger" : "outline-success"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleStatusTipo(row);
+                }}
+                title={row.Activo ? "Desactivar" : "Activar"}
+                className="hover-bg-soft"
+              >
+                <FontAwesomeIcon icon={row.Activo ? faTimesCircle : faCheckCircle} />
+              </Button>
+            </>
+          )}
+        </ButtonGroup>
+      ),
+      ignoreRowClick: true,
+      allowOverflow: true,
+    },
+  ];
 
   // Verificación de usuario
   if (!user) {
@@ -825,46 +1317,43 @@ const Incidencias: React.FC = () => {
         <Col>
           <div className="d-flex justify-content-between align-items-center">
             <div>
-              <h2 className="mb-0">
-                <FontAwesomeIcon icon={faFileAlt} className="me-2 text-warning" />
+              <h2 className="mb-0 text-warning">
+                <FontAwesomeIcon icon={faFileAlt} className="me-2" />
                 Gestión de Incidencias
               </h2>
-              <p className="text-muted mb-0">
-                {isAdmin ? '🔐 Administrador - Gestión completa' : 
-                 isManager ? '👨‍💼 Manager - Puede crear y ver incidencias de sus empleados' : 
-                 '👤 Empleado - Solo puede ver sus propias incidencias'}
-              </p>
             </div>
             
             <div className="d-flex gap-2">
-              <Button variant="outline-primary" onClick={() => {
-                if (activeTab === 'incidencias') {
-                  if (canViewAll) {
-                    loadIncidencias();
+              <ButtonGroup className="shadow-sm">
+                <Button variant="outline-primary" onClick={() => {
+                  if (activeTab === 'incidencias') {
+                    if (canViewAll) {
+                      loadIncidencias();
+                    } else {
+                      loadMisIncidencias();
+                    }
                   } else {
-                    loadMisIncidencias();
+                    loadTiposIncidencia();
                   }
-                } else {
-                  loadTiposIncidencia();
-                }
-              }}>
-                <FontAwesomeIcon icon={faSync} className="me-2" />
-                Actualizar
-              </Button>
-              
-              {activeTab === 'incidencias' && canCreate && (
-                <Button variant="warning" onClick={openCreateModal}>
-                  <FontAwesomeIcon icon={faPlus} className="me-2" />
-                  Nueva Incidencia
+                }}>
+                  <FontAwesomeIcon icon={faSync} className="me-2" />
+                  Actualizar
                 </Button>
-              )}
-              
-              {activeTab === 'tipos' && canManageTipos && (
-                <Button variant="warning" onClick={() => setShowCreateTipoModal(true)}>
-                  <FontAwesomeIcon icon={faPlus} className="me-2" />
-                  Nuevo Tipo
-                </Button>
-              )}
+                
+                {activeTab === 'incidencias' && canCreate && (
+                  <Button variant="warning" onClick={openCreateModal}>
+                    <FontAwesomeIcon icon={faPlus} className="me-2" />
+                    Nueva Incidencia
+                  </Button>
+                )}
+                
+                {activeTab === 'tipos' && canManageTipos && (
+                  <Button variant="info" onClick={() => setShowCreateTipoModal(true)}>
+                    <FontAwesomeIcon icon={faPlus} className="me-2" />
+                    Nuevo Tipo
+                  </Button>
+                )}
+              </ButtonGroup>
             </div>
           </div>
         </Col>
@@ -872,16 +1361,22 @@ const Incidencias: React.FC = () => {
 
       {/* Alertas */}
       {error && (
-        <Alert variant="danger" dismissible onClose={() => setError('')}>
-          <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
-          {error}
+        <Alert variant="danger" dismissible onClose={() => setError('')} className="mb-4 shadow-sm">
+          <div className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+            <strong className="me-2">Error:</strong>
+            {error}
+          </div>
         </Alert>
       )}
       
       {success && (
-        <Alert variant="success" dismissible onClose={() => setSuccess('')}>
-          <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
-          {success}
+        <Alert variant="success" dismissible onClose={() => setSuccess('')} className="mb-4 shadow-sm">
+          <div className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
+            <strong className="me-2">Éxito:</strong>
+            {success}
+          </div>
         </Alert>
       )}
 
@@ -897,6 +1392,8 @@ const Incidencias: React.FC = () => {
           setFilterActivo('');
           setFilterFechaDesde('');
           setFilterFechaHasta('');
+          setFilterText('');
+          setFilterTextTipos('');
         }}
         className="mb-4"
         fill
@@ -915,17 +1412,18 @@ const Incidencias: React.FC = () => {
         >
           {/* Filtros para incidencias (solo para admin/manager) */}
           {canViewAll && (
-            <Card className="mb-4 shadow-sm">
+            <Card className="mb-4 shadow-sm border-0">
               <Card.Header className="bg-light">
-                <FontAwesomeIcon icon={faFilter} className="me-2" />
+                <FontAwesomeIcon icon={faFilter} className="me-2 text-primary" />
                 Filtros de Búsqueda
               </Card.Header>
               <Card.Body>
                 <Row>
                   <Col md={3}>
                     <Form.Group>
-                      <Form.Label>Empleado</Form.Label>
+                      <Form.Label className="small">Empleado</Form.Label>
                       <Form.Select
+                        size="sm"
                         value={filterEmpleado}
                         onChange={(e) => setFilterEmpleado(e.target.value)}
                       >
@@ -941,8 +1439,9 @@ const Incidencias: React.FC = () => {
                   
                   <Col md={3}>
                     <Form.Group>
-                      <Form.Label>Tipo de Incidencia</Form.Label>
+                      <Form.Label className="small">Tipo de Incidencia</Form.Label>
                       <Form.Select
+                        size="sm"
                         value={filterTipo}
                         onChange={(e) => setFilterTipo(e.target.value)}
                       >
@@ -958,8 +1457,9 @@ const Incidencias: React.FC = () => {
                   
                   <Col md={3}>
                     <Form.Group>
-                      <Form.Label>Estado</Form.Label>
+                      <Form.Label className="small">Estado</Form.Label>
                       <Form.Select
+                        size="sm"
                         value={filterActivo}
                         onChange={(e) => setFilterActivo(e.target.value)}
                       >
@@ -972,9 +1472,10 @@ const Incidencias: React.FC = () => {
                   
                   <Col md={3}>
                     <Form.Group>
-                      <Form.Label>Fecha Desde</Form.Label>
+                      <Form.Label className="small">Fecha Desde</Form.Label>
                       <Form.Control
                         type="date"
+                        size="sm"
                         value={filterFechaDesde}
                         onChange={(e) => setFilterFechaDesde(e.target.value)}
                       />
@@ -985,9 +1486,10 @@ const Incidencias: React.FC = () => {
                 <Row className="mt-2">
                   <Col md={3}>
                     <Form.Group>
-                      <Form.Label>Fecha Hasta</Form.Label>
+                      <Form.Label className="small">Fecha Hasta</Form.Label>
                       <Form.Control
                         type="date"
+                        size="sm"
                         value={filterFechaHasta}
                         onChange={(e) => setFilterFechaHasta(e.target.value)}
                       />
@@ -996,8 +1498,8 @@ const Incidencias: React.FC = () => {
                   
                   <Col md={6}>
                     <Form.Group>
-                      <Form.Label>Buscar</Form.Label>
-                      <InputGroup>
+                      <Form.Label className="small">Buscar</Form.Label>
+                      <InputGroup size="sm">
                         <InputGroup.Text>
                           <FontAwesomeIcon icon={faSearch} />
                         </InputGroup.Text>
@@ -1014,6 +1516,7 @@ const Incidencias: React.FC = () => {
                   <Col md={3} className="d-flex align-items-end">
                     <Button
                       variant="outline-secondary"
+                      size="sm"
                       onClick={() => {
                         setFilterEmpleado('');
                         setFilterTipo('');
@@ -1079,26 +1582,92 @@ const Incidencias: React.FC = () => {
             </Col>
           </Row>
 
-          {/* Tabla de Incidencias */}
-          <Card className="shadow-sm">
+          {/* Tabla de Incidencias con DataTable */}
+          <Card className="shadow-sm border-0">
+            <Card.Body className="p-0">
+              <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
+                <div>
+                  <h6 className="mb-0">
+                    <FontAwesomeIcon icon={faFilter} className="me-2 text-primary" />
+                    Búsqueda
+                  </h6>
+                </div>
+                <div className="d-flex gap-2">
+                  <Button 
+                    variant="outline-success" 
+                    size="sm"
+                    onClick={() => {
+                      const dataToExport = selectedRows.length > 0 ? selectedRows : (isEmployee ? filteredMisIncidencias : filteredIncidencias);
+                      exportToExcel(
+                        dataToExport.map(i => ({
+                          ID: i.ID,
+                          Empleado: i.EmpleadoNombre,
+                          Tipo: i.TipoIncidenciaNombre,
+                          Descripción: i.Descripcion,
+                          Fecha: i.FechaIncidencia,
+                          Hora: i.HoraIncidencia || '',
+                          Estado: i.activo ? 'Activo' : 'Inactivo',
+                          Registrado_por: i.CreadorEmail
+                        })),
+                        'incidencias'
+                      );
+                    }}
+                    className="hover-bg-soft"
+                  >
+                    <FontAwesomeIcon icon={faDownload} className="me-1" />
+                    Excel
+                  </Button>
+                  <Button 
+                    variant="outline-danger" 
+                    size="sm"
+                    onClick={() => {
+                      const dataToExport = selectedRows.length > 0 ? selectedRows : (isEmployee ? filteredMisIncidencias : filteredIncidencias);
+                      const columns = isEmployee 
+                        ? columnsMisIncidencias.filter(col => col.name !== 'Acciones')
+                        : columnsIncidencias.filter(col => col.name !== 'Acciones');
+                      exportToPDF(dataToExport, columns, 'incidencias');
+                    }}
+                    className="hover-bg-soft"
+                  >
+                    <FontAwesomeIcon icon={faPrint} className="me-1" />
+                    PDF
+                  </Button>
+                </div>
+              </div>
+              <div className="p-3">
+                <FilterComponent
+                  filterText={filterText}
+                  onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterText(e.target.value)}
+                  onClear={() => setFilterText('')}
+                  placeholder={isEmployee 
+                    ? "Buscar por descripción, tipo..." 
+                    : "Buscar por descripción, empleado, tipo..."}
+                />
+              </div>
+            </Card.Body>
+          </Card>
+
+          <Card className="shadow-sm border-0 mt-3">
             <Card.Body className="p-0">
               {loading ? (
                 <div className="text-center py-5">
                   <Spinner animation="border" variant="warning" />
-                  <p className="mt-3">Cargando incidencias...</p>
+                  <p className="mt-3 text-muted">Cargando incidencias...</p>
                 </div>
-              ) : (isEmployee ? misIncidencias : incidencias).length === 0 ? (
+              ) : (isEmployee ? filteredMisIncidencias : filteredIncidencias).length === 0 ? (
                 <div className="text-center py-5">
                   <FontAwesomeIcon icon={faFileAlt} size="3x" className="text-muted mb-3" />
-                  <h5>No hay incidencias registradas</h5>
+                  <h5>No hay incidencias para mostrar</h5>
                   <p className="text-muted mb-4">
-                    {searchTerm || filterEmpleado || filterTipo || filterActivo || filterFechaDesde || filterFechaHasta
-                      ? 'Intenta con otros filtros de búsqueda'
-                      : canCreate 
-                        ? 'Comienza registrando una nueva incidencia' 
-                        : 'No tienes incidencias registradas'}
+                    {filterText 
+                      ? 'No se encontraron resultados para tu búsqueda'
+                      : searchTerm || filterEmpleado || filterTipo || filterActivo || filterFechaDesde || filterFechaHasta
+                        ? 'Intenta con otros filtros de búsqueda'
+                        : canCreate 
+                          ? 'Comienza registrando una nueva incidencia' 
+                          : 'No tienes incidencias registradas'}
                   </p>
-                  {canCreate && (
+                  {canCreate && !filterText && (
                     <Button variant="warning" onClick={openCreateModal} className="mt-3">
                       <FontAwesomeIcon icon={faPlus} className="me-2" />
                       Registrar Primera Incidencia
@@ -1106,133 +1675,56 @@ const Incidencias: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <>
-                  <div className="table-responsive">
-                    <Table hover className="mb-0">
-                      <thead className="bg-light">
-                        <tr>
-                          <th>Incidencia</th>
-                          <th>Empleado</th>
-                          <th>Tipo</th>
-                          <th>Fecha</th>
-                          <th>Estado</th>
-                          {canViewAll && <th>Registrada Por</th>}
-                          {(canEdit || canDelete || canChangeStatus) && <th className="text-end">Acciones</th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(isEmployee ? misIncidencias : incidencias).map((incidencia) => {
-                          if (!incidencia) return null;
-                          
-                          return (
-                            <tr key={incidencia.ID}>
-                              <td>
-                                <div>
-                                  <strong className="d-block">
-                                    {(incidencia.Descripcion || '').substring(0, 50)}
-                                    {(incidencia.Descripcion || '').length > 50 ? '...' : ''}
-                                  </strong>
-                                  {incidencia.Observaciones && (
-                                    <small className="text-muted">
-                                      <FontAwesomeIcon icon={faStickyNote} className="me-1" />
-                                      {(incidencia.Observaciones || '').substring(0, 30)}
-                                      {(incidencia.Observaciones || '').length > 30 ? '...' : ''}
-                                    </small>
-                                  )}
-                                </div>
-                              </td>
-                              <td>
-                                <div className="d-flex align-items-center">
-                                  <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center me-2" 
-                                       style={{width: '30px', height: '30px'}}>
-                                    <FontAwesomeIcon icon={faUserCircle} className="text-white" size="sm" />
-                                  </div>
-                                  <div>
-                                    <div>{incidencia.EmpleadoNombre}</div>
-                                    <small className="text-muted">ID: {incidencia.EmpleadoID}</small>
-                                  </div>
-                                </div>
-                              </td>
-                              <td>
-                                <Badge bg="info">{incidencia.TipoIncidenciaNombre}</Badge>
-                              </td>
-                              <td>
-                                <div className="d-flex flex-column">
-                                  <div>{formatFecha(incidencia.FechaIncidencia)}</div>
-                                  {incidencia.HoraIncidencia && (
-                                    <small className="text-muted">
-                                      <FontAwesomeIcon icon={faClock} className="me-1" />
-                                      {incidencia.HoraIncidencia}
-                                    </small>
-                                  )}
-                                </div>
-                              </td>
-                              <td>
-                                {getActivoBadge(incidencia.activo)}
-                              </td>
-                              {canViewAll && (
-                                <td>
-                                  <div className="d-flex align-items-center">
-                                    <FontAwesomeIcon icon={faUserShield} className="text-muted me-2" size="sm" />
-                                    <small>{incidencia.CreadorEmail}</small>
-                                  </div>
-                                </td>
-                              )}
-                              {(canEdit || canDelete || canChangeStatus) && (
-                                <td className="text-end">
-                                  {renderAccionesIncidencia(incidencia)}
-                                </td>
-                              )}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </Table>
-                  </div>
-                  
-                  {/* Paginación solo para admin/manager */}
-                  {canViewAll && totalPages > 1 && (
-                    <div className="d-flex justify-content-center mt-4">
-                      <Pagination>
-                        <Pagination.First 
-                          onClick={() => setCurrentPage(1)} 
-                          disabled={currentPage === 1}
-                        />
-                        <Pagination.Prev 
-                          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} 
-                          disabled={currentPage === 1}
-                        />
-                        
-                        {[...Array(Math.min(5, totalPages))].map((_, idx) => {
-                          const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + idx;
-                          if (page <= totalPages && page >= 1) {
-                            return (
-                              <Pagination.Item
-                                key={page}
-                                active={page === currentPage}
-                                onClick={() => setCurrentPage(page)}
-                              >
-                                {page}
-                              </Pagination.Item>
-                            );
-                          }
-                          return null;
-                        })}
-                        
-                        <Pagination.Next 
-                          onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} 
-                          disabled={currentPage === totalPages}
-                        />
-                        <Pagination.Last 
-                          onClick={() => setCurrentPage(totalPages)} 
-                          disabled={currentPage === totalPages}
-                        />
-                      </Pagination>
+                <DataTable
+                  columns={isEmployee ? columnsMisIncidencias : columnsIncidencias}
+                  data={isEmployee ? filteredMisIncidencias : filteredIncidencias}
+                  pagination
+                  paginationPerPage={perPage}
+                  paginationRowsPerPageOptions={[5, 10, 15, 20, 25, 50, 100]}
+                  onChangeRowsPerPage={(newPerPage) => setPerPage(newPerPage)}
+                  highlightOnHover
+                  pointerOnHover
+                  selectableRows
+                  selectableRowsHighlight
+                  onSelectedRowsChange={(state) => setSelectedRows(state.selectedRows)}
+                  clearSelectedRows={toggleCleared}
+                  onRowClicked={(row) => {
+                    openViewModal(row);
+                  }}
+                  responsive
+                  customStyles={customStyles}
+                  progressPending={loading}
+                  progressComponent={
+                    <div className="text-center py-5">
+                      <Spinner animation="border" variant="primary" />
+                      <p className="mt-3 text-muted">Cargando datos...</p>
                     </div>
-                  )}
-                </>
+                  }
+                  sortIcon={
+                    <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
+                  }
+                  noDataComponent={
+                    <div className="text-center py-5">
+                      <FontAwesomeIcon icon={faFileAlt} size="3x" className="text-muted mb-3" />
+                      <h5>No hay incidencias</h5>
+                      <p className="text-muted">No se encontraron incidencias para mostrar</p>
+                    </div>
+                  }
+                />
               )}
             </Card.Body>
+            <Card.Footer className="bg-light border-top">
+              <div className="d-flex justify-content-between align-items-center">
+                <small className="text-muted">
+                  <FontAwesomeIcon icon={faFileAlt} className="me-1" />
+                  Total: {isEmployee ? filteredMisIncidencias.length : filteredIncidencias.length} incidencias
+                </small>
+                <small className="text-muted">
+                  <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                  {selectedRows.length > 0 ? `${selectedRows.length} seleccionados` : 'Ninguno seleccionado'}
+                </small>
+              </div>
+            </Card.Footer>
           </Card>
         </Tab>
         
@@ -1249,30 +1741,91 @@ const Incidencias: React.FC = () => {
             }
           >
             <div className="mt-4">
-              <Card className="shadow-sm">
-                <Card.Header className="bg-light d-flex justify-content-between align-items-center">
-                  <div>
-                    <FontAwesomeIcon icon={faListAlt} className="me-2" />
-                    Catálogo de Tipos de Incidencia
+              <Card className="shadow-sm border-0 mb-4">
+                <Card.Header className="bg-light">
+                  <div className="d-flex justify-content-between align-items-center">
+                    <div>
+                      <FontAwesomeIcon icon={faListAlt} className="me-2 text-primary" />
+                      Catálogo de Tipos de Incidencia
+                    </div>
+                    <Badge bg={isAdmin ? 'danger' : 'warning'}>
+                      {isAdmin ? 'Administrador - Puede editar' : 'Manager - Solo lectura'}
+                    </Badge>
                   </div>
-                  <Badge bg={isAdmin ? 'danger' : 'warning'}>
-                    {isAdmin ? 'Administrador - Puede editar' : 'Manager - Solo lectura'}
-                  </Badge>
                 </Card.Header>
+                <Card.Body className="p-0">
+                  <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
+                    <div>
+                      <h6 className="mb-0">
+                        <FontAwesomeIcon icon={faFilter} className="me-2 text-primary" />
+                        Búsqueda
+                      </h6>
+                    </div>
+                    <div className="d-flex gap-2">
+                      <Button 
+                        variant="outline-success" 
+                        size="sm"
+                        onClick={() => {
+                          exportToExcel(
+                            filteredTiposIncidencia.map(t => ({
+                              ID: t.ID,
+                              Nombre: t.Nombre,
+                              Descripción: t.Descripcion || '',
+                              Estado: t.Activo === 1 ? 'Activo' : 'Inactivo'
+                            })),
+                            'tipos_incidencia'
+                          );
+                        }}
+                        className="hover-bg-soft"
+                      >
+                        <FontAwesomeIcon icon={faDownload} className="me-1" />
+                        Excel
+                      </Button>
+                      <Button 
+                        variant="outline-danger" 
+                        size="sm"
+                        onClick={() => {
+                          exportToPDF(
+                            filteredTiposIncidencia,
+                            columnsTipos.filter(col => col.name !== 'Acciones'),
+                            'tipos_incidencia'
+                          );
+                        }}
+                        className="hover-bg-soft"
+                      >
+                        <FontAwesomeIcon icon={faPrint} className="me-1" />
+                        PDF
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="p-3">
+                    <FilterComponent
+                      filterText={filterTextTipos}
+                      onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterTextTipos(e.target.value)}
+                      onClear={() => setFilterTextTipos('')}
+                      placeholder="Buscar por nombre, descripción..."
+                    />
+                  </div>
+                </Card.Body>
+              </Card>
+
+              <Card className="shadow-sm border-0">
                 <Card.Body className="p-0">
                   {loadingTipos ? (
                     <div className="text-center py-5">
                       <Spinner animation="border" variant="info" />
-                      <p className="mt-3">Cargando tipos de incidencia...</p>
+                      <p className="mt-3 text-muted">Cargando tipos de incidencia...</p>
                     </div>
-                  ) : tiposIncidencia.length === 0 ? (
+                  ) : filteredTiposIncidencia.length === 0 ? (
                     <div className="text-center py-5">
                       <FontAwesomeIcon icon={faListAlt} size="3x" className="text-muted mb-3" />
-                      <h5>No hay tipos de incidencia registrados</h5>
+                      <h5>No hay tipos de incidencia para mostrar</h5>
                       <p className="text-muted mb-4">
-                        Los tipos de incidencia definen las categorías de las incidencias que se pueden registrar.
+                        {filterTextTipos
+                          ? 'No se encontraron resultados para tu búsqueda'
+                          : 'Los tipos de incidencia definen las categorías de las incidencias que se pueden registrar.'}
                       </p>
-                      {canManageTipos && (
+                      {canManageTipos && !filterTextTipos && (
                         <Button variant="info" onClick={() => setShowCreateTipoModal(true)} className="mt-3">
                           <FontAwesomeIcon icon={faPlus} className="me-2" />
                           Crear Primer Tipo
@@ -1280,49 +1833,41 @@ const Incidencias: React.FC = () => {
                       )}
                     </div>
                   ) : (
-                    <div className="table-responsive">
-                      <Table hover className="mb-0">
-                        <thead className="bg-light">
-                          <tr>
-                            <th>Tipo</th>
-                            <th>Descripción</th>
-                            <th>Estado</th>
-                            {canManageTipos && <th className="text-end">Acciones</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {tiposIncidencia.map((tipo) => (
-                            <tr key={tipo.ID}>
-                              <td>
-                                <strong>{tipo.Nombre}</strong>
-                                <div className="small text-muted">ID: {tipo.ID}</div>
-                              </td>
-                              <td>
-                                <div className="text-muted">
-                                  {tipo.Descripcion || 'Sin descripción'}
-                                </div>
-                              </td>
-                              <td>
-                                {tipo.Activo === 1 ? (
-                                  <Badge bg="success">Activo</Badge>
-                                ) : (
-                                  <Badge bg="secondary">Inactivo</Badge>
-                                )}
-                              </td>
-                              {canManageTipos && (
-                                <td className="text-end">
-                                  {renderAccionesTipo(tipo)}
-                                </td>
-                              )}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </Table>
-                    </div>
+                    <DataTable
+                      columns={columnsTipos}
+                      data={filteredTiposIncidencia}
+                      pagination
+                      paginationPerPage={perPageTipos}
+                      paginationRowsPerPageOptions={[5, 10, 15, 20, 25, 50, 100]}
+                      onChangeRowsPerPage={(newPerPage) => setPerPageTipos(newPerPage)}
+                      highlightOnHover
+                      pointerOnHover
+                      onRowClicked={(row) => {
+                        setSelectedTipo(row);
+                      }}
+                      responsive
+                      customStyles={customStyles}
+                      progressPending={loadingTipos}
+                      progressComponent={
+                        <div className="text-center py-5">
+                          <Spinner animation="border" variant="primary" />
+                          <p className="mt-3 text-muted">Cargando datos...</p>
+                        </div>
+                      }
+                      sortIcon={
+                        <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
+                      }
+                      noDataComponent={
+                        <div className="text-center py-5">
+                          <FontAwesomeIcon icon={faListAlt} size="3x" className="text-muted mb-3" />
+                          <h5>No hay tipos de incidencia</h5>
+                          <p className="text-muted">No se encontraron tipos para mostrar</p>
+                        </div>
+                      }
+                    />
                   )}
                 </Card.Body>
-                
-                <Card.Footer className="bg-light">
+                <Card.Footer className="bg-light border-top">
                   <div className="d-flex justify-content-between align-items-center">
                     <small className="text-muted">
                       <FontAwesomeIcon icon={faInfoCircle} className="me-1" />
@@ -1343,7 +1888,7 @@ const Incidencias: React.FC = () => {
       </Tabs>
 
       {/* Modal para Crear Incidencia */}
-      <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)} size="lg">
+      <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)} size="lg" centered>
         <Modal.Header closeButton className="bg-warning text-white">
           <Modal.Title>
             <FontAwesomeIcon icon={faPlus} className="me-2" />
@@ -1468,10 +2013,10 @@ const Incidencias: React.FC = () => {
       </Modal>
 
       {/* Modal para Ver Incidencia */}
-      <Modal show={showViewModal} onHide={() => setShowViewModal(false)} size="lg">
-        <Modal.Header closeButton>
+      <Modal show={showViewModal} onHide={() => setShowViewModal(false)} size="lg" centered>
+        <Modal.Header closeButton className="bg-light">
           <Modal.Title>
-            <FontAwesomeIcon icon={faEye} className="me-2" />
+            <FontAwesomeIcon icon={faEye} className="me-2 text-warning" />
             Detalles de la Incidencia
           </Modal.Title>
         </Modal.Header>
@@ -1576,8 +2121,8 @@ const Incidencias: React.FC = () => {
       </Modal>
 
       {/* Modal para Editar Incidencia */}
-      <Modal show={showEditModal} onHide={() => setShowEditModal(false)} size="lg">
-        <Modal.Header closeButton className="bg-warning">
+      <Modal show={showEditModal} onHide={() => setShowEditModal(false)} size="lg" centered>
+        <Modal.Header closeButton className="bg-warning text-white">
           <Modal.Title>
             <FontAwesomeIcon icon={faEdit} className="me-2" />
             Editar Incidencia
@@ -1672,10 +2217,10 @@ const Incidencias: React.FC = () => {
         </Modal.Header>
         <Modal.Body>
           {selectedIncidencia && (
-            <div className="text-center">
+            <div className="text-center py-4">
               <FontAwesomeIcon icon={faBan} size="3x" className="text-danger mb-3" />
-              <h4>¿Estás seguro de eliminar esta incidencia?</h4>
-              <p className="text-muted">
+              <h5>¿Estás seguro de eliminar esta incidencia?</h5>
+              <p className="text-muted mb-0">
                 Esta acción eliminará permanentemente la incidencia <strong>#{selectedIncidencia.ID}</strong> del sistema.
               </p>
               
@@ -1698,7 +2243,7 @@ const Incidencias: React.FC = () => {
       </Modal>
 
       {/* Modal para Crear Tipo de Incidencia */}
-      <Modal show={showCreateTipoModal} onHide={() => setShowCreateTipoModal(false)}>
+      <Modal show={showCreateTipoModal} onHide={() => setShowCreateTipoModal(false)} centered>
         <Modal.Header closeButton className="bg-info text-white">
           <Modal.Title>
             <FontAwesomeIcon icon={faPlus} className="me-2" />
@@ -1745,8 +2290,8 @@ const Incidencias: React.FC = () => {
       </Modal>
 
       {/* Modal para Editar Tipo de Incidencia */}
-      <Modal show={showEditTipoModal} onHide={() => setShowEditTipoModal(false)}>
-        <Modal.Header closeButton className="bg-info">
+      <Modal show={showEditTipoModal} onHide={() => setShowEditTipoModal(false)} centered>
+        <Modal.Header closeButton className="bg-info text-white">
           <Modal.Title>
             <FontAwesomeIcon icon={faEdit} className="me-2" />
             Editar Tipo de Incidencia

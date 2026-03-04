@@ -892,25 +892,9 @@ const Empleados: React.FC = () => {
               {loadingDetalles ? <FontAwesomeIcon icon={faSpinner} spin /> : <FontAwesomeIcon icon={faEdit} />}
             </Button>
           )}
-          
-          {canDelete && (
-            <Button
-              variant="outline-danger"
-              onClick={(e) => {
-                e.stopPropagation();
-                openDeleteModal(row);
-              }}
-              title="Eliminar"
-              disabled={loading}
-              className="hover-bg-soft"
-            >
-              <FontAwesomeIcon icon={faTrash} />
-            </Button>
-          )}
-          
           {canChangeStatus && (
             <Button
-              variant={row.UsuarioActivo ? "outline-secondary" : "outline-success"}
+              variant={row.UsuarioActivo ? "outline-danger" : "outline-success"}
               onClick={(e) => {
                 e.stopPropagation();
                 handleToggleStatus(row.ID, row.UsuarioActivo);

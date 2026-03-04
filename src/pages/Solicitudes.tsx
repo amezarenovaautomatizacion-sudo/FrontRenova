@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Container,
@@ -6,14 +6,12 @@ import {
   Col,
   Card,
   Button,
-  Table,
   Form,
   Modal,
   Alert,
   Spinner,
   Badge,
   InputGroup,
-  Pagination,
   Tabs,
   Tab,
   ButtonGroup,
@@ -21,6 +19,7 @@ import {
   Accordion
 } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import DataTable from 'react-data-table-component';
 import {
   faCalendarAlt,
   faClock,
@@ -69,12 +68,14 @@ import {
   faBusinessTime,
   faSortNumericUp,
   faMapMarkerAlt,
-  faIdCard
+  faIdCard,
+  faSort,
+  faSpinner
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../services/api';
-import $ from 'jquery';
-import 'datatables.net-bs5';
-import 'datatables.net-responsive-bs5';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 // Interfaces actualizadas basadas en la API real
 interface Solicitud {
@@ -182,6 +183,87 @@ interface DetalleAprobacion extends AprobacionPendiente {
   Departamento?: string;
   Puesto?: string;
 }
+
+// Estilos personalizados para DataTable
+const customStyles = {
+  headRow: {
+    style: {
+      backgroundColor: 'var(--bg-secondary)',
+      borderBottom: '2px solid var(--border-color)',
+    },
+  },
+  headCells: {
+    style: {
+      fontSize: '14px',
+      fontWeight: '600',
+      color: 'var(--text-primary)',
+      padding: '12px 8px',
+    },
+  },
+  rows: {
+    style: {
+      fontSize: '14px',
+      color: 'var(--text-primary)',
+      backgroundColor: 'var(--bg-primary)',
+      '&:hover': {
+        backgroundColor: 'var(--bg-soft)',
+        cursor: 'pointer',
+      },
+    },
+  },
+  pagination: {
+    style: {
+      borderTop: '1px solid var(--border-color)',
+      marginTop: '0',
+      backgroundColor: 'var(--bg-primary)',
+      color: 'var(--text-primary)',
+    },
+    pageButtonsStyle: {
+      color: 'var(--text-primary)',
+      fill: 'var(--text-primary)',
+      '&:hover:not(:disabled)': {
+        backgroundColor: 'var(--bg-soft)',
+      },
+      '&:focus': {
+        outline: 'none',
+      },
+    },
+  },
+  noData: {
+    style: {
+      color: 'var(--text-muted)',
+      backgroundColor: 'var(--bg-primary)',
+    },
+  },
+  progress: {
+    style: {
+      backgroundColor: 'var(--bg-primary)',
+    },
+  },
+};
+
+// Componente para los filtros personalizados
+const FilterComponent = ({ filterText, onFilter, onClear, placeholder }: any) => (
+  <div className="d-flex align-items-center">
+    <InputGroup style={{ minWidth: '300px' }}>
+      <InputGroup.Text>
+        <FontAwesomeIcon icon={faSearch} />
+      </InputGroup.Text>
+      <Form.Control
+        type="text"
+        placeholder={placeholder || "Buscar..."}
+        value={filterText}
+        onChange={onFilter}
+        className="border-start-0"
+      />
+      {filterText && (
+        <Button variant="outline-secondary" onClick={onClear}>
+          Limpiar
+        </Button>
+      )}
+    </InputGroup>
+  </div>
+);
 
 // Funciones de utilidad para días hábiles
 const esFinDeSemana = (fecha: string): boolean => {
@@ -309,12 +391,6 @@ const obtenerSiguienteDiaHabil = (fecha: Date): Date => {
 const Solicitudes: React.FC = () => {
   const { user, logout } = useAuth();
   
-  // Refs para DataTables
-  const misSolicitudesTableRef = useRef<HTMLTableElement>(null);
-  const pendientesTableRef = useRef<HTMLTableElement>(null);
-  const aprobadasTableRef = useRef<HTMLTableElement>(null);
-  const horasExtrasTableRef = useRef<HTMLTableElement>(null);
-  
   const getUserRol = () => {
     if (!user) return null;
     return user.rol || user.Rol || 'employee';
@@ -341,11 +417,28 @@ const Solicitudes: React.FC = () => {
   
   // Estados para listados
   const [misSolicitudes, setMisSolicitudes] = useState<Solicitud[]>([]);
+  const [filteredMisSolicitudes, setFilteredMisSolicitudes] = useState<Solicitud[]>([]);
   const [solicitudesPendientes, setSolicitudesPendientes] = useState<AprobacionPendiente[]>([]);
+  const [filteredSolicitudesPendientes, setFilteredSolicitudesPendientes] = useState<AprobacionPendiente[]>([]);
   const [solicitudesAprobadas, setSolicitudesAprobadas] = useState<Solicitud[]>([]);
+  const [filteredSolicitudesAprobadas, setFilteredSolicitudesAprobadas] = useState<Solicitud[]>([]);
   const [reporteHorasExtras, setReporteHorasExtras] = useState<ReporteHorasExtras[]>([]);
+  const [filteredReporteHorasExtras, setFilteredReporteHorasExtras] = useState<ReporteHorasExtras[]>([]);
   const [empleadosSelect, setEmpleadosSelect] = useState<any[]>([]);
   const [pendientesCount, setPendientesCount] = useState<number>(0);
+  
+  // Estados para DataTable
+  const [filterText, setFilterText] = useState('');
+  const [filterTextPendientes, setFilterTextPendientes] = useState('');
+  const [filterTextAprobadas, setFilterTextAprobadas] = useState('');
+  const [filterTextHorasExtras, setFilterTextHorasExtras] = useState('');
+  const [resetPaginationToggle, setResetPaginationToggle] = useState(false);
+  const [selectedRows, setSelectedRows] = useState<any[]>([]);
+  const [toggleCleared, setToggleCleared] = useState(false);
+  const [perPage, setPerPage] = useState(10);
+  const [perPagePendientes, setPerPagePendientes] = useState(10);
+  const [perPageAprobadas, setPerPageAprobadas] = useState(10);
+  const [perPageHorasExtras, setPerPageHorasExtras] = useState(10);
   
   // Estados para formularios
   const [showVacacionesModal, setShowVacacionesModal] = useState(false);
@@ -402,6 +495,77 @@ const Solicitudes: React.FC = () => {
   const [filterFechaDesde, setFilterFechaDesde] = useState('');
   const [filterFechaHasta, setFilterFechaHasta] = useState('');
   
+  // Filtrado en tiempo real para mis solicitudes
+  useEffect(() => {
+    if (!filterText) {
+      setFilteredMisSolicitudes(misSolicitudes);
+    } else {
+      const filtered = misSolicitudes.filter(solicitud => {
+        const searchTerm = filterText.toLowerCase();
+        return (
+          (solicitud.EmpleadoNombre && solicitud.EmpleadoNombre.toLowerCase().includes(searchTerm)) ||
+          solicitud.Motivo.toLowerCase().includes(searchTerm) ||
+          solicitud.Tipo.toLowerCase().includes(searchTerm) ||
+          (solicitud.Observaciones && solicitud.Observaciones.toLowerCase().includes(searchTerm))
+        );
+      });
+      setFilteredMisSolicitudes(filtered);
+    }
+  }, [filterText, misSolicitudes]);
+
+  // Filtrado en tiempo real para solicitudes pendientes
+  useEffect(() => {
+    if (!filterTextPendientes) {
+      setFilteredSolicitudesPendientes(solicitudesPendientes);
+    } else {
+      const filtered = solicitudesPendientes.filter(aprobacion => {
+        const searchTerm = filterTextPendientes.toLowerCase();
+        return (
+          aprobacion.EmpleadoNombre.toLowerCase().includes(searchTerm) ||
+          aprobacion.Motivo.toLowerCase().includes(searchTerm) ||
+          aprobacion.Tipo.toLowerCase().includes(searchTerm)
+        );
+      });
+      setFilteredSolicitudesPendientes(filtered);
+    }
+  }, [filterTextPendientes, solicitudesPendientes]);
+
+  // Filtrado en tiempo real para solicitudes aprobadas
+  useEffect(() => {
+    if (!filterTextAprobadas) {
+      setFilteredSolicitudesAprobadas(solicitudesAprobadas);
+    } else {
+      const filtered = solicitudesAprobadas.filter(solicitud => {
+        const searchTerm = filterTextAprobadas.toLowerCase();
+        return (
+          (solicitud.EmpleadoNombre && solicitud.EmpleadoNombre.toLowerCase().includes(searchTerm)) ||
+          solicitud.Motivo.toLowerCase().includes(searchTerm) ||
+          solicitud.Tipo.toLowerCase().includes(searchTerm) ||
+          (solicitud.Observaciones && solicitud.Observaciones.toLowerCase().includes(searchTerm))
+        );
+      });
+      setFilteredSolicitudesAprobadas(filtered);
+    }
+  }, [filterTextAprobadas, solicitudesAprobadas]);
+
+  // Filtrado en tiempo real para reporte de horas extras
+  useEffect(() => {
+    if (!filterTextHorasExtras) {
+      setFilteredReporteHorasExtras(reporteHorasExtras);
+    } else {
+      const filtered = reporteHorasExtras.filter(item => {
+        const searchTerm = filterTextHorasExtras.toLowerCase();
+        return (
+          item.EmpleadoNombre.toLowerCase().includes(searchTerm) ||
+          item.Motivo.toLowerCase().includes(searchTerm) ||
+          (item.CorreoElectronico && item.CorreoElectronico.toLowerCase().includes(searchTerm)) ||
+          (item.PuestoNombre && item.PuestoNombre.toLowerCase().includes(searchTerm))
+        );
+      });
+      setFilteredReporteHorasExtras(filtered);
+    }
+  }, [filterTextHorasExtras, reporteHorasExtras]);
+
   // Cargar datos iniciales
   useEffect(() => {
     loadDerechosVacacionales();
@@ -426,57 +590,6 @@ const Solicitudes: React.FC = () => {
     }, 30000);
     return () => clearInterval(interval);
   }, [canApprove]);
-
-  // Efecto para inicializar DataTables cuando los datos cambian
-  useEffect(() => {
-    if (activeTab === 'mis-solicitudes' && misSolicitudes.length > 0) {
-      initializeDataTable(misSolicitudesTableRef, 'mis-solicitudes-table');
-    }
-  }, [misSolicitudes, activeTab]);
-
-  useEffect(() => {
-    if (activeTab === 'pendientes' && solicitudesPendientes.length > 0) {
-      initializeDataTable(pendientesTableRef, 'pendientes-table');
-    }
-  }, [solicitudesPendientes, activeTab]);
-
-  useEffect(() => {
-    if (activeTab === 'aprobadas' && solicitudesAprobadas.length > 0) {
-      initializeDataTable(aprobadasTableRef, 'aprobadas-table');
-    }
-  }, [solicitudesAprobadas, activeTab]);
-
-  useEffect(() => {
-    if (activeTab === 'horas-extras' && reporteHorasExtras.length > 0) {
-      initializeDataTable(horasExtrasTableRef, 'horas-extras-table');
-    }
-  }, [reporteHorasExtras, activeTab]);
-
-  const initializeDataTable = (tableRef: React.RefObject<HTMLTableElement>, tableId: string) => {
-    if (tableRef.current) {
-      // Destruir DataTable existente si la hay
-      if ($.fn.DataTable.isDataTable(`#${tableId}`)) {
-        $(`#${tableId}`).DataTable().destroy();
-      }
-      
-      // Inicializar nueva DataTable
-      $(`#${tableId}`).DataTable({
-        responsive: true,
-        language: {
-          url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json',
-        },
-        pageLength: 10,
-        lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "Todos"]],
-        order: [[2, 'desc']], // Ordenar por fecha por defecto
-        columnDefs: [
-          { orderable: false, targets: -1 } // No ordenar última columna (acciones)
-        ],
-        dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>' +
-             '<"row"<"col-sm-12"tr>>' +
-             '<"row"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
-      });
-    }
-  };
 
   const loadTabData = () => {
     switch (activeTab) {
@@ -569,6 +682,7 @@ const Solicitudes: React.FC = () => {
         }
         
         setMisSolicitudes(solicitudes);
+        setFilteredMisSolicitudes(solicitudes);
       } else {
         setError(response.data.message || 'Error cargando solicitudes');
       }
@@ -593,6 +707,7 @@ const Solicitudes: React.FC = () => {
       if (response.data.success) {
         const data = response.data.data || [];
         setSolicitudesPendientes(data);
+        setFilteredSolicitudesPendientes(data);
         setPendientesCount(data.length);
       } else {
         setError(response.data.message || 'Error cargando aprobaciones pendientes');
@@ -621,7 +736,9 @@ const Solicitudes: React.FC = () => {
       
       if (response.data.success) {
         const data = response.data.data;
-        setSolicitudesAprobadas(data?.solicitudes || data || []);
+        const solicitudes = data?.solicitudes || data || [];
+        setSolicitudesAprobadas(solicitudes);
+        setFilteredSolicitudesAprobadas(solicitudes);
       } else {
         setError(response.data.message || 'Error cargando solicitudes aprobadas');
       }
@@ -649,7 +766,9 @@ const Solicitudes: React.FC = () => {
       
       if (response.data.success) {
         const data = response.data.data;
-        setReporteHorasExtras(data?.reporte || data || []);
+        const reporte = data?.reporte || data || [];
+        setReporteHorasExtras(reporte);
+        setFilteredReporteHorasExtras(reporte);
       } else {
         setError(response.data.message || 'Error cargando reporte de horas extras');
       }
@@ -1111,8 +1230,8 @@ const Solicitudes: React.FC = () => {
     const estadoInfo = estados[estado] || { bg: 'secondary', text: estado, icon: faQuestionCircle };
     
     return (
-      <Badge bg={estadoInfo.bg} className="d-flex align-items-center gap-1">
-        <FontAwesomeIcon icon={estadoInfo.icon} />
+      <Badge bg={estadoInfo.bg} className="d-flex align-items-center gap-1 px-2 py-1">
+        <FontAwesomeIcon icon={estadoInfo.icon} size="sm" />
         <span>{estadoInfo.text}</span>
       </Badge>
     );
@@ -1128,8 +1247,8 @@ const Solicitudes: React.FC = () => {
     const tipoInfo = tipos[tipo] || { bg: 'secondary', text: tipo, icon: faFileAlt };
     
     return (
-      <Badge bg={tipoInfo.bg} className="d-flex align-items-center gap-1">
-        <FontAwesomeIcon icon={tipoInfo.icon} />
+      <Badge bg={tipoInfo.bg} className="d-flex align-items-center gap-1 px-2 py-1">
+        <FontAwesomeIcon icon={tipoInfo.icon} size="sm" />
         <span>{tipoInfo.text}</span>
       </Badge>
     );
@@ -1403,29 +1522,493 @@ const Solicitudes: React.FC = () => {
     handleFechaHorasExtrasChange(fecha);
   };
 
-  // Función para validar que una fecha sea día hábil en el calendario
-  const esDiaHabil = (date: Date): boolean => {
-    const diaSemana = date.getDay();
-    return diaSemana !== 0 && diaSemana !== 6;
+  // ==================== FUNCIONES DE EXPORTACIÓN ====================
+
+  const exportToExcel = (data: any[], filename: string) => {
+    try {
+      if (data.length === 0) {
+        setError('No hay datos para exportar');
+        return;
+      }
+
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Solicitudes');
+      XLSX.writeFile(workbook, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      
+      setSuccess('Exportación completada exitosamente');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      console.error('Error exportando a Excel:', error);
+      setError('Error al exportar a Excel');
+    }
   };
 
-  // Función para obtener los atributos del input de fecha
-  const getDateInputProps = (minDate?: string, excludeWeekends: boolean = true) => {
-    const props: any = {
-      type: "date"
-    };
-    
-    if (minDate) {
-      props.min = minDate;
+  const exportToPDF = (data: any[], columns: any[], filename: string) => {
+    try {
+      if (data.length === 0) {
+        setError('No hay datos para exportar');
+        return;
+      }
+
+      const doc = new jsPDF();
+      
+      doc.setFontSize(18);
+      doc.setTextColor(13, 110, 253); // Color primary
+      doc.text(`Reporte de ${filename}`, 14, 22);
+      doc.setFontSize(11);
+      doc.setTextColor(44, 62, 80);
+      doc.text(`Generado: ${new Date().toLocaleDateString('es-MX')}`, 14, 32);
+      doc.text(`Total de registros: ${data.length}`, 14, 38);
+
+      const tableColumn = columns.map(col => col.name);
+      const tableRows = data.map(item => 
+        columns.map(col => {
+          const value = col.selector(item);
+          return value !== undefined && value !== null ? String(value) : '';
+        })
+      );
+
+      (doc as any).autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: 45,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [13, 110, 253], textColor: 255 },
+        alternateRowStyles: { fillColor: [245, 245, 245] }
+      });
+
+      doc.save(`${filename}_${new Date().toISOString().split('T')[0]}.pdf`);
+      
+      setSuccess('Exportación completada exitosamente');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      console.error('Error exportando a PDF:', error);
+      setError('Error al exportar a PDF');
     }
-    
-    // Si queremos excluir fines de semana, podemos agregar una validación personalizada
-    // pero no podemos deshabilitar días específicos en un input nativo de fecha
-    // Por eso tenemos la corrección automática en los cambios
-    
-    return props;
   };
-  
+
+  // Definición de columnas para DataTable - Mis Solicitudes
+  const columnsMisSolicitudes = [
+    {
+      name: 'ID',
+      selector: (row: Solicitud) => row.ID,
+      sortable: true,
+      width: '80px',
+    },
+    {
+      name: 'Tipo',
+      selector: (row: Solicitud) => row.Tipo,
+      sortable: true,
+      cell: (row: Solicitud) => getTipoBadge(row.Tipo),
+    },
+    {
+      name: 'Fecha Solicitud',
+      selector: (row: Solicitud) => row.FechaSolicitud,
+      sortable: true,
+      cell: (row: Solicitud) => formatDateTime(row.FechaSolicitud),
+    },
+    {
+      name: 'Periodo / Detalles',
+      selector: (row: Solicitud) => row.FechaInicio || '',
+      sortable: true,
+      cell: (row: Solicitud) => {
+        if (row.Tipo === 'vacaciones') {
+          return (
+            <div>
+              <div>
+                <FontAwesomeIcon icon={faCalendarPlus} className="me-1" />
+                {formatDate(row.FechaInicio!)}
+                {row.FechaFin && (
+                  <>
+                    <FontAwesomeIcon icon={faArrowRight} className="mx-2" />
+                    {formatDate(row.FechaFin!)}
+                  </>
+                )}
+              </div>
+              {row.DiasSolicitados && (
+                <small className="text-muted">{row.DiasSolicitados} días hábiles</small>
+              )}
+            </div>
+          );
+        }
+        if (row.Tipo === 'permiso') {
+          return (
+            <div>
+              <div>
+                <FontAwesomeIcon icon={faCalendarCheck} className="me-1" />
+                {formatDate(row.FechaInicio!)}
+              </div>
+              <small className="text-muted">{row.ConGoce ? 'Con goce' : 'Sin goce'}</small>
+            </div>
+          );
+        }
+        if (row.Tipo === 'horas_extras') {
+          return (
+            <div>
+              <div>
+                <FontAwesomeIcon icon={faClock} className="me-1" />
+                {formatDate(row.FechaInicio!)}
+              </div>
+              {row.HorasSolicitadas && (
+                <small className="text-muted">{row.HorasSolicitadas} horas</small>
+              )}
+            </div>
+          );
+        }
+        return null;
+      },
+      grow: 2,
+    },
+    {
+      name: 'Motivo',
+      selector: (row: Solicitud) => row.Motivo,
+      sortable: true,
+      cell: (row: Solicitud) => (
+        <div className="text-truncate" style={{ maxWidth: '200px' }} title={row.Motivo}>
+          {row.Motivo}
+        </div>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Estado',
+      selector: (row: Solicitud) => row.Estado,
+      sortable: true,
+      cell: (row: Solicitud) => getEstadoBadge(row.Estado),
+    },
+    {
+      name: 'Acciones',
+      cell: (row: Solicitud) => (
+        <ButtonGroup size="sm">
+          <Button
+            variant="outline-primary"
+            onClick={(e) => {
+              e.stopPropagation();
+              loadDetalleSolicitud(row.ID);
+            }}
+            title="Ver detalles"
+            className="hover-bg-soft"
+          >
+            <FontAwesomeIcon icon={faEye} />
+          </Button>
+          
+          {row.Estado === 'pendiente' && (
+            <Button
+              variant="outline-danger"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCancelarSolicitud(row.ID);
+              }}
+              title="Cancelar solicitud"
+              className="hover-bg-soft"
+            >
+              <FontAwesomeIcon icon={faBan} />
+            </Button>
+          )}
+        </ButtonGroup>
+      ),
+      ignoreRowClick: true,
+      allowOverflow: true,
+    },
+  ];
+
+  // Definición de columnas para DataTable - Solicitudes Pendientes
+  const columnsPendientes = [
+    {
+      name: 'Empleado',
+      selector: (row: AprobacionPendiente) => row.EmpleadoNombre,
+      sortable: true,
+      cell: (row: AprobacionPendiente) => (
+        <div className="fw-medium">{row.EmpleadoNombre}</div>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Tipo',
+      selector: (row: AprobacionPendiente) => row.Tipo,
+      sortable: true,
+      cell: (row: AprobacionPendiente) => getTipoBadge(row.Tipo),
+    },
+    {
+      name: 'Fecha Solicitud',
+      selector: (row: AprobacionPendiente) => row.FechaSolicitud,
+      sortable: true,
+      cell: (row: AprobacionPendiente) => formatDateTime(row.FechaSolicitud),
+    },
+    {
+      name: 'Detalles',
+      selector: (row: AprobacionPendiente) => row.FechaInicio || '',
+      sortable: true,
+      cell: (row: AprobacionPendiente) => {
+        if (row.Tipo === 'vacaciones') {
+          return (
+            <div>
+              <div>
+                {formatDate(row.FechaInicio!)} → {formatDate(row.FechaFin!)}
+              </div>
+              <small className="text-muted">{row.DiasSolicitados} días hábiles</small>
+            </div>
+          );
+        }
+        if (row.Tipo === 'permiso') {
+          return (
+            <div>
+              <div>
+                {formatDate(row.FechaInicio!)}
+              </div>
+              <small className="text-muted">{row.ConGoce ? 'Con goce' : 'Sin goce'}</small>
+            </div>
+          );
+        }
+        if (row.Tipo === 'horas_extras') {
+          return (
+            <div>
+              <div>
+                {formatDate(row.FechaInicio!)}
+              </div>
+              <small className="text-muted">{row.HorasSolicitadas} horas</small>
+            </div>
+          );
+        }
+        return null;
+      },
+      grow: 2,
+    },
+    {
+      name: 'Motivo',
+      selector: (row: AprobacionPendiente) => row.Motivo,
+      sortable: true,
+      cell: (row: AprobacionPendiente) => (
+        <div className="text-truncate" style={{ maxWidth: '200px' }} title={row.Motivo}>
+          {row.Motivo}
+        </div>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Orden',
+      selector: (row: AprobacionPendiente) => row.OrdenAprobacion,
+      sortable: true,
+      cell: (row: AprobacionPendiente) => (
+        <Badge bg="secondary">{row.OrdenAprobacion}°</Badge>
+      ),
+    },
+    {
+      name: 'Acciones',
+      cell: (row: AprobacionPendiente) => (
+        <ButtonGroup size="sm">
+          <Button
+            variant="outline-success"
+            onClick={(e) => {
+              e.stopPropagation();
+              openApproveModal(row);
+            }}
+            title="Aprobar/Rechazar"
+            className="hover-bg-soft"
+          >
+            <FontAwesomeIcon icon={faCheckCircle} />
+          </Button>
+          
+          <Button
+            variant="outline-warning"
+            onClick={(e) => {
+              e.stopPropagation();
+              openEditAprobacionModal(row);
+            }}
+            title="Editar aprobación"
+            className="hover-bg-soft"
+          >
+            <FontAwesomeIcon icon={faEdit} />
+          </Button>
+        </ButtonGroup>
+      ),
+      ignoreRowClick: true,
+      allowOverflow: true,
+    },
+  ];
+
+  // Definición de columnas para DataTable - Solicitudes Aprobadas
+  const columnsAprobadas = [
+    {
+      name: 'Empleado',
+      selector: (row: Solicitud) => row.EmpleadoNombre || '',
+      sortable: true,
+      cell: (row: Solicitud) => (
+        <div>
+          <div className="fw-medium">{row.EmpleadoNombre || 'Sin nombre'}</div>
+          {row.EmpleadoCorreo && (
+            <small className="text-muted d-block">{row.EmpleadoCorreo}</small>
+          )}
+        </div>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Tipo',
+      selector: (row: Solicitud) => row.Tipo,
+      sortable: true,
+      cell: (row: Solicitud) => getTipoBadge(row.Tipo),
+    },
+    {
+      name: 'Fecha Solicitud',
+      selector: (row: Solicitud) => row.FechaSolicitud,
+      sortable: true,
+      cell: (row: Solicitud) => formatDateTime(row.FechaSolicitud),
+    },
+    {
+      name: 'Periodo / Detalles',
+      selector: (row: Solicitud) => row.FechaInicio || '',
+      sortable: true,
+      cell: (row: Solicitud) => {
+        if (row.Tipo === 'vacaciones') {
+          return (
+            <div>
+              <div>
+                <FontAwesomeIcon icon={faCalendarPlus} className="me-1" />
+                {formatDate(row.FechaInicio!)}
+                {row.FechaFin && (
+                  <>
+                    <FontAwesomeIcon icon={faArrowRight} className="mx-2" />
+                    {formatDate(row.FechaFin!)}
+                  </>
+                )}
+              </div>
+              {row.DiasSolicitados && (
+                <small className="text-muted">{row.DiasSolicitados} días hábiles</small>
+              )}
+            </div>
+          );
+        }
+        if (row.Tipo === 'permiso') {
+          return (
+            <div>
+              <div>
+                <FontAwesomeIcon icon={faCalendarCheck} className="me-1" />
+                {formatDate(row.FechaInicio!)}
+              </div>
+            </div>
+          );
+        }
+        if (row.Tipo === 'horas_extras') {
+          return (
+            <div>
+              <div>
+                <FontAwesomeIcon icon={faClock} className="me-1" />
+                {formatDate(row.FechaInicio!)}
+              </div>
+              {row.HorasSolicitadas && (
+                <small className="text-muted">{row.HorasSolicitadas} horas</small>
+              )}
+            </div>
+          );
+        }
+        return null;
+      },
+      grow: 2,
+    },
+    {
+      name: 'Motivo',
+      selector: (row: Solicitud) => row.Motivo,
+      sortable: true,
+      cell: (row: Solicitud) => (
+        <div className="text-truncate" style={{ maxWidth: '200px' }} title={row.Motivo}>
+          {row.Motivo}
+        </div>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Estado',
+      selector: (row: Solicitud) => row.Estado,
+      sortable: true,
+      cell: (row: Solicitud) => getEstadoBadge(row.Estado),
+    },
+    {
+      name: 'Acciones',
+      cell: (row: Solicitud) => (
+        <Button
+          variant="outline-primary"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            loadDetalleSolicitud(row.ID);
+          }}
+          title="Ver detalles"
+          className="hover-bg-soft"
+        >
+          <FontAwesomeIcon icon={faEye} />
+        </Button>
+      ),
+      ignoreRowClick: true,
+      allowOverflow: true,
+    },
+  ];
+
+  // Definición de columnas para DataTable - Reporte Horas Extras
+  const columnsHorasExtras = [
+    {
+      name: 'Empleado',
+      selector: (row: ReporteHorasExtras) => row.EmpleadoNombre,
+      sortable: true,
+      cell: (row: ReporteHorasExtras) => (
+        <div>
+          <div className="fw-medium">{row.EmpleadoNombre}</div>
+          {row.CorreoElectronico && (
+            <small className="text-muted d-block">{row.CorreoElectronico}</small>
+          )}
+        </div>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Fecha',
+      selector: (row: ReporteHorasExtras) => row.FechaInicio,
+      sortable: true,
+      cell: (row: ReporteHorasExtras) => formatDate(row.FechaInicio),
+    },
+    {
+      name: 'Horas',
+      selector: (row: ReporteHorasExtras) => row.HorasSolicitadas,
+      sortable: true,
+      cell: (row: ReporteHorasExtras) => {
+        const horas = typeof row.HorasSolicitadas === 'string' 
+          ? parseFloat(row.HorasSolicitadas) 
+          : (row.HorasSolicitadas || 0);
+        return (
+          <Badge bg="warning" className="fs-6">
+            {horas.toFixed(1)} hrs
+          </Badge>
+        );
+      },
+    },
+    {
+      name: 'Motivo',
+      selector: (row: ReporteHorasExtras) => row.Motivo,
+      sortable: true,
+      cell: (row: ReporteHorasExtras) => (
+        <div className="text-truncate" style={{ maxWidth: '200px' }} title={row.Motivo}>
+          {row.Motivo}
+        </div>
+      ),
+      grow: 2,
+    },
+    {
+      name: 'Estado',
+      selector: (row: ReporteHorasExtras) => row.Estado,
+      sortable: true,
+      cell: (row: ReporteHorasExtras) => getEstadoBadge(row.Estado),
+    },
+    {
+      name: 'Puesto',
+      selector: (row: ReporteHorasExtras) => row.PuestoNombre || '',
+      sortable: true,
+      cell: (row: ReporteHorasExtras) => (
+        <small>{row.PuestoNombre || 'No asignado'}</small>
+      ),
+    },
+  ];
+
   const renderActionButtons = () => {
     const sinDiasVacaciones = derechosVacacionales?.DiasDisponibles <= 0;
     
@@ -1565,6 +2148,7 @@ const Solicitudes: React.FC = () => {
             <Col md={4}>
               <Form.Group>
                 <Form.Select
+                  size="sm"
                   value={filterEstado}
                   onChange={(e) => setFilterEstado(e.target.value)}
                 >
@@ -1579,6 +2163,7 @@ const Solicitudes: React.FC = () => {
             <Col md={4}>
               <Form.Group>
                 <Form.Select
+                  size="sm"
                   value={filterTipo}
                   onChange={(e) => setFilterTipo(e.target.value)}
                 >
@@ -1598,6 +2183,7 @@ const Solicitudes: React.FC = () => {
               <Form.Group>
                 <Form.Control
                   type="date"
+                  size="sm"
                   placeholder="Fecha desde"
                   value={filterFechaDesde}
                   onChange={(e) => setFilterFechaDesde(e.target.value)}
@@ -1608,6 +2194,7 @@ const Solicitudes: React.FC = () => {
               <Form.Group>
                 <Form.Control
                   type="date"
+                  size="sm"
                   placeholder="Fecha hasta"
                   value={filterFechaHasta}
                   onChange={(e) => setFilterFechaHasta(e.target.value)}
@@ -1621,6 +2208,7 @@ const Solicitudes: React.FC = () => {
           <Col md={4} className="d-flex align-items-end">
             <Button
               variant="outline-secondary"
+              size="sm"
               onClick={() => {
                 setFilterEstado('');
                 setFilterTipo('');
@@ -1638,497 +2226,17 @@ const Solicitudes: React.FC = () => {
     );
   };
   
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'mis-solicitudes':
-        return renderMisSolicitudesContent();
-      case 'pendientes':
-        return renderPendientesContent();
-      case 'aprobadas':
-        return renderAprobadasContent();
-      case 'horas-extras':
-        return renderHorasExtrasContent();
-      default:
-        return null;
-    }
-  };
-  
-  const renderMisSolicitudesContent = () => {
-    if (loading) {
-      return (
+  // Verificación de usuario
+  if (!user) {
+    return (
+      <Container fluid className="py-4">
         <div className="text-center py-5">
           <Spinner animation="border" variant="primary" />
-          <p className="mt-3">Cargando solicitudes...</p>
+          <p className="mt-3">Verificando permisos...</p>
         </div>
-      );
-    }
-    
-    if (misSolicitudes.length === 0) {
-      return (
-        <div className="text-center py-5">
-          <FontAwesomeIcon icon={faCalendarAlt} size="3x" className="text-muted mb-3" />
-          <h5>No tienes solicitudes</h5>
-          <p className="text-muted">Crea tu primera solicitud usando los botones de arriba</p>
-        </div>
-      );
-    }
-    
-    return (
-      <div className="table-responsive">
-        <table 
-          ref={misSolicitudesTableRef}
-          id="mis-solicitudes-table"
-          className="table table-hover table-striped mb-0"
-          style={{ width: '100%' }}
-        >
-          <thead className="bg-light">
-            <tr>
-              <th>Tipo</th>
-              <th>Fecha Solicitud</th>
-              <th>Periodo / Detalles</th>
-              <th>Motivo</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {misSolicitudes.map((solicitud) => (
-              <tr key={solicitud.ID}>
-                <td>{getTipoBadge(solicitud.Tipo)}</td>
-                <td>
-                  <div className="small">{formatDateTime(solicitud.FechaSolicitud)}</div>
-                </td>
-                <td>
-                  {solicitud.Tipo === 'vacaciones' && (
-                    <div>
-                      <div className="small">
-                        <FontAwesomeIcon icon={faCalendarPlus} className="me-1" />
-                        {formatDate(solicitud.FechaInicio!)}
-                        {solicitud.FechaFin && (
-                          <>
-                            <FontAwesomeIcon icon={faArrowRight} className="mx-2" />
-                            {formatDate(solicitud.FechaFin!)}
-                          </>
-                        )}
-                      </div>
-                      {solicitud.DiasSolicitados && (
-                        <small className="text-muted">{solicitud.DiasSolicitados} días hábiles</small>
-                      )}
-                    </div>
-                  )}
-                  {solicitud.Tipo === 'permiso' && (
-                    <div>
-                      <div className="small">
-                        <FontAwesomeIcon icon={faCalendarCheck} className="me-1" />
-                        {formatDate(solicitud.FechaInicio!)}
-                      </div>
-                      <small className="text-muted">{solicitud.ConGoce ? 'Con goce' : 'Sin goce'}</small>
-                    </div>
-                  )}
-                  {solicitud.Tipo === 'horas_extras' && (
-                    <div>
-                      <div className="small">
-                        <FontAwesomeIcon icon={faClock} className="me-1" />
-                        {formatDate(solicitud.FechaInicio!)}
-                      </div>
-                      {solicitud.HorasSolicitadas && (
-                        <small className="text-muted">{solicitud.HorasSolicitadas} horas</small>
-                      )}
-                    </div>
-                  )}
-                </td>
-                <td>
-                  <div className="text-truncate" style={{ maxWidth: '200px' }} title={solicitud.Motivo}>
-                    {solicitud.Motivo}
-                  </div>
-                </td>
-                <td>{getEstadoBadge(solicitud.Estado)}</td>
-                <td>
-                  <ButtonGroup size="sm">
-                    <Button
-                      variant="outline-primary"
-                      onClick={() => loadDetalleSolicitud(solicitud.ID)}
-                      title="Ver detalles"
-                    >
-                      <FontAwesomeIcon icon={faEye} />
-                    </Button>
-                    
-                    {solicitud.Estado === 'pendiente' && (
-                      <Button
-                        variant="outline-danger"
-                        onClick={() => handleCancelarSolicitud(solicitud.ID)}
-                        title="Cancelar solicitud"
-                      >
-                        <FontAwesomeIcon icon={faBan} />
-                      </Button>
-                    )}
-                  </ButtonGroup>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      </Container>
     );
-  };
-  
-  const renderPendientesContent = () => {
-    if (!canApprove) return null;
-    
-    if (loading) {
-      return (
-        <div className="text-center py-5">
-          <Spinner animation="border" variant="primary" />
-          <p className="mt-3">Cargando aprobaciones pendientes...</p>
-        </div>
-      );
-    }
-    
-    if (solicitudesPendientes.length === 0) {
-      return (
-        <div className="text-center py-5">
-          <FontAwesomeIcon icon={faCheckCircle} size="3x" className="text-success mb-3" />
-          <h5>No hay aprobaciones pendientes</h5>
-          <p className="text-muted">No hay solicitudes pendientes de tu aprobación</p>
-        </div>
-      );
-    }
-    
-    return (
-      <div className="table-responsive">
-        <table 
-          ref={pendientesTableRef}
-          id="pendientes-table"
-          className="table table-hover table-striped mb-0"
-          style={{ width: '100%' }}
-        >
-          <thead className="bg-light">
-            <tr>
-              <th>Empleado</th>
-              <th>Tipo</th>
-              <th>Fecha Solicitud</th>
-              <th>Detalles</th>
-              <th>Motivo</th>
-              <th>Orden</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {solicitudesPendientes.map((aprobacion) => (
-              <tr key={aprobacion.AprobacionID}>
-                <td>
-                  <div className="fw-medium">{aprobacion.EmpleadoNombre}</div>
-                </td>
-                <td>{getTipoBadge(aprobacion.Tipo)}</td>
-                <td>
-                  <div className="small">{formatDateTime(aprobacion.FechaSolicitud)}</div>
-                </td>
-                <td>
-                  {aprobacion.Tipo === 'vacaciones' && (
-                    <div>
-                      <div className="small">
-                        {formatDate(aprobacion.FechaInicio!)} → {formatDate(aprobacion.FechaFin!)}
-                      </div>
-                      <small className="text-muted">{aprobacion.DiasSolicitados} días hábiles</small>
-                    </div>
-                  )}
-                  {aprobacion.Tipo === 'permiso' && (
-                    <div>
-                      <div className="small">
-                        {formatDate(aprobacion.FechaInicio!)}
-                      </div>
-                      <small className="text-muted">{aprobacion.ConGoce ? 'Con goce' : 'Sin goce'}</small>
-                    </div>
-                  )}
-                  {aprobacion.Tipo === 'horas_extras' && (
-                    <div>
-                      <div className="small">
-                        {formatDate(aprobacion.FechaInicio!)}
-                      </div>
-                      <small className="text-muted">{aprobacion.HorasSolicitadas} horas</small>
-                    </div>
-                  )}
-                </td>
-                <td>
-                  <div className="text-truncate" style={{ maxWidth: '200px' }} title={aprobacion.Motivo}>
-                    {aprobacion.Motivo}
-                  </div>
-                </td>
-                <td>
-                  <Badge bg="secondary">{aprobacion.OrdenAprobacion}°</Badge>
-                </td>
-                <td>
-                  <ButtonGroup size="sm">
-                    <Button
-                      variant="outline-success"
-                      onClick={() => openApproveModal(aprobacion)}
-                      title="Aprobar/Rechazar"
-                    >
-                      <FontAwesomeIcon icon={faCheckCircle} />
-                    </Button>
-                    
-                    <Button
-                      variant="outline-warning"
-                      onClick={() => openEditAprobacionModal(aprobacion)}
-                      title="Editar aprobación"
-                    >
-                      <FontAwesomeIcon icon={faEdit} />
-                    </Button>
-                  </ButtonGroup>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  };
-  
-  const renderAprobadasContent = () => {
-    if (!canViewAll) return null;
-    
-    if (loading) {
-      return (
-        <div className="text-center py-5">
-          <Spinner animation="border" variant="primary" />
-          <p className="mt-3">Cargando solicitudes aprobadas...</p>
-        </div>
-      );
-    }
-    
-    if (solicitudesAprobadas.length === 0) {
-      return (
-        <div className="text-center py-5">
-          <FontAwesomeIcon icon={faClipboardList} size="3x" className="text-muted mb-3" />
-          <h5>No hay solicitudes aprobadas</h5>
-          <p className="text-muted">No hay solicitudes aprobadas en el sistema</p>
-        </div>
-      );
-    }
-    
-    return (
-      <div className="table-responsive">
-        <table 
-          ref={aprobadasTableRef}
-          id="aprobadas-table"
-          className="table table-hover table-striped mb-0"
-          style={{ width: '100%' }}
-        >
-          <thead className="bg-light">
-            <tr>
-              <th>Empleado</th>
-              <th>Tipo</th>
-              <th>Fecha Solicitud</th>
-              <th>Periodo / Detalles</th>
-              <th>Motivo</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {solicitudesAprobadas.map((solicitud) => (
-              <tr key={solicitud.ID}>
-                <td>
-                  <div className="fw-medium">{solicitud.EmpleadoNombre || 'Sin nombre'}</div>
-                  {solicitud.EmpleadoCorreo && (
-                    <small className="text-muted d-block">{solicitud.EmpleadoCorreo}</small>
-                  )}
-                </td>
-                <td>{getTipoBadge(solicitud.Tipo)}</td>
-                <td>
-                  <div className="small">{formatDateTime(solicitud.FechaSolicitud)}</div>
-                </td>
-                <td>
-                  {solicitud.Tipo === 'vacaciones' && (
-                    <div>
-                      <div className="small">
-                        <FontAwesomeIcon icon={faCalendarPlus} className="me-1" />
-                        {formatDate(solicitud.FechaInicio!)}
-                        {solicitud.FechaFin && (
-                          <>
-                            <FontAwesomeIcon icon={faArrowRight} className="mx-2" />
-                            {formatDate(solicitud.FechaFin!)}
-                          </>
-                        )}
-                      </div>
-                      {solicitud.DiasSolicitados && (
-                        <small className="text-muted">{solicitud.DiasSolicitados} días hábiles</small>
-                      )}
-                    </div>
-                  )}
-                  {solicitud.Tipo === 'permiso' && (
-                    <div>
-                      <div className="small">
-                        <FontAwesomeIcon icon={faCalendarCheck} className="me-1" />
-                        {formatDate(solicitud.FechaInicio!)}
-                      </div>
-                    </div>
-                  )}
-                  {solicitud.Tipo === 'horas_extras' && (
-                    <div>
-                      <div className="small">
-                        <FontAwesomeIcon icon={faClock} className="me-1" />
-                        {formatDate(solicitud.FechaInicio!)}
-                      </div>
-                      {solicitud.HorasSolicitadas && (
-                        <small className="text-muted">{solicitud.HorasSolicitadas} horas</small>
-                      )}
-                    </div>
-                  )}
-                </td>
-                <td>
-                  <div className="text-truncate" style={{ maxWidth: '200px' }} title={solicitud.Motivo}>
-                    {solicitud.Motivo}
-                  </div>
-                </td>
-                <td>{getEstadoBadge(solicitud.Estado)}</td>
-                <td>
-                  <Button
-                    variant="outline-primary"
-                    size="sm"
-                    onClick={() => loadDetalleSolicitud(solicitud.ID)}
-                    title="Ver detalles"
-                  >
-                    <FontAwesomeIcon icon={faEye} />
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  };
-  
-  const renderHorasExtrasContent = () => {
-    if (!canViewReports) return null;
-    
-    if (loading) {
-      return (
-        <div className="text-center py-5">
-          <Spinner animation="border" variant="primary" />
-          <p className="mt-3">Cargando reporte de horas extras...</p>
-        </div>
-      );
-    }
-    
-    if (reporteHorasExtras.length === 0) {
-      return (
-        <div className="text-center py-5">
-          <FontAwesomeIcon icon={faBusinessTime} size="3x" className="text-muted mb-3" />
-          <h5>No hay horas extras registradas</h5>
-          <p className="text-muted">No hay solicitudes de horas extras en el periodo seleccionado</p>
-        </div>
-      );
-    }
-    
-    const totalHoras = reporteHorasExtras.reduce((sum, item) => {
-      const horas = typeof item.HorasSolicitadas === 'string' 
-        ? parseFloat(item.HorasSolicitadas) 
-        : (item.HorasSolicitadas || 0);
-      return sum + horas;
-    }, 0);
-    
-    const totalAprobadas = reporteHorasExtras.filter(item => item.Estado === 'aprobada').length;
-    const totalPendientes = reporteHorasExtras.filter(item => item.Estado === 'pendiente').length;
-    const totalRechazadas = reporteHorasExtras.filter(item => item.Estado === 'rechazada').length;
-    
-    return (
-      <>
-        <Card className="mb-3">
-          <Card.Body className="bg-light">
-            <Row>
-              <Col md={3}>
-                <div className="text-center">
-                  <h4 className="text-primary">{reporteHorasExtras.length}</h4>
-                  <small className="text-muted">Total Solicitudes</small>
-                </div>
-              </Col>
-              <Col md={3}>
-                <div className="text-center">
-                  <h4 className="text-success">{totalHoras.toFixed(1)}</h4>
-                  <small className="text-muted">Horas Totales</small>
-                </div>
-              </Col>
-              <Col md={2}>
-                <div className="text-center">
-                  <h4 className="text-success">{totalAprobadas}</h4>
-                  <small className="text-muted">Aprobadas</small>
-                </div>
-              </Col>
-              <Col md={2}>
-                <div className="text-center">
-                  <h4 className="text-warning">{totalPendientes}</h4>
-                  <small className="text-muted">Pendientes</small>
-                </div>
-              </Col>
-              <Col md={2}>
-                <div className="text-center">
-                  <h4 className="text-danger">{totalRechazadas}</h4>
-                  <small className="text-muted">Rechazadas</small>
-                </div>
-              </Col>
-            </Row>
-          </Card.Body>
-        </Card>
-        
-        <div className="table-responsive">
-          <table 
-            ref={horasExtrasTableRef}
-            id="horas-extras-table"
-            className="table table-hover table-striped mb-0"
-            style={{ width: '100%' }}
-          >
-            <thead className="bg-light">
-              <tr>
-                <th>Empleado</th>
-                <th>Fecha</th>
-                <th>Horas</th>
-                <th>Motivo</th>
-                <th>Estado</th>
-                <th>Puesto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reporteHorasExtras.map((item) => {
-                const horas = typeof item.HorasSolicitadas === 'string' 
-                  ? parseFloat(item.HorasSolicitadas) 
-                  : (item.HorasSolicitadas || 0);
-                
-                return (
-                  <tr key={item.ID}>
-                    <td>
-                      <div className="fw-medium">{item.EmpleadoNombre}</div>
-                      {item.CorreoElectronico && (
-                        <small className="text-muted d-block">{item.CorreoElectronico}</small>
-                      )}
-                    </td>
-                    <td>
-                      <div className="small">{formatDate(item.FechaInicio)}</div>
-                    </td>
-                    <td>
-                      <Badge bg="warning" className="fs-6">
-                        {horas.toFixed(1)} hrs
-                      </Badge>
-                    </td>
-                    <td>
-                      <div className="text-truncate" style={{ maxWidth: '200px' }} title={item.Motivo}>
-                        {item.Motivo}
-                      </div>
-                    </td>
-                    <td>{getEstadoBadge(item.Estado)}</td>
-                    <td>
-                      <small>{item.PuestoNombre || 'No asignado'}</small>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </>
-    );
-  };
+  }
 
   return (
     <Container fluid className="py-4">
@@ -2136,34 +2244,32 @@ const Solicitudes: React.FC = () => {
         <Col>
           <div className="d-flex justify-content-between align-items-center">
             <div>
-              <h2 className="mb-0">
-                <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
+              <h2 className="mb-0 text-primary">
+                <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
                 Gestión de Solicitudes
               </h2>
-              <p className="text-muted mb-0">
-                {isAdmin ? '🔐 Administrador - Gestión completa' : 
-                 isManager ? '👨‍💼 Manager - Aprobaciones y reportes' : 
-                 '👤 Empleado - Mis solicitudes'}
-              </p>
             </div>
             
             <div className="d-flex gap-2">
-              <Button 
-                variant="outline-primary" 
-                onClick={loadTabData}
-                disabled={loading}
-              >
-                <FontAwesomeIcon icon={faSync} className={loading ? 'fa-spin' : ''} me="2" />
-                Actualizar
-              </Button>
-              {renderActionButtons()}
+              <ButtonGroup className="shadow-sm">
+                <Button 
+                  variant="outline-primary" 
+                  onClick={loadTabData}
+                  disabled={loading}
+                  className="hover-bg-soft"
+                >
+                  <FontAwesomeIcon icon={faSync} className={loading ? 'fa-spin' : ''} me="2" />
+                  Actualizar
+                </Button>
+                {renderActionButtons()}
+              </ButtonGroup>
             </div>
           </div>
         </Col>
       </Row>
 
       {estadisticasVacaciones && estadisticasVacaciones.disponibles <= 0 && isEmployee && (
-        <Alert variant="danger" className="mb-3">
+        <Alert variant="danger" className="mb-3 shadow-sm">
           <div className="d-flex align-items-center">
             <FontAwesomeIcon icon={faExclamationTriangle} size="2x" className="me-3" />
             <div>
@@ -2182,7 +2288,7 @@ const Solicitudes: React.FC = () => {
       )}
 
       {estadisticasVacaciones && estadisticasVacaciones.disponibles < 0 && (
-        <Alert variant="warning" className="mb-3">
+        <Alert variant="warning" className="mb-3 shadow-sm">
           <div className="d-flex align-items-center">
             <FontAwesomeIcon icon={faExclamationTriangle} size="2x" className="me-3 text-warning" />
             <div>
@@ -2197,22 +2303,28 @@ const Solicitudes: React.FC = () => {
       )}
 
       {error && (
-        <Alert variant="danger" dismissible onClose={() => setError('')}>
-          <FontAwesomeIcon icon={faTimesCircle} className="me-2" />
-          {error}
+        <Alert variant="danger" dismissible onClose={() => setError('')} className="mb-3 shadow-sm">
+          <div className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faTimesCircle} className="me-2" />
+            <strong className="me-2">Error:</strong>
+            {error}
+          </div>
         </Alert>
       )}
       
       {success && (
-        <Alert variant="success" dismissible onClose={() => setSuccess('')}>
-          <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
-          {success}
+        <Alert variant="success" dismissible onClose={() => setSuccess('')} className="mb-3 shadow-sm">
+          <div className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
+            <strong className="me-2">Éxito:</strong>
+            {success}
+          </div>
         </Alert>
       )}
 
       {renderStatsCards()}
 
-      <Card className="shadow-sm">
+      <Card className="shadow-sm border-0">
         <Card.Body className="p-0">
           <Tabs
             activeKey={activeTab}
@@ -2220,6 +2332,10 @@ const Solicitudes: React.FC = () => {
               setActiveTab(k || 'mis-solicitudes');
               setError('');
               setSuccess('');
+              setFilterText('');
+              setFilterTextPendientes('');
+              setFilterTextAprobadas('');
+              setFilterTextHorasExtras('');
             }}
             className="mb-0 px-3 pt-3"
             fill
@@ -2228,11 +2344,144 @@ const Solicitudes: React.FC = () => {
               <span>
                 <FontAwesomeIcon icon={faUser} className="me-2" />
                 Mis Solicitudes
+                <Badge bg="primary" className="ms-2">{misSolicitudes.length}</Badge>
               </span>
             }>
               <div className="p-3">
                 {renderFilters()}
-                {renderTabContent()}
+                
+                <Card className="shadow-sm border-0 mb-3">
+                  <Card.Body className="p-0">
+                    <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
+                      <div>
+                        <h6 className="mb-0">
+                          <FontAwesomeIcon icon={faFilter} className="me-2 text-primary" />
+                          Búsqueda
+                        </h6>
+                      </div>
+                      <div className="d-flex gap-2">
+                        <Button 
+                          variant="outline-success" 
+                          size="sm"
+                          onClick={() => {
+                            const dataToExport = selectedRows.length > 0 ? selectedRows : filteredMisSolicitudes;
+                            exportToExcel(
+                              dataToExport.map(s => ({
+                                ID: s.ID,
+                                Tipo: s.Tipo,
+                                'Fecha Solicitud': formatDateTime(s.FechaSolicitud),
+                                'Fecha Inicio': s.FechaInicio ? formatDate(s.FechaInicio) : '',
+                                'Fecha Fin': s.FechaFin ? formatDate(s.FechaFin) : '',
+                                'Días/Horas': s.DiasSolicitados || s.HorasSolicitadas || '',
+                                Motivo: s.Motivo,
+                                Estado: s.Estado
+                              })),
+                              'mis_solicitudes'
+                            );
+                          }}
+                          className="hover-bg-soft"
+                        >
+                          <FontAwesomeIcon icon={faDownload} className="me-1" />
+                          Excel
+                        </Button>
+                        <Button 
+                          variant="outline-danger" 
+                          size="sm"
+                          onClick={() => {
+                            const dataToExport = selectedRows.length > 0 ? selectedRows : filteredMisSolicitudes;
+                            exportToPDF(
+                              dataToExport,
+                              columnsMisSolicitudes.filter(col => col.name !== 'Acciones'),
+                              'mis_solicitudes'
+                            );
+                          }}
+                          className="hover-bg-soft"
+                        >
+                          <FontAwesomeIcon icon={faPrint} className="me-1" />
+                          PDF
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="p-3">
+                      <FilterComponent
+                        filterText={filterText}
+                        onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterText(e.target.value)}
+                        onClear={() => setFilterText('')}
+                        placeholder="Buscar por motivo, tipo, empleado..."
+                      />
+                    </div>
+                  </Card.Body>
+                </Card>
+
+                <Card className="shadow-sm border-0">
+                  <Card.Body className="p-0">
+                    {loading ? (
+                      <div className="text-center py-5">
+                        <Spinner animation="border" variant="primary" />
+                        <p className="mt-3 text-muted">Cargando solicitudes...</p>
+                      </div>
+                    ) : filteredMisSolicitudes.length === 0 ? (
+                      <div className="text-center py-5">
+                        <FontAwesomeIcon icon={faCalendarAlt} size="3x" className="text-muted mb-3" />
+                        <h5>No tienes solicitudes</h5>
+                        <p className="text-muted">
+                          {filterText 
+                            ? 'No se encontraron resultados para tu búsqueda'
+                            : 'Crea tu primera solicitud usando los botones de arriba'}
+                        </p>
+                      </div>
+                    ) : (
+                      <DataTable
+                        columns={columnsMisSolicitudes}
+                        data={filteredMisSolicitudes}
+                        pagination
+                        paginationPerPage={perPage}
+                        paginationRowsPerPageOptions={[5, 10, 15, 20, 25, 50, 100]}
+                        onChangeRowsPerPage={(newPerPage) => setPerPage(newPerPage)}
+                        highlightOnHover
+                        pointerOnHover
+                        selectableRows
+                        selectableRowsHighlight
+                        onSelectedRowsChange={(state) => setSelectedRows(state.selectedRows)}
+                        clearSelectedRows={toggleCleared}
+                        onRowClicked={(row) => {
+                          loadDetalleSolicitud(row.ID);
+                        }}
+                        responsive
+                        customStyles={customStyles}
+                        progressPending={loading}
+                        progressComponent={
+                          <div className="text-center py-5">
+                            <Spinner animation="border" variant="primary" />
+                            <p className="mt-3 text-muted">Cargando datos...</p>
+                          </div>
+                        }
+                        sortIcon={
+                          <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
+                        }
+                        noDataComponent={
+                          <div className="text-center py-5">
+                            <FontAwesomeIcon icon={faCalendarAlt} size="3x" className="text-muted mb-3" />
+                            <h5>No hay solicitudes</h5>
+                            <p className="text-muted">No se encontraron solicitudes para mostrar</p>
+                          </div>
+                        }
+                      />
+                    )}
+                  </Card.Body>
+                  <Card.Footer className="bg-light border-top">
+                    <div className="d-flex justify-content-between align-items-center">
+                      <small className="text-muted">
+                        <FontAwesomeIcon icon={faFileAlt} className="me-1" />
+                        Total: {filteredMisSolicitudes.length} solicitudes
+                      </small>
+                      <small className="text-muted">
+                        <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                        {selectedRows.length > 0 ? `${selectedRows.length} seleccionados` : 'Ninguno seleccionado'}
+                      </small>
+                    </div>
+                  </Card.Footer>
+                </Card>
               </div>
             </Tab>
             
@@ -2251,7 +2500,116 @@ const Solicitudes: React.FC = () => {
                     <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
                     Tienes {pendientesCount} solicitudes pendientes de aprobación
                   </Alert>
-                  {renderTabContent()}
+                  
+                  <Card className="shadow-sm border-0 mb-3">
+                    <Card.Body className="p-0">
+                      <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
+                        <div>
+                          <h6 className="mb-0">
+                            <FontAwesomeIcon icon={faFilter} className="me-2 text-primary" />
+                            Búsqueda
+                          </h6>
+                        </div>
+                        <div className="d-flex gap-2">
+                          <Button 
+                            variant="outline-success" 
+                            size="sm"
+                            onClick={() => {
+                              exportToExcel(
+                                filteredSolicitudesPendientes.map(s => ({
+                                  Empleado: s.EmpleadoNombre,
+                                  Tipo: s.Tipo,
+                                  'Fecha Solicitud': formatDateTime(s.FechaSolicitud),
+                                  'Fecha Inicio': s.FechaInicio ? formatDate(s.FechaInicio) : '',
+                                  'Fecha Fin': s.FechaFin ? formatDate(s.FechaFin) : '',
+                                  'Días/Horas': s.DiasSolicitados || s.HorasSolicitadas || '',
+                                  Motivo: s.Motivo
+                                })),
+                                'pendientes'
+                              );
+                            }}
+                            className="hover-bg-soft"
+                          >
+                            <FontAwesomeIcon icon={faDownload} className="me-1" />
+                            Excel
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            size="sm"
+                            onClick={() => {
+                              exportToPDF(
+                                filteredSolicitudesPendientes,
+                                columnsPendientes.filter(col => col.name !== 'Acciones'),
+                                'pendientes'
+                              );
+                            }}
+                            className="hover-bg-soft"
+                          >
+                            <FontAwesomeIcon icon={faPrint} className="me-1" />
+                            PDF
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <FilterComponent
+                          filterText={filterTextPendientes}
+                          onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterTextPendientes(e.target.value)}
+                          onClear={() => setFilterTextPendientes('')}
+                          placeholder="Buscar por empleado, motivo, tipo..."
+                        />
+                      </div>
+                    </Card.Body>
+                  </Card>
+
+                  <Card className="shadow-sm border-0">
+                    <Card.Body className="p-0">
+                      {loading ? (
+                        <div className="text-center py-5">
+                          <Spinner animation="border" variant="primary" />
+                          <p className="mt-3 text-muted">Cargando aprobaciones pendientes...</p>
+                        </div>
+                      ) : filteredSolicitudesPendientes.length === 0 ? (
+                        <div className="text-center py-5">
+                          <FontAwesomeIcon icon={faCheckCircle} size="3x" className="text-success mb-3" />
+                          <h5>No hay aprobaciones pendientes</h5>
+                          <p className="text-muted">No hay solicitudes pendientes de tu aprobación</p>
+                        </div>
+                      ) : (
+                        <DataTable
+                          columns={columnsPendientes}
+                          data={filteredSolicitudesPendientes}
+                          pagination
+                          paginationPerPage={perPagePendientes}
+                          paginationRowsPerPageOptions={[5, 10, 15, 20, 25, 50, 100]}
+                          onChangeRowsPerPage={(newPerPage) => setPerPagePendientes(newPerPage)}
+                          highlightOnHover
+                          pointerOnHover
+                          onRowClicked={(row) => {
+                            openApproveModal(row);
+                          }}
+                          responsive
+                          customStyles={customStyles}
+                          progressPending={loading}
+                          progressComponent={
+                            <div className="text-center py-5">
+                              <Spinner animation="border" variant="primary" />
+                              <p className="mt-3 text-muted">Cargando datos...</p>
+                            </div>
+                          }
+                          sortIcon={
+                            <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
+                          }
+                          noDataComponent={
+                            <div className="text-center py-5">
+                              <FontAwesomeIcon icon={faCheckCircle} size="3x" className="text-muted mb-3" />
+                              <h5>No hay aprobaciones pendientes</h5>
+                              <p className="text-muted">No se encontraron solicitudes pendientes</p>
+                            </div>
+                          }
+                        />
+                      )}
+                    </Card.Body>
+                  </Card>
                 </div>
               </Tab>
             )}
@@ -2261,11 +2619,123 @@ const Solicitudes: React.FC = () => {
                 <span>
                   <FontAwesomeIcon icon={faClipboardList} className="me-2" />
                   Todas Aprobadas
+                  <Badge bg="success" className="ms-2">{solicitudesAprobadas.length}</Badge>
                 </span>
               }>
                 <div className="p-3">
                   {renderFilters()}
-                  {renderTabContent()}
+                  
+                  <Card className="shadow-sm border-0 mb-3">
+                    <Card.Body className="p-0">
+                      <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
+                        <div>
+                          <h6 className="mb-0">
+                            <FontAwesomeIcon icon={faFilter} className="me-2 text-primary" />
+                            Búsqueda
+                          </h6>
+                        </div>
+                        <div className="d-flex gap-2">
+                          <Button 
+                            variant="outline-success" 
+                            size="sm"
+                            onClick={() => {
+                              exportToExcel(
+                                filteredSolicitudesAprobadas.map(s => ({
+                                  ID: s.ID,
+                                  Empleado: s.EmpleadoNombre || '',
+                                  Tipo: s.Tipo,
+                                  'Fecha Solicitud': formatDateTime(s.FechaSolicitud),
+                                  'Fecha Inicio': s.FechaInicio ? formatDate(s.FechaInicio) : '',
+                                  'Fecha Fin': s.FechaFin ? formatDate(s.FechaFin) : '',
+                                  'Días/Horas': s.DiasSolicitados || s.HorasSolicitadas || '',
+                                  Motivo: s.Motivo,
+                                  Estado: s.Estado
+                                })),
+                                'aprobadas'
+                              );
+                            }}
+                            className="hover-bg-soft"
+                          >
+                            <FontAwesomeIcon icon={faDownload} className="me-1" />
+                            Excel
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            size="sm"
+                            onClick={() => {
+                              exportToPDF(
+                                filteredSolicitudesAprobadas,
+                                columnsAprobadas.filter(col => col.name !== 'Acciones'),
+                                'aprobadas'
+                              );
+                            }}
+                            className="hover-bg-soft"
+                          >
+                            <FontAwesomeIcon icon={faPrint} className="me-1" />
+                            PDF
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <FilterComponent
+                          filterText={filterTextAprobadas}
+                          onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterTextAprobadas(e.target.value)}
+                          onClear={() => setFilterTextAprobadas('')}
+                          placeholder="Buscar por empleado, motivo, tipo..."
+                        />
+                      </div>
+                    </Card.Body>
+                  </Card>
+
+                  <Card className="shadow-sm border-0">
+                    <Card.Body className="p-0">
+                      {loading ? (
+                        <div className="text-center py-5">
+                          <Spinner animation="border" variant="primary" />
+                          <p className="mt-3 text-muted">Cargando solicitudes aprobadas...</p>
+                        </div>
+                      ) : filteredSolicitudesAprobadas.length === 0 ? (
+                        <div className="text-center py-5">
+                          <FontAwesomeIcon icon={faClipboardList} size="3x" className="text-muted mb-3" />
+                          <h5>No hay solicitudes aprobadas</h5>
+                          <p className="text-muted">No hay solicitudes aprobadas en el sistema</p>
+                        </div>
+                      ) : (
+                        <DataTable
+                          columns={columnsAprobadas}
+                          data={filteredSolicitudesAprobadas}
+                          pagination
+                          paginationPerPage={perPageAprobadas}
+                          paginationRowsPerPageOptions={[5, 10, 15, 20, 25, 50, 100]}
+                          onChangeRowsPerPage={(newPerPage) => setPerPageAprobadas(newPerPage)}
+                          highlightOnHover
+                          pointerOnHover
+                          onRowClicked={(row) => {
+                            loadDetalleSolicitud(row.ID);
+                          }}
+                          responsive
+                          customStyles={customStyles}
+                          progressPending={loading}
+                          progressComponent={
+                            <div className="text-center py-5">
+                              <Spinner animation="border" variant="primary" />
+                              <p className="mt-3 text-muted">Cargando datos...</p>
+                            </div>
+                          }
+                          sortIcon={
+                            <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
+                          }
+                          noDataComponent={
+                            <div className="text-center py-5">
+                              <FontAwesomeIcon icon={faClipboardList} size="3x" className="text-muted mb-3" />
+                              <h5>No hay solicitudes aprobadas</h5>
+                              <p className="text-muted">No se encontraron solicitudes aprobadas</p>
+                            </div>
+                          }
+                        />
+                      )}
+                    </Card.Body>
+                  </Card>
                 </div>
               </Tab>
             )}
@@ -2275,11 +2745,171 @@ const Solicitudes: React.FC = () => {
                 <span>
                   <FontAwesomeIcon icon={faBusinessTime} className="me-2" />
                   Reporte Horas Extras
+                  <Badge bg="warning" className="ms-2">{reporteHorasExtras.length}</Badge>
                 </span>
               }>
                 <div className="p-3">
                   {renderFilters()}
-                  {renderTabContent()}
+                  
+                  <Card className="mb-3 shadow-sm border-0">
+                    <Card.Body className="bg-light">
+                      <Row>
+                        <Col md={3}>
+                          <div className="text-center">
+                            <h4 className="text-primary">{reporteHorasExtras.length}</h4>
+                            <small className="text-muted">Total Solicitudes</small>
+                          </div>
+                        </Col>
+                        <Col md={3}>
+                          <div className="text-center">
+                            <h4 className="text-success">
+                              {reporteHorasExtras.reduce((sum, item) => {
+                                const horas = typeof item.HorasSolicitadas === 'string' 
+                                  ? parseFloat(item.HorasSolicitadas) 
+                                  : (item.HorasSolicitadas || 0);
+                                return sum + horas;
+                              }, 0).toFixed(1)}
+                            </h4>
+                            <small className="text-muted">Horas Totales</small>
+                          </div>
+                        </Col>
+                        <Col md={2}>
+                          <div className="text-center">
+                            <h4 className="text-success">
+                              {reporteHorasExtras.filter(item => item.Estado === 'aprobada').length}
+                            </h4>
+                            <small className="text-muted">Aprobadas</small>
+                          </div>
+                        </Col>
+                        <Col md={2}>
+                          <div className="text-center">
+                            <h4 className="text-warning">
+                              {reporteHorasExtras.filter(item => item.Estado === 'pendiente').length}
+                            </h4>
+                            <small className="text-muted">Pendientes</small>
+                          </div>
+                        </Col>
+                        <Col md={2}>
+                          <div className="text-center">
+                            <h4 className="text-danger">
+                              {reporteHorasExtras.filter(item => item.Estado === 'rechazada').length}
+                            </h4>
+                            <small className="text-muted">Rechazadas</small>
+                          </div>
+                        </Col>
+                      </Row>
+                    </Card.Body>
+                  </Card>
+                  
+                  <Card className="shadow-sm border-0 mb-3">
+                    <Card.Body className="p-0">
+                      <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
+                        <div>
+                          <h6 className="mb-0">
+                            <FontAwesomeIcon icon={faFilter} className="me-2 text-primary" />
+                            Búsqueda
+                          </h6>
+                        </div>
+                        <div className="d-flex gap-2">
+                          <Button 
+                            variant="outline-success" 
+                            size="sm"
+                            onClick={() => {
+                              exportToExcel(
+                                filteredReporteHorasExtras.map(item => ({
+                                  Empleado: item.EmpleadoNombre,
+                                  Fecha: formatDate(item.FechaInicio),
+                                  Horas: item.HorasSolicitadas,
+                                  Motivo: item.Motivo,
+                                  Estado: item.Estado,
+                                  Puesto: item.PuestoNombre || ''
+                                })),
+                                'horas_extras'
+                              );
+                            }}
+                            className="hover-bg-soft"
+                          >
+                            <FontAwesomeIcon icon={faDownload} className="me-1" />
+                            Excel
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            size="sm"
+                            onClick={() => {
+                              exportToPDF(
+                                filteredReporteHorasExtras,
+                                columnsHorasExtras,
+                                'horas_extras'
+                              );
+                            }}
+                            className="hover-bg-soft"
+                          >
+                            <FontAwesomeIcon icon={faPrint} className="me-1" />
+                            PDF
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <FilterComponent
+                          filterText={filterTextHorasExtras}
+                          onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterTextHorasExtras(e.target.value)}
+                          onClear={() => setFilterTextHorasExtras('')}
+                          placeholder="Buscar por empleado, motivo, puesto..."
+                        />
+                      </div>
+                    </Card.Body>
+                  </Card>
+
+                  <Card className="shadow-sm border-0">
+                    <Card.Body className="p-0">
+                      {loading ? (
+                        <div className="text-center py-5">
+                          <Spinner animation="border" variant="primary" />
+                          <p className="mt-3 text-muted">Cargando reporte de horas extras...</p>
+                        </div>
+                      ) : filteredReporteHorasExtras.length === 0 ? (
+                        <div className="text-center py-5">
+                          <FontAwesomeIcon icon={faBusinessTime} size="3x" className="text-muted mb-3" />
+                          <h5>No hay horas extras registradas</h5>
+                          <p className="text-muted">
+                            {filterTextHorasExtras 
+                              ? 'No se encontraron resultados para tu búsqueda'
+                              : 'No hay solicitudes de horas extras en el periodo seleccionado'}
+                          </p>
+                        </div>
+                      ) : (
+                        <DataTable
+                          columns={columnsHorasExtras}
+                          data={filteredReporteHorasExtras}
+                          pagination
+                          paginationPerPage={perPageHorasExtras}
+                          paginationRowsPerPageOptions={[5, 10, 15, 20, 25, 50, 100]}
+                          onChangeRowsPerPage={(newPerPage) => setPerPageHorasExtras(newPerPage)}
+                          highlightOnHover
+                          pointerOnHover
+                          responsive
+                          customStyles={customStyles}
+                          progressPending={loading}
+                          progressComponent={
+                            <div className="text-center py-5">
+                              <Spinner animation="border" variant="primary" />
+                              <p className="mt-3 text-muted">Cargando datos...</p>
+                            </div>
+                          }
+                          sortIcon={
+                            <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
+                          }
+                          noDataComponent={
+                            <div className="text-center py-5">
+                              <FontAwesomeIcon icon={faBusinessTime} size="3x" className="text-muted mb-3" />
+                              <h5>No hay horas extras registradas</h5>
+                              <p className="text-muted">No se encontraron registros de horas extras</p>
+                            </div>
+                          }
+                        />
+                      )}
+                    </Card.Body>
+                  </Card>
                 </div>
               </Tab>
             )}
@@ -2288,7 +2918,7 @@ const Solicitudes: React.FC = () => {
       </Card>
 
       {/* Modal de Vacaciones */}
-      <Modal show={showVacacionesModal} onHide={() => setShowVacacionesModal(false)} size="lg">
+      <Modal show={showVacacionesModal} onHide={() => setShowVacacionesModal(false)} size="lg" centered>
         <Modal.Header closeButton className="bg-primary text-white">
           <Modal.Title>
             <FontAwesomeIcon icon={faCalendarDay} className="me-2" />
@@ -2446,7 +3076,7 @@ const Solicitudes: React.FC = () => {
       </Modal>
 
       {/* Modal de Permiso */}
-      <Modal show={showPermisoModal} onHide={() => setShowPermisoModal(false)}>
+      <Modal show={showPermisoModal} onHide={() => setShowPermisoModal(false)} centered>
         <Modal.Header closeButton className="bg-info text-white">
           <Modal.Title>
             <FontAwesomeIcon icon={faCalendarCheck} className="me-2" />
@@ -2541,7 +3171,7 @@ const Solicitudes: React.FC = () => {
       </Modal>
 
       {/* Modal de Horas Extras */}
-      <Modal show={showHorasExtrasModal} onHide={() => setShowHorasExtrasModal(false)}>
+      <Modal show={showHorasExtrasModal} onHide={() => setShowHorasExtrasModal(false)} centered>
         <Modal.Header closeButton className="bg-warning text-dark">
           <Modal.Title>
             <FontAwesomeIcon icon={faClock} className="me-2" />
@@ -2884,10 +3514,10 @@ const Solicitudes: React.FC = () => {
       </Modal>
 
       {/* Modal de Detalle de Solicitud */}
-      <Modal show={showDetailModal} onHide={() => setShowDetailModal(false)} size="lg" scrollable>
-        <Modal.Header closeButton>
+      <Modal show={showDetailModal} onHide={() => setShowDetailModal(false)} size="lg" scrollable centered>
+        <Modal.Header closeButton className="bg-light">
           <Modal.Title>
-            <FontAwesomeIcon icon={faFileAlt} className="me-2" />
+            <FontAwesomeIcon icon={faFileAlt} className="me-2 text-primary" />
             Detalle de Solicitud
             {selectedSolicitud && (
               <Badge bg="secondary" className="ms-2">#{selectedSolicitud.ID}</Badge>
