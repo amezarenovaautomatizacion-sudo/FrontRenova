@@ -70,7 +70,8 @@ import {
   faChartLine,
   faTrophy,
   faMedal,
-  faStar
+  faStar,
+  faRedoAlt
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../services/api';
 
@@ -185,7 +186,6 @@ const Proyectos: React.FC = () => {
   const isEmployee = userRol === 'employee';
   const canManage = isAdmin || isManager;
   const canManageProyectos = isAdmin || isManager;
-  const canManageTareas = isAdmin || isManager;
   
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [selectedProyecto, setSelectedProyecto] = useState<Proyecto | null>(null);
@@ -212,10 +212,12 @@ const Proyectos: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingTareas, setLoadingTareas] = useState(false);
   const [loadingEmpleados, setLoadingEmpleados] = useState(false);
+  const [loadingProyecto, setLoadingProyecto] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
   const [activeTab, setActiveTab] = useState('tareas');
+  const [refreshing, setRefreshing] = useState<{[key: string]: boolean}>({});
   
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -255,7 +257,7 @@ const Proyectos: React.FC = () => {
   });
   const [totalAsignarPages, setTotalAsignarPages] = useState(1);
   const [loadingAsignar, setLoadingAsignar] = useState(false);
-  const [modoSeleccion, setModoSeleccion] = useState<'supervisados' | 'todos'>('supervisados');
+  const [modoSeleccion, setModoSeleccion] = useState<'supervisados' | 'todos'>('todos');
   
   const [progresoGeneral, setProgresoGeneral] = useState({
     totalTareas: 0,
@@ -314,7 +316,6 @@ const Proyectos: React.FC = () => {
     if (cachedId) {
       const id = parseInt(cachedId);
       setMiEmpleadoId(id);
-      if (user) (user as any).empleadoId = id;
       return id;
     }
     
@@ -331,12 +332,11 @@ const Proyectos: React.FC = () => {
       if (response.data?.success && response.data?.data?.empleado?.ID) {
         const empleadoId = response.data.data.empleado.ID;
         sessionStorage.setItem('empleadoId', empleadoId.toString());
-        if (user) (user as any).empleadoId = empleadoId;
         setMiEmpleadoId(empleadoId);
         return empleadoId;
       }
     } catch (error) {
-      return null;
+      console.error('Error obteniendo empleadoId:', error);
     }
     
     return null;
@@ -352,31 +352,65 @@ const Proyectos: React.FC = () => {
     return selectedProyecto.JefeProyectoID === miEmpleadoId;
   }, [selectedProyecto, miEmpleadoId]);
   
-const loadProyectos = useCallback(async () => {
-  try {
-    setLoading(true);
-    setError('');
-    
-    const params = new URLSearchParams({
-      page: currentPage.toString(),
-      limit: itemsPerPage.toString()
-    });
-    
-    if (searchTerm) params.append('search', searchTerm);
-    if (filterEstado) params.append('estado', filterEstado);
-    
-    const response = await api.get(`/proyectos?${params}`);
-    
-    if (response.data.success) {
-      setProyectos(response.data.data.proyectos || []);
-      setTotalPages(response.data.data.pagination?.totalPages || 1);
+  const refreshSection = async (section: string, projectId?: number) => {
+    setRefreshing(prev => ({ ...prev, [section]: true }));
+    try {
+      switch(section) {
+        case 'proyectos':
+          await loadProyectos();
+          break;
+        case 'proyecto':
+          if (projectId) await loadProyecto(projectId);
+          break;
+        case 'tareas':
+          if (selectedProyecto) await loadTareas(selectedProyecto.ID, filtrosTareas);
+          break;
+        case 'empleados':
+          if (selectedProyecto) await loadEmpleadosProyecto(selectedProyecto.ID);
+          break;
+        case 'historial':
+          if (selectedProyecto) await loadHistorial(selectedProyecto.ID);
+          break;
+        case 'todo':
+          if (selectedProyecto) {
+            await Promise.all([
+              loadTareas(selectedProyecto.ID, filtrosTareas),
+              loadEmpleadosProyecto(selectedProyecto.ID),
+              loadHistorial(selectedProyecto.ID)
+            ]);
+          }
+          break;
+      }
+    } finally {
+      setRefreshing(prev => ({ ...prev, [section]: false }));
     }
-  } catch (error: any) {
-    setError(error.response?.data?.message || 'Error cargando proyectos');
-  } finally {
-    setLoading(false);
-  }
-}, [currentPage, searchTerm, filterEstado]);
+  };
+  
+  const loadProyectos = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: itemsPerPage.toString()
+      });
+      
+      if (searchTerm) params.append('search', searchTerm);
+      if (filterEstado) params.append('estado', filterEstado);
+      
+      const response = await api.get(`/proyectos?${params}`);
+      
+      if (response.data.success) {
+        setProyectos(response.data.data.proyectos || []);
+        setTotalPages(response.data.data.pagination?.totalPages || 1);
+      }
+    } catch (error: any) {
+      setError(error.response?.data?.message || 'Error cargando proyectos');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, searchTerm, filterEstado]);
 
   const loadProyecto = async (id: number) => {
     try {
@@ -389,66 +423,65 @@ const loadProyectos = useCallback(async () => {
     }
   };
 
-const loadTareas = async (proyectoId: number, filtros?: any) => {
-  try {
-    setLoadingTareas(true);
-    
-    const params = new URLSearchParams();
-    const filtrosActuales = filtros || filtrosTareas;
-    
-    if (filtrosActuales.estado) params.append('estado', filtrosActuales.estado);
-    if (filtrosActuales.prioridad) params.append('prioridad', filtrosActuales.prioridad);
-    if (filtrosActuales.asignadoA) params.append('asignadoA', filtrosActuales.asignadoA);
-    if (filtrosActuales.soloSinAsignar) params.append('soloSinAsignar', 'true');
-    if (filtrosActuales.search) params.append('search', filtrosActuales.search);
-    
-    const response = await api.get(`/proyectos/${proyectoId}/tareas?${params}`);
-    
-    if (response.data.success) {
-      const tareasConDatos = (response.data.data.tareas || []).map((t: any) => ({
-        ...t,
-        EmpleadoAsignadoID: t.EmpleadoAsignadoID || null,
-        EmpleadoAsignadoNombre: t.EmpleadoAsignadoNombre || null,
-        estadoAsignacion: t.estadoAsignacion || (t.EmpleadoAsignadoID ? 'asignado' : 'sin_asignar'),
-        Prioridad: t.Prioridad || 'media',
-        Asignaciones: t.Asignaciones || [],
-        Notas: t.Notas || [],
-        Activo: true
-      }));
+  const loadTareas = async (proyectoId: number, filtros?: any) => {
+    try {
+      setLoadingTareas(true);
       
-      setTareas(tareasConDatos);
+      const params = new URLSearchParams();
+      const filtrosActuales = filtros || filtrosTareas;
       
-      // Calcular progreso inmediatamente después de cargar tareas
-      if (empleadosProyecto.length > 0) {
-        calcularProgreso(tareasConDatos, empleadosProyecto);
+      if (filtrosActuales.estado) params.append('estado', filtrosActuales.estado);
+      if (filtrosActuales.prioridad) params.append('prioridad', filtrosActuales.prioridad);
+      if (filtrosActuales.asignadoA) params.append('asignadoA', filtrosActuales.asignadoA);
+      if (filtrosActuales.soloSinAsignar) params.append('soloSinAsignar', 'true');
+      if (filtrosActuales.search) params.append('search', filtrosActuales.search);
+      
+      const response = await api.get(`/proyectos/${proyectoId}/tareas?${params}`);
+      
+      if (response.data.success) {
+        const tareasConDatos = (response.data.data.tareas || []).map((t: any) => ({
+          ...t,
+          EmpleadoAsignadoID: t.EmpleadoAsignadoID || null,
+          EmpleadoAsignadoNombre: t.EmpleadoAsignadoNombre || null,
+          estadoAsignacion: t.estadoAsignacion || (t.EmpleadoAsignadoID ? 'asignado' : 'sin_asignar'),
+          Prioridad: t.Prioridad || 'media',
+          Asignaciones: t.Asignaciones || [],
+          Notas: t.Notas || [],
+          Activo: true
+        }));
+        
+        setTareas(tareasConDatos);
+        
+        if (empleadosProyecto.length > 0) {
+          calcularProgreso(tareasConDatos, empleadosProyecto);
+        }
       }
+    } catch (error: any) {
+      setError(error.response?.data?.message || 'Error cargando tareas');
+    } finally {
+      setLoadingTareas(false);
     }
-  } catch (error: any) {
-    setError(error.response?.data?.message || 'Error cargando tareas');
-  } finally {
-    setLoadingTareas(false);
-  }
-};
+  };
 
   const loadEmpleadosProyecto = async (proyectoId: number) => {
-  try {
-    setLoadingEmpleados(true);
-    const response = await api.get(`/proyectos/${proyectoId}/empleados`);
-    if (response.data.success) {
-      const empleados = response.data.data || [];
-      setEmpleadosProyecto(empleados);
+    try {
+      setLoadingEmpleados(true);
+      const response = await api.get(`/proyectos/${proyectoId}/empleados`);
       
-      // Calcular progreso inmediatamente después de cargar empleados
-      if (tareas.length > 0) {
-        calcularProgreso(tareas, empleados);
+      if (response.data.success) {
+        const empleados = response.data.data || [];
+        setEmpleadosProyecto(empleados);
+        
+        if (tareas.length > 0) {
+          calcularProgreso(tareas, empleados);
+        }
       }
+    } catch (error: any) {
+      setError(error.response?.data?.message || 'Error cargando empleados');
+    } finally {
+      setLoadingEmpleados(false);
     }
-  } catch (error: any) {
-    setError(error.response?.data?.message || 'Error cargando empleados');
-  } finally {
-    setLoadingEmpleados(false);
-  }
-};
+  };
 
   const loadHistorial = async (proyectoId: number) => {
     try {
@@ -514,7 +547,7 @@ const loadTareas = async (proyectoId: number, filtros?: any) => {
     setProgresoMiembros(progreso);
   };
 
-  const loadEmpleadosParaAsignar = async (filtros?: Partial<FiltrosEmpleados>, modo: 'supervisados' | 'todos' = 'supervisados') => {
+  const loadEmpleadosParaAsignar = async (filtros?: Partial<FiltrosEmpleados>, modo: 'supervisados' | 'todos' = 'todos') => {
     if (!selectedProyecto) return;
     
     try {
@@ -556,7 +589,7 @@ const loadTareas = async (proyectoId: number, filtros?: any) => {
       params.append('page', filtrosActuales.page.toString());
       params.append('limit', filtrosActuales.limit.toString());
       
-      const response = await api.get(`empleados/empleados?${params}`);
+      const response = await api.get(`/empleados/empleados?${params}`);
       
       if (response.data.success) {
         setEmpleadosDisponibles(response.data.data.empleados || []);
@@ -576,83 +609,33 @@ const loadTareas = async (proyectoId: number, filtros?: any) => {
   useEffect(() => {
     const cargarEmpleadoId = async () => {
       const empleadoId = await obtenerEmpleadoId();
-      if (empleadoId) {
-        setMiEmpleadoId(empleadoId);
-      }
+      if (empleadoId) setMiEmpleadoId(empleadoId);
     };
   
     cargarEmpleadoId();
   }, [obtenerEmpleadoId]);
 
-useEffect(() => {
-  if (selectedProyecto) {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        // Cargar todos los datos en paralelo
-        const [tareasRes, empleadosRes] = await Promise.all([
-          api.get(`/proyectos/${selectedProyecto.ID}/tareas`),
-          api.get(`/proyectos/${selectedProyecto.ID}/empleados`),
-          api.get(`/proyectos/${selectedProyecto.ID}/historial`)
-        ]);
-        
-        // Procesar tareas
-        if (tareasRes.data.success) {
-          const tareasConDatos = (tareasRes.data.data.tareas || []).map((t: any) => ({
-            ...t,
-            EmpleadoAsignadoID: t.EmpleadoAsignadoID || null,
-            EmpleadoAsignadoNombre: t.EmpleadoAsignadoNombre || null,
-            estadoAsignacion: t.estadoAsignacion || (t.EmpleadoAsignadoID ? 'asignado' : 'sin_asignar'),
-            Prioridad: t.Prioridad || 'media',
-            Asignaciones: t.Asignaciones || [],
-            Notas: t.Notas || [],
-            Activo: true
-          }));
-          setTareas(tareasConDatos);
+  useEffect(() => {
+    if (selectedProyecto) {
+      const loadData = async () => {
+        setLoadingProyecto(true);
+        try {
+          await Promise.all([
+            loadTareas(selectedProyecto.ID, filtrosTareas),
+            loadEmpleadosProyecto(selectedProyecto.ID),
+            loadHistorial(selectedProyecto.ID)
+          ]);
+        } finally {
+          setLoadingProyecto(false);
         }
-        
-        // Procesar empleados
-        let empleados = [];
-        if (empleadosRes.data.success) {
-          empleados = empleadosRes.data.data || [];
-          setEmpleadosProyecto(empleados);
-        }
-        
-        // Procesar historial
-        const historialRes = await api.get(`/proyectos/${selectedProyecto.ID}/historial`);
-        if (historialRes.data.success) {
-          setHistorial(historialRes.data.data || []);
-        }
-        
-        // Calcular progreso con los datos ya cargados
-        if (tareasRes.data.success && empleadosRes.data.success) {
-          const tareasList = (tareasRes.data.data.tareas || []).map((t: any) => ({
-            ...t,
-            EmpleadoAsignadoID: t.EmpleadoAsignadoID || null,
-            EmpleadoAsignadoNombre: t.EmpleadoAsignadoNombre || null,
-            estadoAsignacion: t.estadoAsignacion || (t.EmpleadoAsignadoID ? 'asignado' : 'sin_asignar'),
-            Prioridad: t.Prioridad || 'media',
-            Asignaciones: t.Asignaciones || [],
-            Notas: t.Notas || [],
-            Activo: true
-          }));
-          calcularProgreso(tareasList, empleados);
-        }
-      } catch (error) {
-        console.error('Error cargando datos:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadData();
-  }
-}, [selectedProyecto]);
+      };
+      
+      loadData();
+    }
+  }, [selectedProyecto]);
 
   useEffect(() => {
-    if (showSeleccionarJefeModal) {
-      loadEmpleadosParaJefe();
-    }
+    if (showSeleccionarJefeModal) loadEmpleadosParaJefe();
   }, [showSeleccionarJefeModal]);
 
   useEffect(() => {
@@ -687,7 +670,7 @@ useEffect(() => {
         setSuccess('Proyecto creado exitosamente');
         setShowCreateModal(false);
         resetCreateForm();
-        loadProyectos();
+        await loadProyectos();
       }
     } catch (error: any) {
       setError(error.response?.data?.message || 'Error creando proyecto');
@@ -707,10 +690,8 @@ useEffect(() => {
         setSuccess('Proyecto actualizado exitosamente');
         setShowEditModal(false);
         await loadProyecto(selectedProyecto.ID);
-        await loadTareas(selectedProyecto.ID);
-        await loadEmpleadosProyecto(selectedProyecto.ID);
-        await loadHistorial(selectedProyecto.ID);
-        loadProyectos();
+        await refreshSection('todo', selectedProyecto.ID);
+        await loadProyectos();
       }
     } catch (error: any) {
       setError(error.response?.data?.message || 'Error actualizando proyecto');
@@ -743,7 +724,7 @@ useEffect(() => {
         setSuccess('Proyecto eliminado exitosamente');
         setShowDeleteModal(false);
         setShowViewModal(false);
-        loadProyectos();
+        await loadProyectos();
         setSelectedProyecto(null);
       }
     } catch (error: any) {
@@ -757,12 +738,9 @@ useEffect(() => {
       
       if (response.data.success) {
         setSuccess(`Estado del proyecto cambiado a: ${estado}`);
-        loadProyectos();
+        await loadProyectos();
         if (selectedProyecto?.ID === proyectoId) {
-          await loadProyecto(proyectoId);
-          await loadTareas(proyectoId);
-          await loadEmpleadosProyecto(proyectoId);
-          await loadHistorial(proyectoId);
+          await refreshSection('todo', proyectoId);
         }
       }
     } catch (error: any) {
@@ -788,6 +766,8 @@ useEffect(() => {
           loadEmpleadosProyecto(selectedProyecto.ID),
           loadTareas(selectedProyecto.ID)
         ]);
+        
+        setEmpleadosParaAsignar([]);
       }
     } catch (error: any) {
       setError(error.response?.data?.message || 'Error asignando empleado');
@@ -851,6 +831,7 @@ useEffect(() => {
         );
         setShowTareaModal(false);
         await loadTareas(selectedProyecto.ID);
+        await loadEmpleadosProyecto(selectedProyecto.ID);
         resetTareaForm();
         setIsEditingTarea(false);
       }
@@ -916,7 +897,7 @@ useEffect(() => {
     const tareaSinAsignar = !tarea.EmpleadoAsignadoID || tarea.estadoAsignacion === 'sin_asignar';
     
     const puedeCambiarEstado = isAdmin || esJefeProyecto || esAsignado || tareaSinAsignar;
-    
+
     if (!puedeCambiarEstado) {
       setError('No tienes permisos para cambiar el estado de esta tarea');
       return;
@@ -965,9 +946,7 @@ useEffect(() => {
     try {
       setLoading(true);
       
-      const payload = { 
-        empleadoId: reasignarData.empleadoId 
-      };
+      const payload = { empleadoId: reasignarData.empleadoId };
       
       const response = await api.patch(
         `/proyectos/${selectedProyecto.ID}/tareas/${selectedTarea.ID}/reasignar`,
@@ -986,13 +965,7 @@ useEffect(() => {
         setSelectedTarea(null);
       }
     } catch (error: any) {
-      if (error.response?.status === 403) {
-        setError(error.response?.data?.message || 'No tienes permiso para reasignar esta tarea');
-      } else if (error.response?.status === 404) {
-        setError('El endpoint de reasignación no existe o la tarea no fue encontrada');
-      } else {
-        setError(error.response?.data?.message || 'Error reasignando tarea');
-      }
+      setError(error.response?.data?.message || 'Error reasignando tarea');
     } finally {
       setLoading(false);
     }
@@ -1116,11 +1089,12 @@ useEffect(() => {
     });
   };
 
-const openProyecto = async (proyecto: Proyecto) => {
-  setSelectedProyecto(proyecto);
-  setShowViewModal(true);
-  setActiveTab('tareas');
-};
+  const openProyecto = async (proyecto: Proyecto) => {
+    await obtenerEmpleadoId();
+    setSelectedProyecto(proyecto);
+    setShowViewModal(true);
+    setActiveTab('tareas');
+  };
 
   const openEditProyecto = (proyecto: Proyecto) => {
     setSelectedProyecto(proyecto);
@@ -1157,7 +1131,7 @@ const openProyecto = async (proyecto: Proyecto) => {
     setShowSeleccionarJefeModal(false);
   };
 
-  const openAsignarEmpleadoModal = (modo: 'supervisados' | 'todos' = 'supervisados') => {
+  const openAsignarEmpleadoModal = (modo: 'supervisados' | 'todos' = 'todos') => {
     resetFiltrosAsignar();
     setModoSeleccion(modo);
     loadEmpleadosParaAsignar({}, modo);
@@ -1641,6 +1615,15 @@ const openProyecto = async (proyecto: Proyecto) => {
           <small className="text-muted">
             {tareasFiltradas.length} tareas encontradas
           </small>
+          <Button
+            variant="light"
+            size="sm"
+            onClick={() => refreshSection('tareas')}
+            disabled={refreshing.tareas}
+          >
+            <FontAwesomeIcon icon={faRedoAlt} spin={refreshing.tareas} className="me-2" />
+            Refrescar
+          </Button>
         </div>
 
         {tareasFiltradas.length === 0 ? (
@@ -1851,10 +1834,25 @@ const openProyecto = async (proyecto: Proyecto) => {
             <h6 className="mb-0 d-flex align-items-center">
               <FontAwesomeIcon icon={faChartLine} className="me-2" />
               Progreso General del Proyecto
+              <Button
+                variant="light"
+                size="sm"
+                className="ms-auto"
+                onClick={() => refreshSection('todo')}
+                disabled={refreshing.todo}
+              >
+                <FontAwesomeIcon icon={faRedoAlt} spin={refreshing.todo} className="me-2" />
+                Actualizar
+              </Button>
             </h6>
           </Card.Header>
           <Card.Body>
-            {progresoGeneral.totalTareas === 0 ? (
+            {loadingProyecto ? (
+              <div className="text-center py-4">
+                <Spinner animation="border" variant="primary" size="sm" />
+                <p className="mt-2 text-muted">Actualizando datos...</p>
+              </div>
+            ) : progresoGeneral.totalTareas === 0 ? (
               <div className="text-center py-4">
                 <FontAwesomeIcon icon={faTasks} size="2x" className="text-muted mb-2 opacity-50" />
                 <p className="text-muted mb-0">No hay tareas en el proyecto</p>
@@ -1919,10 +1917,25 @@ const openProyecto = async (proyecto: Proyecto) => {
             <h6 className="mb-0 d-flex align-items-center">
               <FontAwesomeIcon icon={faUsers} className="me-2" />
               Progreso por Miembro del Equipo
+              <Button
+                variant="light"
+                size="sm"
+                className="ms-auto"
+                onClick={() => refreshSection('empleados')}
+                disabled={refreshing.empleados}
+              >
+                <FontAwesomeIcon icon={faRedoAlt} spin={refreshing.empleados} className="me-2" />
+                Actualizar
+              </Button>
             </h6>
           </Card.Header>
           <Card.Body>
-            {empleadosProyecto.length === 0 ? (
+            {loadingEmpleados ? (
+              <div className="text-center py-4">
+                <Spinner animation="border" variant="primary" size="sm" />
+                <p className="mt-2 text-muted">Cargando miembros...</p>
+              </div>
+            ) : empleadosProyecto.length === 0 ? (
               <div className="text-center py-4">
                 <FontAwesomeIcon icon={faUsers} size="2x" className="text-muted mb-2 opacity-50" />
                 <p className="text-muted mb-0">No hay miembros asignados</p>
@@ -2051,13 +2064,11 @@ const openProyecto = async (proyecto: Proyecto) => {
             <div className="d-flex gap-2">
               <Button 
                 variant="outline-primary" 
-                onClick={() => {
-                  loadProyectos();
-                  obtenerEmpleadoId();
-                }}
+                onClick={() => refreshSection('proyectos')}
+                disabled={refreshing.proyectos}
                 className="d-flex align-items-center"
               >
-                <FontAwesomeIcon icon={faSync} className="me-2" />
+                <FontAwesomeIcon icon={faRedoAlt} spin={refreshing.proyectos} className="me-2" />
                 <span className="d-none d-md-inline">Actualizar</span>
               </Button>
               
@@ -2383,11 +2394,12 @@ const openProyecto = async (proyecto: Proyecto) => {
                     className="bg-white border-0"
                   >
                     <option value="">Todos los departamentos</option>
-                    <option value="1">Desarrollo</option>
-                    <option value="2">Ventas</option>
-                    <option value="3">Marketing</option>
-                    <option value="4">Recursos Humanos</option>
-                    <option value="5">Finanzas</option>
+                    <option value="1">Sistemas y TI</option>
+                    <option value="2">Automatización</option>
+                    <option value="3">Administrativo</option>
+                    <option value="4">Operaciones</option>
+                    <option value="5">Ensamble</option>
+                    <option value="6">Desarrollo</option>
                   </Form.Select>
                 </Col>
                 <Col md={1}>
@@ -2626,11 +2638,12 @@ const openProyecto = async (proyecto: Proyecto) => {
                     className="bg-white border-0"
                   >
                     <option value="">Todos los departamentos</option>
-                    <option value="1">Desarrollo</option>
-                    <option value="2">Ventas</option>
-                    <option value="3">Marketing</option>
-                    <option value="4">Recursos Humanos</option>
-                    <option value="5">Finanzas</option>
+                    <option value="1">Sistemas y TI</option>
+                    <option value="2">Automatización</option>
+                    <option value="3">Administrativo</option>
+                    <option value="4">Operaciones</option>
+                    <option value="5">Ensamble</option>
+                    <option value="6">Desarrollo</option>
                   </Form.Select>
                 </Col>
                 <Col md={1}>
@@ -3015,6 +3028,16 @@ const openProyecto = async (proyecto: Proyecto) => {
                 JEFE DEL PROYECTO
               </Badge>
             )}
+            <Button
+              variant="light"
+              size="sm"
+              className="ms-auto me-2"
+              onClick={() => refreshSection('todo')}
+              disabled={refreshing.todo}
+            >
+              <FontAwesomeIcon icon={faRedoAlt} spin={refreshing.todo} className="me-2" />
+              Actualizar
+            </Button>
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-4">
@@ -3096,6 +3119,9 @@ const openProyecto = async (proyecto: Proyecto) => {
                     <FontAwesomeIcon icon={faTasks} />
                     Tareas
                     <Badge bg="secondary" pill>{tareas.length}</Badge>
+                    {refreshing.tareas && (
+                      <Spinner animation="border" size="sm" variant="primary" />
+                    )}
                   </span>
                 }>
                   <Card className="mb-4 border-0 bg-light">
@@ -3209,7 +3235,7 @@ const openProyecto = async (proyecto: Proyecto) => {
                           <Button
                             variant="success"
                             size="sm"
-                            onClick={() => openAsignarEmpleadoModal('supervisados')}
+                            onClick={() => openAsignarEmpleadoModal('todos')}
                             className="d-flex align-items-center"
                           >
                             <FontAwesomeIcon icon={faUserPlus} className="me-2" />
@@ -3241,29 +3267,43 @@ const openProyecto = async (proyecto: Proyecto) => {
                     <FontAwesomeIcon icon={faUsers} />
                     Equipo
                     <Badge bg="secondary" pill>{empleadosProyecto.length}</Badge>
+                    {refreshing.empleados && (
+                      <Spinner animation="border" size="sm" variant="primary" />
+                    )}
                   </span>
                 }>
                   <div className="mb-4">
                     <div className="d-flex justify-content-between align-items-center mb-3">
                       <h6 className="mb-0">Miembros del Equipo</h6>
-                      {(isAdmin || soyJefeDelProyecto()) && (
-                        <Dropdown>
-                          <Dropdown.Toggle variant="success" size="sm">
-                            <FontAwesomeIcon icon={faUserPlus} className="me-2" />
-                            Agregar Miembro
-                          </Dropdown.Toggle>
-                          <Dropdown.Menu>
-                            <Dropdown.Item onClick={() => openAsignarEmpleadoModal('supervisados')}>
-                              <FontAwesomeIcon icon={faUserFriends} className="me-2 text-primary" />
-                              Subordinados
-                            </Dropdown.Item>
-                            <Dropdown.Item onClick={() => openAsignarEmpleadoModal('todos')}>
-                              <FontAwesomeIcon icon={faBuilding} className="me-2 text-info" />
-                              Todos los empleados
-                            </Dropdown.Item>
-                          </Dropdown.Menu>
-                        </Dropdown>
-                      )}
+                      <div className="d-flex gap-2">
+                        <Button
+                          variant="light"
+                          size="sm"
+                          onClick={() => refreshSection('empleados')}
+                          disabled={refreshing.empleados}
+                        >
+                          <FontAwesomeIcon icon={faRedoAlt} spin={refreshing.empleados} className="me-2" />
+                          Refrescar
+                        </Button>
+                        {(isAdmin || soyJefeDelProyecto()) && (
+                          <Dropdown>
+                            <Dropdown.Toggle variant="success" size="sm">
+                              <FontAwesomeIcon icon={faUserPlus} className="me-2" />
+                              Agregar Miembro
+                            </Dropdown.Toggle>
+                            <Dropdown.Menu>
+                              <Dropdown.Item onClick={() => openAsignarEmpleadoModal('supervisados')}>
+                                <FontAwesomeIcon icon={faUserFriends} className="me-2 text-primary" />
+                                Subordinados
+                              </Dropdown.Item>
+                              <Dropdown.Item onClick={() => openAsignarEmpleadoModal('todos')}>
+                                <FontAwesomeIcon icon={faBuilding} className="me-2 text-info" />
+                                Todos los empleados
+                              </Dropdown.Item>
+                            </Dropdown.Menu>
+                          </Dropdown>
+                        )}
+                      </div>
                     </div>
 
                     {empleadosProyecto.length === 0 ? (
@@ -3278,74 +3318,82 @@ const openProyecto = async (proyecto: Proyecto) => {
                       </Card>
                     ) : (
                       <Row>
-                        {empleadosProyecto.map(emp => (
-                          <Col md={6} lg={4} key={emp.ID} className="mb-3">
-                            <Card className="h-100 border-0 shadow-sm">
-                              <Card.Body>
-                                <div className="d-flex justify-content-between align-items-start mb-3">
-                                  <div className="d-flex align-items-center">
-                                    <div 
-                                      className={`rounded-circle d-flex align-items-center justify-content-center me-3 ${
-                                        emp.Rol === 'jefe' ? 'bg-warning' : 
-                                        emp.RolApp === 'admin' ? 'bg-danger' :
-                                        emp.RolApp === 'manager' ? 'bg-warning' : 'bg-info'
-                                      }`}
-                                      style={{ width: '48px', height: '48px' }}
-                                    >
-                                      <FontAwesomeIcon icon={
-                                        emp.Rol === 'jefe' ? faCrown :
-                                        emp.RolApp === 'admin' ? faCrown :
-                                        emp.RolApp === 'manager' ? faUserTie :
-                                        faUser
-                                      } className="text-white" />
+                        {empleadosProyecto.map(emp => {
+                          // Validación mejorada para identificar al jefe del proyecto
+                          const esElJefe = emp.Rol === 'jefe' || 
+                                          emp.ID === selectedProyecto?.JefeProyectoID || 
+                                          emp.RolApp === 'jefe' || 
+                                          (emp as any).esJefe === true;
+                          
+                          return (
+                            <Col md={6} lg={4} key={emp.ID} className="mb-3">
+                              <Card className="h-100 border-0 shadow-sm">
+                                <Card.Body>
+                                  <div className="d-flex justify-content-between align-items-start mb-3">
+                                    <div className="d-flex align-items-center">
+                                      <div 
+                                        className={`rounded-circle d-flex align-items-center justify-content-center me-3 ${
+                                          esElJefe ? 'bg-warning' : 
+                                          emp.RolApp === 'admin' ? 'bg-danger' :
+                                          emp.RolApp === 'manager' ? 'bg-warning' : 'bg-info'
+                                        }`}
+                                        style={{ width: '48px', height: '48px' }}
+                                      >
+                                        <FontAwesomeIcon icon={
+                                          esElJefe ? faCrown :
+                                          emp.RolApp === 'admin' ? faCrown :
+                                          emp.RolApp === 'manager' ? faUserTie :
+                                          faUser
+                                        } className="text-white" />
+                                      </div>
+                                      <div>
+                                        <h6 className="mb-1">{emp.NombreCompleto}</h6>
+                                        <small className="text-muted">{emp.PuestoNombre || 'Sin puesto'}</small>
+                                      </div>
                                     </div>
-                                    <div>
-                                      <h6 className="mb-1">{emp.NombreCompleto}</h6>
-                                      <small className="text-muted">{emp.PuestoNombre || 'Sin puesto'}</small>
+                                    {esElJefe && (
+                                      <Badge bg="warning" text="dark">JEFE</Badge>
+                                    )}
+                                  </div>
+
+                                  <div className="mb-3">
+                                    <div className="d-flex justify-content-between mb-1 small">
+                                      <span>Tareas activas</span>
+                                      <span className="fw-bold">{emp.TareasActivas || 0}</span>
                                     </div>
                                   </div>
-                                  {emp.Rol === 'jefe' && (
-                                    <Badge bg="warning" text="dark">JEFE</Badge>
-                                  )}
-                                </div>
 
-                                <div className="mb-3">
-                                  <div className="d-flex justify-content-between mb-1 small">
-                                    <span>Tareas activas</span>
-                                    <span className="fw-bold">{emp.TareasActivas || 0}</span>
-                                  </div>
-                                </div>
-
-                                <div className="d-flex flex-wrap gap-2 mb-3">
-                                  <small className="text-muted">
-                                    <FontAwesomeIcon icon={faEnvelope} className="me-1" />
-                                    {emp.CorreoElectronico}
-                                  </small>
-                                  {emp.DepartamentoNombre && (
-                                    <small className="text-muted d-block">
-                                      <FontAwesomeIcon icon={faBuilding} className="me-1" />
-                                      {emp.DepartamentoNombre}
+                                  <div className="d-flex flex-wrap gap-2 mb-3">
+                                    <small className="text-muted">
+                                      <FontAwesomeIcon icon={faEnvelope} className="me-1" />
+                                      {emp.CorreoElectronico}
                                     </small>
-                                  )}
-                                </div>
-
-                                {(isAdmin || soyJefeDelProyecto()) && emp.Rol !== 'jefe' && (
-                                  <div className="d-flex justify-content-end border-top pt-2">
-                                    <Button
-                                      variant="outline-danger"
-                                      size="sm"
-                                      onClick={() => openQuitarEmpleadoModal(emp)}
-                                      className="d-flex align-items-center"
-                                    >
-                                      <FontAwesomeIcon icon={faUserMinus} className="me-1" />
-                                      Quitar
-                                    </Button>
+                                    {emp.DepartamentoNombre && (
+                                      <small className="text-muted d-block">
+                                        <FontAwesomeIcon icon={faBuilding} className="me-1" />
+                                        {emp.DepartamentoNombre}
+                                      </small>
+                                    )}
                                   </div>
-                                )}
-                              </Card.Body>
-                            </Card>
-                          </Col>
-                        ))}
+
+                                  {(isAdmin || soyJefeDelProyecto()) && !esElJefe && (
+                                    <div className="d-flex justify-content-end border-top pt-2">
+                                      <Button
+                                        variant="outline-danger"
+                                        size="sm"
+                                        onClick={() => openQuitarEmpleadoModal(emp)}
+                                        className="d-flex align-items-center"
+                                      >
+                                        <FontAwesomeIcon icon={faUserMinus} className="me-1" />
+                                        Quitar
+                                      </Button>
+                                    </div>
+                                  )}
+                                </Card.Body>
+                              </Card>
+                            </Col>
+                          );
+                        })}
                       </Row>
                     )}
                   </div>
@@ -3355,6 +3403,9 @@ const openProyecto = async (proyecto: Proyecto) => {
                   <span className="d-flex align-items-center gap-2">
                     <FontAwesomeIcon icon={faChartLine} />
                     Progreso
+                    {(refreshing.todo || refreshing.empleados) && (
+                      <Spinner animation="border" size="sm" variant="primary" />
+                    )}
                   </span>
                 }>
                   <ProgresoView />
@@ -3364,57 +3415,69 @@ const openProyecto = async (proyecto: Proyecto) => {
                   <span className="d-flex align-items-center gap-2">
                     <FontAwesomeIcon icon={faHistory} />
                     Historial
+                    {refreshing.historial && (
+                      <Spinner animation="border" size="sm" variant="primary" />
+                    )}
                   </span>
                 }>
-                  <div>
-                    {historial.length === 0 ? (
-                      <Card className="text-center py-5 border-0 bg-light">
-                        <Card.Body>
-                          <FontAwesomeIcon icon={faHistory} size="3x" className="text-muted mb-3 opacity-50" />
-                          <h6 className="text-muted">No hay historial de actividades</h6>
-                          <p className="text-muted mb-0">Este proyecto aún no tiene registros.</p>
-                        </Card.Body>
-                      </Card>
-                    ) : (
-                      <div className="timeline">
-                        {historial.map((item: any, index) => (
-                          <div key={item.ID} className="timeline-item">
-                            <div className="timeline-badge">
-                              <FontAwesomeIcon icon={
-                                item.Accion.includes('creado') ? faPlus :
-                                item.Accion.includes('actualizado') ? faEdit :
-                                item.Accion.includes('asignado') ? faUserPlus :
-                                item.Accion.includes('removido') ? faUserMinus :
-                                item.Accion.includes('eliminado') ? faTrash :
-                                faHistory
-                              } size="sm" />
-                            </div>
-                            <Card className="mb-3 border-0 shadow-sm">
-                              <Card.Body>
-                                <div className="d-flex justify-content-between align-items-center mb-2">
-                                  <strong className="text-primary">{item.Accion}</strong>
-                                  <small className="text-muted">
-                                    {new Date(item.createdAt).toLocaleString('es-MX', {
-                                      day: '2-digit',
-                                      month: '2-digit',
-                                      year: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })}
-                                  </small>
-                                </div>
-                                <p className="mb-0">{item.Detalles || item.Accion}</p>
-                                <small className="text-muted d-block mt-2">
-                                  <FontAwesomeIcon icon={faUser} className="me-1" />
-                                  Por: {item.UsuarioNombre || item.EmpleadoNombre || 'Sistema'}
-                                </small>
-                              </Card.Body>
-                            </Card>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                  <div className="d-flex justify-content-end mb-3">
+                    <Button
+                      variant="light"
+                      size="sm"
+                      onClick={() => refreshSection('historial')}
+                      disabled={refreshing.historial}
+                    >
+                      <FontAwesomeIcon icon={faRedoAlt} spin={refreshing.historial} className="me-2" />
+                      Refrescar
+                    </Button>
                   </div>
+                  {historial.length === 0 ? (
+                    <Card className="text-center py-5 border-0 bg-light">
+                      <Card.Body>
+                        <FontAwesomeIcon icon={faHistory} size="3x" className="text-muted mb-3 opacity-50" />
+                        <h6 className="text-muted">No hay historial de actividades</h6>
+                        <p className="text-muted mb-0">Este proyecto aún no tiene registros.</p>
+                      </Card.Body>
+                    </Card>
+                  ) : (
+                    <div className="timeline">
+                      {historial.map((item: any, index) => (
+                        <div key={item.ID} className="timeline-item">
+                          <div className="timeline-badge">
+                            <FontAwesomeIcon icon={
+                              item.Accion.includes('creado') ? faPlus :
+                              item.Accion.includes('actualizado') ? faEdit :
+                              item.Accion.includes('asignado') ? faUserPlus :
+                              item.Accion.includes('removido') ? faUserMinus :
+                              item.Accion.includes('eliminado') ? faTrash :
+                              faHistory
+                            } size="sm" />
+                          </div>
+                          <Card className="mb-3 border-0 shadow-sm">
+                            <Card.Body>
+                              <div className="d-flex justify-content-between align-items-center mb-2">
+                                <strong className="text-primary">{item.Accion}</strong>
+                                <small className="text-muted">
+                                  {new Date(item.createdAt).toLocaleString('es-MX', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </small>
+                              </div>
+                              <p className="mb-0">{item.Detalles || item.Accion}</p>
+                              <small className="text-muted d-block mt-2">
+                                <FontAwesomeIcon icon={faUser} className="me-1" />
+                                Por: {item.UsuarioNombre || item.EmpleadoNombre || 'Sistema'}
+                              </small>
+                            </Card.Body>
+                          </Card>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </Tab>
               </Tabs>
             </div>
