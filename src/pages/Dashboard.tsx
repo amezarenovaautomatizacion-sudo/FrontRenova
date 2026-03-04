@@ -141,11 +141,11 @@ const Dashboard: React.FC = () => {
     try {
       setLoading(prev => ({ ...prev, estadisticas: true }));
       
-      // 1. TOTAL EMPLEADOS - CORREGIDO
+      // 1. TOTAL COLABORADORES - CORREGIDO
       let totalEmpleados = 0;
       try {
         const empleadosRes = await api.get('/empleados/empleados?limit=1');
-        console.log('Respuesta empleados:', empleadosRes.data);
+        console.log('Respuesta colaboradores:', empleadosRes.data);
         
         if (empleadosRes.data.success) {
           const data = empleadosRes.data.data;
@@ -161,7 +161,7 @@ const Dashboard: React.FC = () => {
           }
         }
       } catch (error) {
-        console.error('Error cargando empleados:', error);
+        console.error('Error cargando colaboradores:', error);
       }
 
       // 2. TOTAL PROYECTOS - CORREGIDO
@@ -336,13 +336,13 @@ const Dashboard: React.FC = () => {
   }, [canApprove, isAdmin, isManager]);
 
   useEffect(() => {
-    // Obtener datos del empleado del localStorage
+    // Obtener datos del colaborador del localStorage
     const empleadoData = localStorage.getItem('renova_empleado');
     if (empleadoData) {
       try {
         setEmpleado(JSON.parse(empleadoData));
       } catch (error) {
-        console.error('Error al parsear datos del empleado:', error);
+        console.error('Error al parsear datos del colaborador:', error);
       }
     }
 
@@ -409,26 +409,32 @@ const Dashboard: React.FC = () => {
   };
 
   const getEstadoBadge = (estado: string) => {
-    const estados: Record<string, { variant: string, icon: any }> = {
-      'pendiente': { variant: 'warning', icon: faHourglassHalf },
-      'aprobada': { variant: 'success', icon: faCheckCircle },
-      'aprobado': { variant: 'success', icon: faCheckCircle },
-      'rechazada': { variant: 'danger', icon: faTimesCircle },
-      'rechazado': { variant: 'danger', icon: faTimesCircle },
-      'cancelada': { variant: 'secondary', icon: faBan },
-      'no_vista': { variant: 'danger', icon: faBell },
-      'vista': { variant: 'info', icon: faBell },
-      'activo': { variant: 'success', icon: faCheckCircle },
-      'pausado': { variant: 'warning', icon: faClock },
-      'finalizado': { variant: 'secondary', icon: faTimesCircle }
+    // Mapeo de estados del sistema a textos en español
+    const estadoEnEspanol: Record<string, { texto: string, variante: string, icono: any }> = {
+      'pendiente': { texto: 'Pendiente', variante: 'warning', icono: faHourglassHalf },
+      'aprobada': { texto: 'Aprobada', variante: 'success', icono: faCheckCircle },
+      'aprobado': { texto: 'Aprobado', variante: 'success', icono: faCheckCircle },
+      'rechazada': { texto: 'Rechazada', variante: 'danger', icono: faTimesCircle },
+      'rechazado': { texto: 'Rechazado', variante: 'danger', icono: faTimesCircle },
+      'cancelada': { texto: 'Cancelada', variante: 'secondary', icono: faBan },
+      'cancelado': { texto: 'Cancelado', variante: 'secondary', icono: faBan },
+      'no_vista': { texto: 'No leída', variante: 'danger', icono: faBell },
+      'vista': { texto: 'Leída', variante: 'info', icono: faBell },
+      'activo': { texto: 'Activo', variante: 'success', icono: faCheckCircle },
+      'pausado': { texto: 'Pausado', variante: 'warning', icono: faClock },
+      'finalizado': { texto: 'Finalizado', variante: 'secondary', icono: faTimesCircle }
     };
 
-    const config = estados[estado.toLowerCase()] || { variant: 'info', icon: faExclamationCircle };
+    const config = estadoEnEspanol[estado.toLowerCase()] || { 
+      texto: estado, 
+      variante: 'info', 
+      icono: faExclamationCircle 
+    };
     
     return (
-      <Badge bg={config.variant} className="d-flex align-items-center gap-1" style={{ padding: '0.35rem 0.65rem' }}>
-        <FontAwesomeIcon icon={config.icon} size="xs" />
-        <span>{estado.charAt(0).toUpperCase() + estado.slice(1)}</span>
+      <Badge bg={config.variante} className="d-flex align-items-center gap-1" style={{ padding: '0.35rem 0.65rem' }}>
+        <FontAwesomeIcon icon={config.icono} size="xs" />
+        <span>{config.texto}</span>
       </Badge>
     );
   };
@@ -492,7 +498,7 @@ const Dashboard: React.FC = () => {
                 bg={userRol === 'admin' ? 'danger' : userRol === 'manager' ? 'warning' : 'info'}
                 className="px-3 py-2"
               >
-                {userRol.toUpperCase()}
+                {userRol === 'admin' ? 'ADMINISTRADOR' : userRol === 'manager' ? 'GERENTE' : 'COLABORADOR'}
               </Badge>
             </Card.Body>
           </Card>
@@ -649,7 +655,7 @@ const Dashboard: React.FC = () => {
                 <Card.Body>
                   <div className="d-flex justify-content-between align-items-start">
                     <div>
-                      <h6 className="text-muted mb-2">Total Empleados</h6>
+                      <h6 className="text-muted mb-2">Total Colaboradores</h6>
                       <h2 className="text-primary mb-0 fw-bold">
                         {loading.estadisticas ? <Spinner animation="border" size="sm" /> : estadisticas.totalEmpleados}
                       </h2>

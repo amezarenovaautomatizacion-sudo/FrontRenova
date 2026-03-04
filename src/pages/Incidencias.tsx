@@ -420,7 +420,7 @@ const Incidencias: React.FC = () => {
     }
   }, [canViewTipos]);
 
-  // Función para cargar empleados supervisados
+  // Función para cargar colaboradores supervisados
   const loadEmpleadosSupervisados = useCallback(async () => {
     if (!canCreate) return;
     
@@ -431,7 +431,7 @@ const Incidencias: React.FC = () => {
         setEmpleadosSupervisados(response.data.data || []);
       }
     } catch (error: unknown) {
-      console.error('Error cargando empleados supervisados:', error);
+      console.error('Error cargando colaboradores supervisados:', error);
     }
   }, [canCreate]);
 
@@ -765,7 +765,7 @@ const Incidencias: React.FC = () => {
     }
     
     if (empleadosSupervisados.length === 0) {
-      setError('No tienes empleados supervisados para asignar incidencias');
+      setError('No tienes colaboradores supervisados para asignar incidencias');
       return;
     }
     
@@ -966,7 +966,7 @@ const Incidencias: React.FC = () => {
       width: '80px',
     },
     {
-      name: 'Empleado',
+      name: 'Colaborador',
       selector: (row: Incidencia) => row.EmpleadoNombre,
       sortable: true,
       cell: (row: Incidencia) => (
@@ -1293,11 +1293,11 @@ const Incidencias: React.FC = () => {
             <p className="text-muted">
               No tienes permisos para acceder a la gestión de incidencias.
               <br />
-              Solo administradores y managers pueden ver esta sección.
+              Solo administradores y gerentes pueden ver esta sección.
             </p>
             <Badge bg={isAdmin ? 'danger' : isManager ? 'warning' : 'info'} 
               className="fs-6 p-2">
-              Tu rol: {userRol?.toUpperCase() || 'NO DEFINIDO'}
+              Tu rol: {userRol === 'admin' ? 'ADMINISTRADOR' : userRol === 'manager' ? 'GERENTE' : 'COLABORADOR'}
             </Badge>
             <div className="mt-4">
               <Button variant="primary" onClick={() => window.history.back()}>
@@ -1421,13 +1421,13 @@ const Incidencias: React.FC = () => {
                 <Row>
                   <Col md={3}>
                     <Form.Group>
-                      <Form.Label className="small">Empleado</Form.Label>
+                      <Form.Label className="small">Colaborador</Form.Label>
                       <Form.Select
                         size="sm"
                         value={filterEmpleado}
                         onChange={(e) => setFilterEmpleado(e.target.value)}
                       >
-                        <option value="">Todos los empleados</option>
+                        <option value="">Todos los colaboradores</option>
                         {empleadosSupervisados.map((emp) => (
                           <option key={emp.ID} value={emp.ID}>
                             {emp.NombreCompleto}
@@ -1505,7 +1505,7 @@ const Incidencias: React.FC = () => {
                         </InputGroup.Text>
                         <Form.Control
                           type="text"
-                          placeholder="Buscar por descripción, empleado..."
+                          placeholder="Buscar por descripción, colaborador..."
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
                         />
@@ -1576,7 +1576,7 @@ const Incidencias: React.FC = () => {
                 <Card.Body>
                   <FontAwesomeIcon icon={faUser} size="2x" className="text-info mb-2" />
                   <h3>{empleadosSupervisados.length}</h3>
-                  <small className="text-muted">Empleados</small>
+                  <small className="text-muted">Colaboradores</small>
                 </Card.Body>
               </Card>
             </Col>
@@ -1601,7 +1601,7 @@ const Incidencias: React.FC = () => {
                       exportToExcel(
                         dataToExport.map(i => ({
                           ID: i.ID,
-                          Empleado: i.EmpleadoNombre,
+                          Colaborador: i.EmpleadoNombre,
                           Tipo: i.TipoIncidenciaNombre,
                           Descripción: i.Descripcion,
                           Fecha: i.FechaIncidencia,
@@ -1641,7 +1641,7 @@ const Incidencias: React.FC = () => {
                   onClear={() => setFilterText('')}
                   placeholder={isEmployee 
                     ? "Buscar por descripción, tipo..." 
-                    : "Buscar por descripción, empleado, tipo..."}
+                    : "Buscar por descripción, colaborador, tipo..."}
                 />
               </div>
             </Card.Body>
@@ -1749,7 +1749,7 @@ const Incidencias: React.FC = () => {
                       Catálogo de Tipos de Incidencia
                     </div>
                     <Badge bg={isAdmin ? 'danger' : 'warning'}>
-                      {isAdmin ? 'Administrador - Puede editar' : 'Manager - Solo lectura'}
+                      {isAdmin ? 'Administrador - Puede editar' : 'Gerente - Solo lectura'}
                     </Badge>
                   </div>
                 </Card.Header>
@@ -1873,7 +1873,7 @@ const Incidencias: React.FC = () => {
                       <FontAwesomeIcon icon={faInfoCircle} className="me-1" />
                       {isAdmin 
                         ? 'Administrador - Puede crear, editar y cambiar estado de tipos'
-                        : 'Manager - Solo puede ver tipos'}
+                        : 'Gerente - Solo puede ver tipos'}
                     </small>
                     <small className="text-muted">
                       <FontAwesomeIcon icon={faFileAlt} className="me-1" />
@@ -1900,14 +1900,14 @@ const Incidencias: React.FC = () => {
             <Form.Group className="mb-3">
               <Form.Label>
                 <FontAwesomeIcon icon={faUser} className="me-2" />
-                Empleado *
+                Colaborador *
               </Form.Label>
               <Form.Select
                 value={createData.empleadoId}
                 onChange={(e) => setCreateData({...createData, empleadoId: parseInt(e.target.value)})}
                 required
               >
-                <option value="">Selecciona un empleado</option>
+                <option value="">Selecciona un colaborador</option>
                 {empleadosSupervisados.map((empleado) => (
                   <option key={empleado.ID} value={empleado.ID}>
                     {empleado.NombreCompleto} - {empleado.CorreoElectronico}
@@ -1915,7 +1915,7 @@ const Incidencias: React.FC = () => {
                 ))}
               </Form.Select>
               <Form.Text className="text-muted">
-                Solo puedes registrar incidencias para empleados que supervisas
+                Solo puedes registrar incidencias para colaboradores que supervisas
               </Form.Text>
             </Form.Group>
 
@@ -2035,7 +2035,7 @@ const Incidencias: React.FC = () => {
 
               <ListGroup variant="flush">
                 <ListGroup.Item className="d-flex justify-content-between align-items-center">
-                  <span><strong>Empleado:</strong></span>
+                  <span><strong>Colaborador:</strong></span>
                   <span>{selectedIncidencia.EmpleadoNombre}</span>
                 </ListGroup.Item>
                 
@@ -2085,7 +2085,8 @@ const Incidencias: React.FC = () => {
                       selectedIncidencia.EstadoSolicitud === 'aprobada' ? 'success' :
                       selectedIncidencia.EstadoSolicitud === 'pendiente' ? 'warning' : 'secondary'
                     }>
-                      {selectedIncidencia.EstadoSolicitud}
+                      {selectedIncidencia.EstadoSolicitud === 'aprobada' ? 'Aprobada' :
+                       selectedIncidencia.EstadoSolicitud === 'pendiente' ? 'Pendiente' : 'Cancelada'}
                     </Badge>
                   </ListGroup.Item>
                 )}
@@ -2134,7 +2135,7 @@ const Incidencias: React.FC = () => {
               <Alert variant="info" className="mb-4">
                 <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
                 <strong>Nota:</strong> Solo puedes editar ciertos campos de la incidencia.
-                Para cambiar el empleado o activar/desactivar, usa las opciones correspondientes.
+                Para cambiar el colaborador o activar/desactivar, usa las opciones correspondientes.
               </Alert>
 
               <Form.Group className="mb-3">

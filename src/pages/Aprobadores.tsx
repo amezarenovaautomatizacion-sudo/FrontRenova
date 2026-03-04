@@ -151,7 +151,7 @@ const Aprobadores: React.FC = () => {
     try {
       setLoadingUsuarios(true);
       
-      // Obtener catálogo de empleados
+      // Obtener catálogo de colaboradores
       const catalogosResponse = await api.get('/empleados/catalogos');
       if (catalogosResponse.data.success) {
         // Filtrar solo usuarios que pueden ser aprobadores (manager y admin)
@@ -267,9 +267,16 @@ const Aprobadores: React.FC = () => {
       manager: 'warning',
       employee: 'info'
     };
+    
+    const textoRol = {
+      admin: 'ADMINISTRADOR',
+      manager: 'GERENTE',
+      employee: 'COLABORADOR'
+    };
+    
     return (
       <Badge bg={colors[rol as keyof typeof colors] || 'secondary'}>
-        {rol.toUpperCase()}
+        {textoRol[rol as keyof typeof textoRol] || rol.toUpperCase()}
       </Badge>
     );
   };
@@ -331,7 +338,7 @@ const Aprobadores: React.FC = () => {
             </p>
             <Badge bg={user?.rol === 'admin' ? 'danger' : user?.rol === 'manager' ? 'warning' : 'info'} 
               className="fs-6 p-2">
-              Tu rol: {user?.rol?.toUpperCase() || 'NO DEFINIDO'}
+              Tu rol: {user?.rol === 'admin' ? 'ADMINISTRADOR' : user?.rol === 'manager' ? 'GERENTE' : 'COLABORADOR'}
             </Badge>
             <div className="mt-4">
               <Button variant="primary" onClick={() => window.history.back()}>
@@ -355,10 +362,6 @@ const Aprobadores: React.FC = () => {
                 <FontAwesomeIcon icon={faUserShield} className="me-2 text-danger" />
                 Gestión de Aprobadores
               </h2>
-              <p className="text-muted mb-0">
-                <FontAwesomeIcon icon={faShieldAlt} className="me-1 text-danger" />
-                <strong>Modo Administrador</strong> - Gestión de usuarios autorizados para aprobar solicitudes
-              </p>
             </div>
             
             <div className="d-flex gap-2">
@@ -406,7 +409,7 @@ const Aprobadores: React.FC = () => {
             <Card.Body>
               <FontAwesomeIcon icon={faUserTie} size="2x" className="text-warning mb-2" />
               <h3>{usuarios.filter(u => u.RolApp === 'manager').length}</h3>
-              <small className="text-muted">Managers Disponibles</small>
+              <small className="text-muted">Gerentes Disponibles</small>
             </Card.Body>
           </Card>
         </Col>
@@ -415,7 +418,7 @@ const Aprobadores: React.FC = () => {
             <Card.Body>
               <FontAwesomeIcon icon={faUserCheck} size="2x" className="text-primary mb-2" />
               <h3>{aprobadores.filter(a => a.rol === 'manager').length}</h3>
-              <small className="text-muted">Managers Aprobadores</small>
+              <small className="text-muted">Gerentes Aprobadores</small>
             </Card.Body>
           </Card>
         </Col>
@@ -424,7 +427,7 @@ const Aprobadores: React.FC = () => {
             <Card.Body>
               <FontAwesomeIcon icon={faShieldAlt} size="2x" className="text-dark mb-2" />
               <h3>{aprobadores.filter(a => a.rol === 'admin').length}</h3>
-              <small className="text-muted">Admins Aprobadores</small>
+              <small className="text-muted">Administradores Aprobadores</small>
             </Card.Body>
           </Card>
         </Col>
@@ -589,7 +592,7 @@ const Aprobadores: React.FC = () => {
         <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
         <strong>Información Importante sobre Aprobadores:</strong>
         <ul className="mb-0 mt-2">
-          <li>Solo usuarios con rol de <strong>Administrador</strong> o <strong>Manager</strong> pueden ser aprobadores</li>
+          <li>Solo usuarios con rol de <strong>Administrador</strong> o <strong>Gerente</strong> pueden ser aprobadores</li>
           <li>Los aprobadores pueden aprobar/rechazar solicitudes de sus subordinados directos</li>
           <li>Los administradores tienen acceso completo a todas las solicitudes</li>
           <li>Remover a un usuario como aprobador no afecta su rol ni estado en el sistema</li>
@@ -609,7 +612,7 @@ const Aprobadores: React.FC = () => {
             <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
             <strong>Requisitos para ser aprobador:</strong>
             <ul className="mb-0 mt-2">
-              <li>El usuario debe tener rol de <strong>Administrador</strong> o <strong>Manager</strong></li>
+              <li>El usuario debe tener rol de <strong>Administrador</strong> o <strong>Gerente</strong></li>
               <li>Debe estar activo en el sistema</li>
               <li>No puede ya ser un aprobador activo</li>
             </ul>
@@ -625,7 +628,7 @@ const Aprobadores: React.FC = () => {
               <FontAwesomeIcon icon={faUserXmark} size="3x" className="text-muted mb-3" />
               <h5>No hay usuarios disponibles</h5>
               <p className="text-muted">
-                Todos los usuarios con rol de administrador o manager ya son aprobadores.
+                Todos los usuarios con rol de administrador o gerente ya son aprobadores.
                 <br />
                 O no hay usuarios con los roles requeridos.
               </p>
@@ -645,7 +648,7 @@ const Aprobadores: React.FC = () => {
                   <option value="">Selecciona un usuario...</option>
                   {usuariosParaAgregar.map((usuario) => (
                     <option key={usuario.ID} value={usuario.ID}>
-                      {usuario.NombreCompleto} - {usuario.CorreoElectronico} ({usuario.RolApp.toUpperCase()})
+                      {usuario.NombreCompleto} - {usuario.CorreoElectronico} ({usuario.RolApp === 'admin' ? 'ADMINISTRADOR' : 'GERENTE'})
                     </option>
                   ))}
                 </Form.Select>

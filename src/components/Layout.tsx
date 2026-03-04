@@ -60,7 +60,7 @@ const Layout: React.FC = () => {
     },
     {
       path: '/empleados',
-      title: 'Empleados',
+      title: 'Colaboradores',
       icon: faUsers,
       roles: ['admin', 'manager'],
       badge: 12
@@ -134,7 +134,7 @@ const Layout: React.FC = () => {
     if (empleado?.NombreCompleto) {
       return empleado.NombreCompleto.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
     }
-    return user?.usuario?.substring(0, 2).toUpperCase() || 'HR';
+    return user?.usuario?.substring(0, 2).toUpperCase() || 'RH';
   };
 
   // Renderizar item del menú
@@ -166,9 +166,20 @@ const Layout: React.FC = () => {
     );
   };
 
+  // Función para obtener texto del rol en español
+  const getRolTexto = (rol: string | undefined): string => {
+    if (!rol) return 'SIN ROL';
+    const roles: Record<string, string> = {
+      admin: 'ADMINISTRADOR',
+      manager: 'GERENTE',
+      employee: 'COLABORADOR'
+    };
+    return roles[rol] || rol.toUpperCase();
+  };
+
   return (
     <div className={`d-flex vh-100 ${theme === 'dark' ? 'bg-dark' : 'bg-light'}`}>
-      {/* Sidebar para desktop - SIN CAMBIOS */}
+      {/* Sidebar para desktop */}
       <div 
         className={`d-none d-lg-flex flex-column ${
           theme === 'dark' ? 'bg-dark border-secondary' : 'bg-white'
@@ -187,7 +198,7 @@ const Layout: React.FC = () => {
               <h5 className={`mb-0 fw-bold ${
                 theme === 'dark' ? 'text-light' : 'text-primary-dark'
               }`}>
-                Recursos Humanos
+                RH RENOVA
               </h5>
               <small className={theme === 'dark' ? 'text-secondary' : 'text-muted'}>
                 Sistema de Gestión
@@ -223,7 +234,7 @@ const Layout: React.FC = () => {
                   className="rounded-pill px-2 py-1"
                   style={{ fontSize: '0.7rem' }}
                 >
-                  {user?.rol?.toUpperCase()}
+                  {getRolTexto(user?.rol)}
                 </Badge>
               </div>
             </div>
@@ -269,8 +280,9 @@ const Layout: React.FC = () => {
               variant="link" 
               className={`p-2 ${theme === 'dark' ? 'text-secondary' : 'text-muted'}`}
               onClick={toggleTheme}
+              title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
             >
-              <FontAwesomeIcon icon={theme === 'dark' ? faSun : faMoon} />
+              <FontAwesomeIcon icon={theme === 'dark' ? faSun : faMoon} size="lg" />
             </Button>
 
             <Button 
@@ -307,18 +319,19 @@ const Layout: React.FC = () => {
             <Navbar.Brand as={Link} to="/dashboard" className={`fw-bold ${
               theme === 'dark' ? 'text-light' : 'text-primary-dark'
             }`}>
-              <span className="d-none d-sm-inline">Recursos Humanos</span>
-              <span className="d-sm-none">HR</span>
+              <span className="d-none d-sm-inline">RH RENOVA</span>
+              <span className="d-sm-inline d-md-none">RH</span>
             </Navbar.Brand>
             
             <Stack direction="horizontal" gap={2} className="ms-auto">
-              {/* Botón de tema en navbar mobile (pequeño) */}
+              {/* Botón de tema en navbar mobile */}
               <Button 
                 variant="link" 
                 className={`p-0 ${theme === 'dark' ? 'text-secondary' : 'text-muted'}`}
                 onClick={toggleTheme}
+                title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
               >
-                <FontAwesomeIcon icon={theme === 'dark' ? faSun : faMoon} />
+                <FontAwesomeIcon icon={theme === 'dark' ? faSun : faMoon} size="lg" />
               </Button>
               
               <Dropdown align="end">
@@ -327,7 +340,7 @@ const Layout: React.FC = () => {
                   className={`p-0 ${theme === 'dark' ? 'text-secondary' : 'text-muted'} border-0`}
                 >
                   <div className="position-relative">
-                    <FontAwesomeIcon icon={faBell} />
+                    <FontAwesomeIcon icon={faBell} size="lg" />
                     <Badge bg="danger" className="position-absolute top-0 start-100 translate-middle p-1 rounded-circle" style={{ fontSize: '0.5rem' }}>
                       3
                     </Badge>
@@ -391,7 +404,7 @@ const Layout: React.FC = () => {
           </Container>
         </Navbar>
 
-        {/* Sidebar para mobile (Offcanvas) - MODIFICADO con botón grande de tema */}
+        {/* Sidebar para mobile (Offcanvas) */}
         <Offcanvas 
           show={sidebarOpen} 
           onHide={() => setSidebarOpen(false)}
@@ -413,10 +426,10 @@ const Layout: React.FC = () => {
             <Offcanvas.Title>
               <div className="d-flex align-items-center">
                 <div className="rounded-3 bg-white p-2 me-3">
-                  <FontAwesomeIcon icon={faUserCircle} className="text-primary" />
+                  <FontAwesomeIcon icon={faUserCircle} className="text-primary" size="lg" />
                 </div>
                 <div>
-                  <div className="fw-bold text-white">Recursos Humanos</div>
+                  <div className="fw-bold text-white">RH RENOVA</div>
                   <small className="text-white-50">Sistema de Gestión</small>
                 </div>
               </div>
@@ -441,7 +454,7 @@ const Layout: React.FC = () => {
                     bg={user?.rol === 'admin' ? 'danger' : user?.rol === 'manager' ? 'warning' : 'info'}
                     className="rounded-pill"
                   >
-                    {user?.rol}
+                    {getRolTexto(user?.rol)}
                   </Badge>
                 </div>
               </div>
@@ -495,18 +508,15 @@ const Layout: React.FC = () => {
               </Nav>
             </div>
 
-            {/* SECCIÓN DE ACCIONES - Con botón grande de tema */}
+            {/* SECCIÓN DE ACCIONES */}
             <div className={`p-3 border-top ${
               theme === 'dark' ? 'border-secondary' : ''
             }`}>
-              {/* Botón grande de cambio de tema - MÁS VISIBLE */}
+              {/* Botón de cambio de tema */}
               <Button 
                 variant={theme === 'dark' ? 'outline-light' : 'outline-primary'}
                 className="w-100 rounded-pill mb-2 py-2 d-flex align-items-center justify-content-center"
-                onClick={() => {
-                  toggleTheme();
-                  // No cerramos el offcanvas para que vea el cambio
-                }}
+                onClick={toggleTheme}
               >
                 <FontAwesomeIcon 
                   icon={theme === 'dark' ? faSun : faMoon} 
@@ -514,7 +524,7 @@ const Layout: React.FC = () => {
                   size="lg"
                 />
                 <span className="fw-bold">
-                  {theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
+                  {theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
                 </span>
               </Button>
 
@@ -531,7 +541,7 @@ const Layout: React.FC = () => {
                 <span className="fw-bold">Cerrar Sesión</span>
               </Button>
               
-              {/* Texto adicional opcional */}
+              {/* Texto adicional */}
               <div className="text-center mt-2">
                 <small className={theme === 'dark' ? 'text-secondary' : 'text-muted'}>
                   Personaliza tu experiencia
@@ -569,7 +579,7 @@ const Layout: React.FC = () => {
                     theme === 'dark' ? 'bg-secondary text-light' : 'bg-light text-dark'
                   }`}>
                     <FontAwesomeIcon icon={faUserShield} className="me-1" size="sm" />
-                    {user?.rol === 'admin' ? 'Administrador' : user?.rol === 'manager' ? 'Manager' : 'Empleado'}
+                    {getRolTexto(user?.rol)}
                   </span>
                 </small>
               </Col>

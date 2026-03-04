@@ -51,7 +51,7 @@ import {
 import ReauthModal from '../components/ReauthModal';
 import api from '../services/api';
 
-// Interfaces basadas en la API
+// Interfaces basadas en la API (mantener nombres originales)
 interface User {
   id: number;
   usuario: string;
@@ -255,7 +255,7 @@ const FilterComponent = ({ filterText, onFilter, onClear, placeholder }: any) =>
       </InputGroup.Text>
       <Form.Control
         type="text"
-        placeholder={placeholder || "Buscar..."}
+        placeholder={placeholder || "Buscar colaborador..."}
         value={filterText}
         onChange={onFilter}
         className="border-start-0"
@@ -356,23 +356,23 @@ const Empleados: React.FC = () => {
         setEmpleados(empleadosList);
         setFilteredEmpleados(empleadosList);
       } else {
-        setError(response.data.message || 'Error cargando empleados');
+        setError(response.data.message || 'Error cargando colaboradores');
       }
     } catch (error: unknown) {
       const apiError = error as ApiError;
-      console.error('❌ Error cargando empleados:', apiError);
+      console.error('❌ Error cargando colaboradores:', apiError);
       if (apiError.response?.status === 403) {
         setError('No tienes permisos para acceder a esta sección');
         logout();
       } else {
-        setError(apiError.response?.data?.message || 'Error cargando empleados');
+        setError(apiError.response?.data?.message || 'Error cargando colaboradores');
       }
     } finally {
       setLoading(false);
     }
   }, [canViewAll, logout]);
 
-  // Función para cargar detalles completos del empleado - OPTIMIZADA
+  // Función para cargar detalles completos del colaborador - OPTIMIZADA
   const loadEmpleadoDetalles = async (empleadoId: number) => {
     try {
       setLoadingDetalles(true);
@@ -383,7 +383,7 @@ const Empleados: React.FC = () => {
       if (response.data.success) {
         const empleadoCompleto = response.data.data;
         
-        // Establecer el empleado seleccionado
+        // Establecer el colaborador seleccionado
         setSelectedEmpleado(empleadoCompleto);
         
         // Establecer departamentos (vienen en la respuesta principal)
@@ -402,10 +402,10 @@ const Empleados: React.FC = () => {
         
         return empleadoCompleto;
       } else {
-        throw new Error('Error al cargar información del empleado');
+        throw new Error('Error al cargar información del colaborador');
       }
     } catch (error) {
-      console.error('❌ Error cargando detalles del empleado:', error);
+      console.error('❌ Error cargando detalles del colaborador:', error);
       throw error;
     } finally {
       setLoadingDetalles(false);
@@ -444,7 +444,7 @@ const Empleados: React.FC = () => {
 
   const handleCreate = async () => {
     if (!canCreate) {
-      setError('No tienes permisos para crear empleados');
+      setError('No tienes permisos para crear colaboradores');
       return;
     }
     
@@ -495,16 +495,16 @@ const Empleados: React.FC = () => {
       const response = await api.post('/empleados/empleados', empleadoData);
       
       if (response.data.success) {
-        setSuccess('Empleado creado exitosamente');
+        setSuccess('Colaborador creado exitosamente');
         setShowCreateModal(false);
         resetCreateForm();
         loadEmpleados();
       } else {
-        setError(response.data.message || 'Error creando empleado');
+        setError(response.data.message || 'Error creando colaborador');
       }
     } catch (error: unknown) {
       const apiError = error as ApiError;
-      console.error('Error creando empleado:', apiError);
+      console.error('Error creando colaborador:', apiError);
       const errorMsg = apiError.response?.data?.message || '';
       
       if (errorMsg.includes('CorreoElectronico') || errorMsg.includes('correo electrónico')) {
@@ -516,7 +516,7 @@ const Empleados: React.FC = () => {
       } else if (errorMsg.includes('CURP')) {
         setError('El CURP ya está registrado');
       } else {
-        setError(errorMsg || 'Error creando empleado');
+        setError(errorMsg || 'Error creando colaborador');
       }
     } finally {
       setLoading(false);
@@ -599,16 +599,16 @@ const Empleados: React.FC = () => {
       const response = await api.put(`/empleados/empleados/${selectedEmpleado.ID}`, camposActualizados);
       
       if (response.data.success) {
-        setSuccess('Empleado actualizado exitosamente');
+        setSuccess('Colaborador actualizado exitosamente');
         setShowEditModal(false);
         loadEmpleados();
       } else {
-        setError(response.data.message || 'Error actualizando empleado');
+        setError(response.data.message || 'Error actualizando colaborador');
       }
     } catch (error: unknown) {
       const apiError = error as ApiError;
-      console.error('❌ Error actualizando empleado:', apiError);
-      setError(apiError.response?.data?.message || 'Error actualizando empleado');
+      console.error('❌ Error actualizando colaborador:', apiError);
+      setError(apiError.response?.data?.message || 'Error actualizando colaborador');
     } finally {
       setLoading(false);
     }
@@ -616,12 +616,12 @@ const Empleados: React.FC = () => {
 
   const handleToggleStatus = async (empleadoId: number, activo: boolean) => {
     if (!canChangeStatus) {
-      setError('No tienes permisos para cambiar el estado de empleados');
+      setError('No tienes permisos para cambiar el estado de colaboradores');
       return;
     }
     
     const accion = activo ? 'desactivar' : 'activar';
-    if (!window.confirm(`¿Estás seguro de ${accion} este empleado?`)) {
+    if (!window.confirm(`¿Estás seguro de ${accion} este colaborador?`)) {
       return;
     }
     
@@ -633,7 +633,7 @@ const Empleados: React.FC = () => {
       });
       
       if (response.data.success) {
-        setSuccess(`Empleado ${activo ? 'desactivado' : 'activado'} exitosamente`);
+        setSuccess(`Colaborador ${activo ? 'desactivado' : 'activado'} exitosamente`);
         loadEmpleados();
         
         if (selectedEmpleado && selectedEmpleado.ID === empleadoId) {
@@ -664,17 +664,17 @@ const Empleados: React.FC = () => {
       const response = await api.delete(`/empleados/empleados/${selectedEmpleado.ID}`);
       
       if (response.data.success) {
-        setSuccess('Empleado eliminado exitosamente');
+        setSuccess('Colaborador eliminado exitosamente');
         setShowDeleteModal(false);
         setSelectedEmpleado(null);
         loadEmpleados();
       } else {
-        setError(response.data.message || 'Error eliminando empleado');
+        setError(response.data.message || 'Error eliminando colaborador');
       }
     } catch (error: unknown) {
       const apiError = error as ApiError;
-      console.error('Error eliminando empleado:', apiError);
-      setError(apiError.response?.data?.message || 'Error eliminando empleado');
+      console.error('Error eliminando colaborador:', apiError);
+      setError(apiError.response?.data?.message || 'Error eliminando colaborador');
     } finally {
       setLoading(false);
     }
@@ -699,13 +699,13 @@ const Empleados: React.FC = () => {
       await loadEmpleadoDetalles(empleado.ID);
       setShowViewModal(true);
     } catch (error) {
-      setError('Error al cargar información del empleado');
+      setError('Error al cargar información del colaborador');
     }
   };
 
   const openEditModal = async (empleado: Empleado) => {
     if (!canEdit) {
-      setError('No tienes permisos para editar empleados');
+      setError('No tienes permisos para editar colaboradores');
       return;
     }
     
@@ -748,13 +748,13 @@ const Empleados: React.FC = () => {
         setShowEditModal(true);
       }, 100);
     } catch (error) {
-      setError('Error al cargar información del empleado');
+      setError('Error al cargar información del colaborador');
     }
   };
 
   const openDeleteModal = (empleado: Empleado) => {
     if (!canDelete) {
-      setError('Solo administradores pueden eliminar empleados');
+      setError('Solo administradores pueden eliminar colaboradores');
       return;
     }
     
@@ -770,7 +770,7 @@ const Empleados: React.FC = () => {
     };
     return (
       <Badge bg={colors[rol as keyof typeof colors] || 'secondary'} className="px-3 py-2">
-        {rol === 'admin' ? 'Administrador' : rol === 'manager' ? 'Gerente' : 'Empleado'}
+        {rol === 'admin' ? 'Administrador' : rol === 'manager' ? 'Gerente' : 'Colaborador'}
       </Badge>
     );
   };
@@ -792,7 +792,7 @@ const Empleados: React.FC = () => {
   // Definición de columnas para DataTable
   const columns = [
     {
-      name: 'Empleado',
+      name: 'Colaborador',
       selector: (row: Empleado) => row.NombreCompleto,
       sortable: true,
       cell: (row: Empleado) => (
@@ -951,7 +951,7 @@ const Empleados: React.FC = () => {
             </div>
             <h3 className="text-primary">Acceso Restringido</h3>
             <p className="text-muted">
-              No tienes permisos para acceder a la gestión de empleados.
+              No tienes permisos para acceder a la gestión de colaboradores.
               <br />
               Solo administradores y managers pueden ver esta sección.
             </p>
@@ -978,11 +978,11 @@ const Empleados: React.FC = () => {
             <div>
               <h2 className="mb-0 text-primary">
                 <FontAwesomeIcon icon={faUsers} className="me-2" />
-                Gestión de Empleados
+                Gestión de Colaboradores
               </h2>
               <p className="text-muted mb-0">
                 <FontAwesomeIcon icon={faChartLine} className="me-1" />
-                Total: {empleados.length} empleados | Mostrando: {filteredEmpleados.length}
+                Total: {empleados.length} colaboradores | Mostrando: {filteredEmpleados.length}
               </p>
             </div>
             
@@ -1006,7 +1006,7 @@ const Empleados: React.FC = () => {
                     className="bg-gradient-primary"
                   >
                     <FontAwesomeIcon icon={faUserPlus} className="me-2" />
-                    Nuevo Empleado
+                    Nuevo Colaborador
                   </Button>
                 )}
               </ButtonGroup>
@@ -1039,7 +1039,7 @@ const Empleados: React.FC = () => {
                 filterText={filterText}
                 onFilter={handleFilter}
                 onClear={handleClearFilter}
-                placeholder="Buscar por nombre, correo, rol, puesto..."
+                placeholder="Buscar colaborador por nombre, correo, rol, puesto..."
               />
             </Col>
             <Col md={6} className="d-flex justify-content-end align-items-center">
@@ -1047,7 +1047,7 @@ const Empleados: React.FC = () => {
                 <div className="d-flex align-items-center gap-3">
                   <Badge bg="info" className="p-2">
                     <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
-                    {selectedRows.length} seleccionados
+                    {selectedRows.length} colaboradores seleccionados
                   </Badge>
                   <Button variant="outline-secondary" size="sm" onClick={handleClearSelected} className="hover-bg-soft">
                     Limpiar selección
@@ -1065,7 +1065,7 @@ const Empleados: React.FC = () => {
           {loading && empleados.length === 0 ? (
             <div className="text-center py-5">
               <Spinner animation="border" variant="primary" />
-              <p className="mt-3 text-muted">Cargando empleados...</p>
+              <p className="mt-3 text-muted">Cargando colaboradores...</p>
             </div>
           ) : (
             <DataTable
@@ -1089,7 +1089,7 @@ const Empleados: React.FC = () => {
                     {filterText && (
                       <span>
                         <FontAwesomeIcon icon={faFilter} className="me-2" />
-                        Filtrado: {filteredEmpleados.length} resultados
+                        Filtrado: {filteredEmpleados.length} colaboradores
                       </span>
                     )}
                   </div>
@@ -1100,14 +1100,14 @@ const Empleados: React.FC = () => {
                   <div className="avatar-circle bg-soft mx-auto mb-3" style={{ width: '80px', height: '80px' }}>
                     <FontAwesomeIcon icon={faUsers} size="3x" className="text-primary" />
                   </div>
-                  <h5 className="text-primary">No hay empleados para mostrar</h5>
+                  <h5 className="text-primary">No hay colaboradores para mostrar</h5>
                   <p className="text-muted">
-                    {filterText ? 'Intenta con otros términos de búsqueda' : 'Comienza agregando un nuevo empleado'}
+                    {filterText ? 'Intenta con otros términos de búsqueda' : 'Comienza agregando un nuevo colaborador'}
                   </p>
                   {canCreate && !filterText && (
                     <Button variant="primary" onClick={() => setShowCreateModal(true)} className="mt-3 px-4 bg-gradient-primary">
                       <FontAwesomeIcon icon={faUserPlus} className="me-2" />
-                      Crear Primer Empleado
+                      Crear Primer Colaborador
                     </Button>
                   )}
                 </div>
@@ -1131,11 +1131,11 @@ const Empleados: React.FC = () => {
           <div className="d-flex justify-content-between align-items-center">
             <small className="text-muted">
               <FontAwesomeIcon icon={faUsers} className="me-1" />
-              Total: {empleados.length} empleados
+              Total: {empleados.length} colaboradores
             </small>
             <small className="text-muted">
               <FontAwesomeIcon icon={faChartLine} className="me-1" />
-              {selectedRows.length > 0 ? `${selectedRows.length} seleccionados` : 'Ninguno seleccionado'}
+              {selectedRows.length > 0 ? `${selectedRows.length} colaboradores seleccionados` : 'Ninguno seleccionado'}
             </small>
           </div>
         </Card.Footer>
@@ -1146,7 +1146,7 @@ const Empleados: React.FC = () => {
         <Modal.Header closeButton className="bg-gradient-primary text-white border-0">
           <Modal.Title>
             <FontAwesomeIcon icon={faUserPlus} className="me-2" />
-            Nuevo Empleado
+            Nuevo Colaborador
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="bg-white">
@@ -1213,7 +1213,7 @@ const Empleados: React.FC = () => {
                           value={createData.rolApp}
                           onChange={(e) => setCreateData({...createData, rolApp: e.target.value})}
                         >
-                          <option value="employee">Empleado</option>
+                          <option value="employee">Colaborador</option>
                           <option value="manager">Gerente</option>
                           <option value="admin">Administrador</option>
                         </Form.Select>
@@ -1395,7 +1395,7 @@ const Empleados: React.FC = () => {
           </Button>
           <Button variant="primary" onClick={handleCreate} disabled={loading} className="bg-gradient-primary px-4">
             {loading ? <Spinner size="sm" className="me-2" /> : <FontAwesomeIcon icon={faUserPlus} className="me-2" />}
-            Crear Empleado
+            Crear Colaborador
           </Button>
         </Modal.Footer>
       </Modal>
@@ -1405,7 +1405,7 @@ const Empleados: React.FC = () => {
         <Modal.Header closeButton className="bg-gradient-primary text-white border-0">
           <Modal.Title>
             <FontAwesomeIcon icon={faUserCircle} className="me-2" />
-            Información del Empleado
+            Información del Colaborador
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="bg-white">
@@ -1696,14 +1696,14 @@ const Empleados: React.FC = () => {
         <Modal.Header closeButton className="bg-gradient-primary text-white border-0">
           <Modal.Title>
             <FontAwesomeIcon icon={faEdit} className="me-2" />
-            Editar Empleado
+            Editar Colaborador
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="bg-white">
           {loadingDetalles ? (
             <div className="text-center py-4">
               <Spinner animation="border" variant="primary" />
-              <p className="mt-2 text-muted">Cargando información del empleado...</p>
+              <p className="mt-2 text-muted">Cargando información del colaborador...</p>
             </div>
           ) : (
             <Tabs defaultActiveKey="basic" className="mb-3 nav-pills" fill>
@@ -1767,7 +1767,7 @@ const Empleados: React.FC = () => {
                         value={editData.rolApp || selectedEmpleado?.RolApp || 'employee'}
                         onChange={(e) => setEditData({...editData, rolApp: e.target.value})}
                       >
-                        <option value="employee">Empleado</option>
+                        <option value="employee">Colaborador</option>
                         <option value="manager">Gerente</option>
                         <option value="admin">Administrador</option>
                       </Form.Select>
@@ -1958,18 +1958,18 @@ const Empleados: React.FC = () => {
         <Modal.Header closeButton className="border-bottom-0">
           <Modal.Title className="text-danger">
             <FontAwesomeIcon icon={faTrash} className="me-2" />
-            Eliminar Empleado
+            Eliminar Colaborador
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <div className="text-center mb-4">
             <FontAwesomeIcon icon={faBan} size="3x" className="text-danger mb-3" />
-            <h4 className="text-primary">¿Estás seguro de eliminar este empleado?</h4>
+            <h4 className="text-primary">¿Estás seguro de eliminar este colaborador?</h4>
             <p className="text-muted">
-              Esta acción eliminará permanentemente al empleado <strong className="text-primary">{selectedEmpleado?.NombreCompleto}</strong> del sistema.
+              Esta acción eliminará permanentemente al colaborador <strong className="text-primary">{selectedEmpleado?.NombreCompleto}</strong> del sistema.
             </p>
             <Alert variant="danger" className="mt-3">
-              <strong>⚠️ Advertencia:</strong> Esta acción no se puede deshacer. Se perderán todos los datos del empleado.
+              <strong>⚠️ Advertencia:</strong> Esta acción no se puede deshacer. Se perderán todos los datos del colaborador.
             </Alert>
           </div>
         </Modal.Body>

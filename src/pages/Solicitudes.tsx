@@ -656,7 +656,7 @@ const Solicitudes: React.FC = () => {
         setEmpleadosSelect(response.data.data.empleados || []);
       }
     } catch (error) {
-      console.error('Error cargando empleados:', error);
+      console.error('Error cargando colaboradores:', error);
     }
   };
   
@@ -1716,7 +1716,7 @@ const Solicitudes: React.FC = () => {
   // Definición de columnas para DataTable - Solicitudes Pendientes
   const columnsPendientes = [
     {
-      name: 'Empleado',
+      name: 'Colaborador',
       selector: (row: AprobacionPendiente) => row.EmpleadoNombre,
       sortable: true,
       cell: (row: AprobacionPendiente) => (
@@ -1831,7 +1831,7 @@ const Solicitudes: React.FC = () => {
   // Definición de columnas para DataTable - Solicitudes Aprobadas
   const columnsAprobadas = [
     {
-      name: 'Empleado',
+      name: 'Colaborador',
       selector: (row: Solicitud) => row.EmpleadoNombre || '',
       sortable: true,
       cell: (row: Solicitud) => (
@@ -1948,7 +1948,7 @@ const Solicitudes: React.FC = () => {
   // Definición de columnas para DataTable - Reporte Horas Extras
   const columnsHorasExtras = [
     {
-      name: 'Empleado',
+      name: 'Colaborador',
       selector: (row: ReporteHorasExtras) => row.EmpleadoNombre,
       sortable: true,
       cell: (row: ReporteHorasExtras) => (
@@ -2407,7 +2407,7 @@ const Solicitudes: React.FC = () => {
                         filterText={filterText}
                         onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterText(e.target.value)}
                         onClear={() => setFilterText('')}
-                        placeholder="Buscar por motivo, tipo, empleado..."
+                        placeholder="Buscar por motivo, tipo, colaborador..."
                       />
                     </div>
                   </Card.Body>
@@ -2517,7 +2517,7 @@ const Solicitudes: React.FC = () => {
                             onClick={() => {
                               exportToExcel(
                                 filteredSolicitudesPendientes.map(s => ({
-                                  Empleado: s.EmpleadoNombre,
+                                  Colaborador: s.EmpleadoNombre,
                                   Tipo: s.Tipo,
                                   'Fecha Solicitud': formatDateTime(s.FechaSolicitud),
                                   'Fecha Inicio': s.FechaInicio ? formatDate(s.FechaInicio) : '',
@@ -2555,7 +2555,7 @@ const Solicitudes: React.FC = () => {
                           filterText={filterTextPendientes}
                           onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterTextPendientes(e.target.value)}
                           onClear={() => setFilterTextPendientes('')}
-                          placeholder="Buscar por empleado, motivo, tipo..."
+                          placeholder="Buscar por colaborador, motivo, tipo..."
                         />
                       </div>
                     </Card.Body>
@@ -2642,7 +2642,7 @@ const Solicitudes: React.FC = () => {
                               exportToExcel(
                                 filteredSolicitudesAprobadas.map(s => ({
                                   ID: s.ID,
-                                  Empleado: s.EmpleadoNombre || '',
+                                  Colaborador: s.EmpleadoNombre || '',
                                   Tipo: s.Tipo,
                                   'Fecha Solicitud': formatDateTime(s.FechaSolicitud),
                                   'Fecha Inicio': s.FechaInicio ? formatDate(s.FechaInicio) : '',
@@ -2681,7 +2681,7 @@ const Solicitudes: React.FC = () => {
                           filterText={filterTextAprobadas}
                           onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterTextAprobadas(e.target.value)}
                           onClear={() => setFilterTextAprobadas('')}
-                          placeholder="Buscar por empleado, motivo, tipo..."
+                          placeholder="Buscar por colaborador, motivo, tipo..."
                         />
                       </div>
                     </Card.Body>
@@ -2817,7 +2817,7 @@ const Solicitudes: React.FC = () => {
                             onClick={() => {
                               exportToExcel(
                                 filteredReporteHorasExtras.map(item => ({
-                                  Empleado: item.EmpleadoNombre,
+                                  Colaborador: item.EmpleadoNombre,
                                   Fecha: formatDate(item.FechaInicio),
                                   Horas: item.HorasSolicitadas,
                                   Motivo: item.Motivo,
@@ -2854,7 +2854,7 @@ const Solicitudes: React.FC = () => {
                           filterText={filterTextHorasExtras}
                           onFilter={(e: React.ChangeEvent<HTMLInputElement>) => setFilterTextHorasExtras(e.target.value)}
                           onClear={() => setFilterTextHorasExtras('')}
-                          placeholder="Buscar por empleado, motivo, puesto..."
+                          placeholder="Buscar por colaborador, motivo, puesto..."
                         />
                       </div>
                     </Card.Body>
@@ -3187,13 +3187,13 @@ const Solicitudes: React.FC = () => {
           
           <Form>
             <Form.Group className="mb-3">
-              <Form.Label>Empleado *</Form.Label>
+              <Form.Label>Colaborador *</Form.Label>
               <Form.Select
                 value={horasExtrasData.empleadoId}
                 onChange={(e) => setHorasExtrasData({...horasExtrasData, empleadoId: e.target.value})}
                 required
               >
-                <option value="">Seleccionar empleado</option>
+                <option value="">Seleccionar colaborador</option>
                 {empleadosSelect.map((emp) => (
                   <option key={emp.ID} value={emp.ID}>
                     {emp.NombreCompleto} ({emp.RolApp})
@@ -3383,8 +3383,8 @@ const Solicitudes: React.FC = () => {
                   )}
                   <Form.Text className="text-muted">
                     {aprobacionData.estado === 'aprobada' 
-                      ? 'Puedes dejar comentarios sobre tu aprobación para el empleado.'
-                      : 'Es importante explicar el motivo del rechazo para que el empleado pueda corregir su solicitud.'}
+                      ? 'Puedes dejar comentarios sobre tu aprobación para el colaborador.'
+                      : 'Es importante explicar el motivo del rechazo para que el colaborador pueda corregir su solicitud.'}
                   </Form.Text>
                 </Form.Group>
               </Form>

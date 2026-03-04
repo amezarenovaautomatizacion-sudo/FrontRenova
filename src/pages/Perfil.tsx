@@ -258,7 +258,7 @@ const Perfil: React.FC = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Cache para almacenar el último estado válido del empleado
+  // Cache para almacenar el último estado válido del colaborador
   const [empleadoCache, setEmpleadoCache] = useState<Empleado | null>(null);
 
   const cargarPerfilDesdeLocalStorage = () => {
@@ -418,7 +418,23 @@ const Perfil: React.FC = () => {
       manager: 'warning',
       employee: 'info'
     };
+    
+    const textoRol = {
+      admin: 'ADMINISTRADOR',
+      manager: 'GERENTE',
+      employee: 'COLABORADOR'
+    };
+    
     return colors[rol] || 'secondary';
+  };
+
+  const getRolTexto = (rol: string) => {
+    const textos: Record<string, string> = {
+      admin: 'ADMINISTRADOR',
+      manager: 'GERENTE',
+      employee: 'COLABORADOR'
+    };
+    return textos[rol] || rol.toUpperCase();
   };
 
   const handleRefreshProfile = async () => {
@@ -443,7 +459,7 @@ const Perfil: React.FC = () => {
     }
   };
 
-  // Si no hay empleado y está cargando
+  // Si no hay colaborador y está cargando
   if (!empleado && loading) {
     return (
       <Container className="py-5">
@@ -455,7 +471,7 @@ const Perfil: React.FC = () => {
     );
   }
 
-  // Si no hay empleado después de cargar
+  // Si no hay colaborador después de cargar
   if (!empleado) {
     return (
       <Container className="py-5">
@@ -538,7 +554,7 @@ const Perfil: React.FC = () => {
                       className="position-absolute top-0 end-0 translate-middle rounded-pill"
                       style={{ fontSize: '0.75rem' }}
                     >
-                      {empleado.RolApp.toUpperCase()}
+                      {getRolTexto(empleado.RolApp)}
                     </Badge>
                   )}
                 </div>
@@ -755,7 +771,7 @@ const Perfil: React.FC = () => {
                             <ListGroup.Item className="d-flex justify-content-between align-items-center">
                               <span>Rol en Sistema</span>
                               <Badge bg={getRolBadge(empleado.RolApp)}>
-                                {empleado.RolApp.toUpperCase()}
+                                {getRolTexto(empleado.RolApp)}
                               </Badge>
                             </ListGroup.Item>
                             <ListGroup.Item className="d-flex justify-content-between align-items-center">
@@ -804,7 +820,7 @@ const Perfil: React.FC = () => {
                                       <div>
                                         <div className="fw-medium">{jefe.NombreCompleto}</div>
                                         <small className="text-muted">
-                                          {jefe.RolApp} • Desde {new Date(jefe.FechaAsignacion).toLocaleDateString('es-ES')}
+                                          {getRolTexto(jefe.RolApp)} • Desde {new Date(jefe.FechaAsignacion).toLocaleDateString('es-ES')}
                                         </small>
                                       </div>
                                     </div>
@@ -831,7 +847,7 @@ const Perfil: React.FC = () => {
                         <small className="text-muted">
                           <div className="mb-1">Última actualización: {new Date().toLocaleDateString('es-ES')}</div>
                           <div>Usuario del sistema: {empleado.Usuario?.Usuario || user?.usuario}</div>
-                          <div>ID de empleado: {empleado.ID}</div>
+                          <div>ID de colaborador: {empleado.ID}</div>
                           <div>ID de usuario: {empleado.Usuario?.ID || user?.id}</div>
                         </small>
                       </Card.Body>
