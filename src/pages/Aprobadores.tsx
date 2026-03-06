@@ -40,8 +40,8 @@ import {
   faUserCircle
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../services/api';
+import { formatDateDisplay } from '../utils/dateUtils';
 
-// Interfaces
 interface EmpleadoSelect {
   ID: number;
   NombreCompleto: string;
@@ -70,7 +70,6 @@ interface VerificationResult {
 const Aprobadores: React.FC = () => {
   const { user } = useAuth();
   
-  // Solo admin puede acceder
   const isAdmin = user?.rol === 'admin';
   
   const [aprobadores, setAprobadores] = useState<Aprobador[]>([]);
@@ -80,17 +79,14 @@ const Aprobadores: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   
-  // Modales
   const [showAddModal, setShowAddModal] = useState(false);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   
-  // Estados para formularios
   const [selectedUsuario, setSelectedUsuario] = useState<number | null>(null);
   const [usuarioToRemove, setUsuarioToRemove] = useState<Aprobador | null>(null);
   const [usuarioToVerify, setUsuarioToVerify] = useState<Aprobador | null>(null);
   
-  // Estados para búsqueda y filtros
   const [searchTerm, setSearchTerm] = useState('');
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [verificationLoading, setVerificationLoading] = useState(false);
@@ -112,10 +108,7 @@ const Aprobadores: React.FC = () => {
       
       const response = await api.get('/aprobadores/activos');
       
-      console.log('Respuesta de aprobadores:', response.data);
-      
       if (response.data.success) {
-        // Asegurarnos de que los datos tengan el formato correcto
         const aprobadoresData = response.data.data || [];
         const formattedAprobadores = aprobadoresData.map((ap: any) => ({
           id: ap.id || ap.ID || 0,
@@ -151,10 +144,8 @@ const Aprobadores: React.FC = () => {
     try {
       setLoadingUsuarios(true);
       
-      // Obtener catálogo de colaboradores
       const catalogosResponse = await api.get('/empleados/catalogos');
       if (catalogosResponse.data.success) {
-        // Filtrar solo usuarios que pueden ser aprobadores (manager y admin)
         const empleadosData = catalogosResponse.data.data.empleados || [];
         const usuariosFiltrados = empleadosData
           .filter((emp: EmpleadoSelect) => 
@@ -243,8 +234,6 @@ const Aprobadores: React.FC = () => {
       
       const response = await api.get(`/aprobadores/verificar/${idToVerify}`);
       
-      console.log('Respuesta de verificación:', response.data);
-      
       if (response.data.success) {
         setVerificationResult(response.data.data);
         if (!usuarioToVerify) {
@@ -323,7 +312,6 @@ const Aprobadores: React.FC = () => {
     !aprobadores.some(aprobador => aprobador.usuarioId === usuario.ID)
   );
 
-  // Si no es admin, mostrar mensaje de acceso restringido
   if (!isAdmin) {
     return (
       <Container fluid className="py-4">
@@ -353,7 +341,6 @@ const Aprobadores: React.FC = () => {
 
   return (
     <Container fluid className="py-4">
-      {/* Header */}
       <Row className="mb-4">
         <Col>
           <div className="d-flex justify-content-between align-items-center">
@@ -378,7 +365,6 @@ const Aprobadores: React.FC = () => {
         </Col>
       </Row>
 
-      {/* Alertas */}
       {error && (
         <Alert variant="danger" dismissible onClose={() => setError('')}>
           <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
@@ -393,7 +379,6 @@ const Aprobadores: React.FC = () => {
         </Alert>
       )}
 
-      {/* Estadísticas */}
       <Row className="mb-4">
         <Col md={3}>
           <Card className="text-center shadow-sm border-danger">
@@ -433,7 +418,6 @@ const Aprobadores: React.FC = () => {
         </Col>
       </Row>
 
-      {/* Búsqueda */}
       <Card className="mb-4 shadow-sm">
         <Card.Body>
           <Row>
@@ -464,7 +448,6 @@ const Aprobadores: React.FC = () => {
         </Card.Body>
       </Card>
 
-      {/* Tabla de Aprobadores */}
       <Card className="shadow-sm">
         <Card.Body className="p-0">
           {loading ? (
@@ -539,7 +522,7 @@ const Aprobadores: React.FC = () => {
                           <div className="d-flex align-items-center">
                             <FontAwesomeIcon icon={faCalendar} className="text-muted me-2" />
                             <div>
-                              <div>{new Date(aprobador.fechaCreacion).toLocaleDateString()}</div>
+                              <div>{formatDateDisplay(aprobador.fechaCreacion)}</div>
                             </div>
                           </div>
                         </td>
@@ -587,7 +570,6 @@ const Aprobadores: React.FC = () => {
         </Card.Footer>
       </Card>
 
-      {/* Información Importante */}
       <Alert variant="info" className="mt-4">
         <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
         <strong>Información Importante sobre Aprobadores:</strong>
@@ -599,7 +581,6 @@ const Aprobadores: React.FC = () => {
         </ul>
       </Alert>
 
-      {/* Modal para Agregar Aprobador */}
       <Modal show={showAddModal} onHide={() => setShowAddModal(false)} size="lg">
         <Modal.Header closeButton className="bg-danger text-white">
           <Modal.Title>
@@ -704,7 +685,6 @@ const Aprobadores: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal para Remover Aprobador */}
       <Modal show={showRemoveModal} onHide={() => setShowRemoveModal(false)} centered>
         <Modal.Header closeButton className="bg-warning">
           <Modal.Title>
@@ -734,7 +714,7 @@ const Aprobadores: React.FC = () => {
                 </ListGroup.Item>
                 <ListGroup.Item className="d-flex justify-content-between align-items-center">
                   <span><strong>Registrado desde:</strong></span>
-                  <span>{new Date(usuarioToRemove.fechaCreacion).toLocaleDateString()}</span>
+                  <span>{formatDateDisplay(usuarioToRemove.fechaCreacion)}</span>
                 </ListGroup.Item>
               </ListGroup>
               
@@ -757,7 +737,6 @@ const Aprobadores: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal para Verificar Aprobador */}
       <Modal show={showVerifyModal} onHide={() => setShowVerifyModal(false)} centered>
         <Modal.Header closeButton className="bg-info text-white">
           <Modal.Title>

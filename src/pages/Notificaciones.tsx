@@ -54,6 +54,7 @@ import api from '../services/api';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { formatDateTimeDisplay, formatDateDisplay } from '../utils/dateUtils';
 
 interface Notificacion {
   ID: number;
@@ -142,7 +143,6 @@ interface PaginationInfo {
   totalPages: number;
 }
 
-// Estilos personalizados para DataTable
 const customStyles = {
   headRow: {
     style: {
@@ -200,7 +200,6 @@ const customStyles = {
   },
 };
 
-// Componente para los filtros personalizados
 const FilterComponent = ({ filterText, onFilter, onClear, placeholder }: any) => (
   <div className="d-flex align-items-center">
     <InputGroup style={{ minWidth: '300px' }}>
@@ -266,7 +265,6 @@ const Notificaciones: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState('todas');
   const [activeVistasTab, setActiveVistasTab] = useState('generales');
   
-  // Estados para DataTable
   const [filterText, setFilterText] = useState('');
   const [filterTextGenerales, setFilterTextGenerales] = useState('');
   const [filterTextVistas, setFilterTextVistas] = useState('');
@@ -339,7 +337,12 @@ const Notificaciones: React.FC = () => {
     try {
       const response = await api.get('/notificaciones/resumen');
       if (response.data.success) {
-        setResumen(response.data.data);
+        const data = response.data.data;
+        const resumenFormateado = {
+          ...data,
+          ultima_notificacion: data.ultima_notificacion ? formatDateTimeDisplay(data.ultima_notificacion) : ''
+        };
+        setResumen(resumenFormateado);
       }
     } catch (error) {
       console.error('Error cargando resumen:', error);
@@ -501,7 +504,6 @@ const Notificaciones: React.FC = () => {
     }
   }, [paginationVistas.page, filtrosVistas.fechaInicio, filtrosVistas.fechaFin, filtrosVistas.usuario, activeVistasTab]);
 
-  // Filtrado en tiempo real para notificaciones personales
   useEffect(() => {
     if (!filterText) {
       setFilteredNotificaciones(notificaciones);
@@ -520,7 +522,6 @@ const Notificaciones: React.FC = () => {
     }
   }, [filterText, notificaciones]);
 
-  // Filtrado en tiempo real para notificaciones generales
   useEffect(() => {
     if (!filterTextGenerales) {
       setFilteredNotificacionesGenerales(notificacionesGenerales);
@@ -537,7 +538,6 @@ const Notificaciones: React.FC = () => {
     }
   }, [filterTextGenerales, notificacionesGenerales]);
 
-  // Filtrado en tiempo real para vistas
   useEffect(() => {
     if (!filterTextVistas) {
       setFilteredVistasNotificaciones(vistasNotificaciones);
@@ -607,7 +607,6 @@ const Notificaciones: React.FC = () => {
 
   useEffect(() => {
     const refrescarNotificaciones = () => {
-      console.log('🔄 Refrescando notificaciones por evento WebSocket');
       if (activeTab === 'personales') {
         cargarNotificaciones();
       } else if (activeTab === 'generales') {
@@ -781,44 +780,6 @@ const Notificaciones: React.FC = () => {
     }
   };
 
-  const formatFechaHora = (fecha: string) => {
-    if (!fecha) return 'N/A';
-    try {
-      const date = new Date(fecha);
-      if (isNaN(date.getTime())) return 'Fecha inválida';
-      return date.toLocaleDateString('es-MX', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch {
-      return 'Fecha inválida';
-    }
-  };
-
-  const formatFechaRelativa = (fecha: string) => {
-    if (!fecha) return '';
-    try {
-      const date = new Date(fecha);
-      const ahora = new Date();
-      const diffMs = ahora.getTime() - date.getTime();
-      const diffMin = Math.floor(diffMs / 60000);
-      const diffHoras = Math.floor(diffMs / 3600000);
-      const diffDias = Math.floor(diffMs / 86400000);
-      
-      if (diffMin < 1) return 'Ahora mismo';
-      if (diffMin < 60) return `Hace ${diffMin} minutos`;
-      if (diffHoras < 24) return `Hace ${diffHoras} horas`;
-      if (diffDias === 1) return 'Ayer';
-      if (diffDias < 7) return `Hace ${diffDias} días`;
-      return formatFechaHora(fecha);
-    } catch {
-      return formatFechaHora(fecha);
-    }
-  };
-
   const getIconoNotificacion = (tipo: string, prioridad: string, isGeneral: boolean = false) => {
     if (isGeneral) return faGlobe;
     
@@ -887,7 +848,6 @@ const Notificaciones: React.FC = () => {
     return 'YaVista' in notificacion;
   };
 
-  // Definición de columnas para DataTable - Notificaciones Personales
   const columnsPersonales = [
     {
       name: 'Estado',
@@ -950,8 +910,7 @@ const Notificaciones: React.FC = () => {
       sortable: true,
       cell: (row: Notificacion) => (
         <div>
-          <div>{formatFechaHora(row.createdAt)}</div>
-          <small className="text-muted">{formatFechaRelativa(row.createdAt)}</small>
+          <div>{formatDateTimeDisplay(row.createdAt)}</div>
         </div>
       ),
     },
@@ -1004,7 +963,6 @@ const Notificaciones: React.FC = () => {
     },
   ];
 
-  // Definición de columnas para DataTable - Notificaciones Generales
   const columnsGenerales = [
     {
       name: 'Estado',
@@ -1072,8 +1030,7 @@ const Notificaciones: React.FC = () => {
       sortable: true,
       cell: (row: NotificacionGeneral) => (
         <div>
-          <div>{formatFechaHora(row.createdAt)}</div>
-          <small className="text-muted">{formatFechaRelativa(row.createdAt)}</small>
+          <div>{formatDateTimeDisplay(row.createdAt)}</div>
         </div>
       ),
     },
@@ -1125,7 +1082,6 @@ const Notificaciones: React.FC = () => {
     },
   ];
 
-  // Definición de columnas para DataTable - Vistas
   const columnsVistas = [
     {
       name: 'Usuario',
@@ -1157,8 +1113,7 @@ const Notificaciones: React.FC = () => {
       sortable: true,
       cell: (row: VistaNotificacion) => (
         <div>
-          <div>{formatFechaHora(row.FechaVista)}</div>
-          <small className="text-muted">{formatFechaRelativa(row.FechaVista)}</small>
+          <div>{formatDateTimeDisplay(row.FechaVista)}</div>
         </div>
       ),
     },
@@ -1927,7 +1882,6 @@ const Notificaciones: React.FC = () => {
         </Card.Body>
       </Card>
 
-      {/* Modal de Detalle */}
       <Modal show={showDetalleModal} onHide={() => setShowDetalleModal(false)} size="lg" centered>
         <Modal.Header closeButton className="bg-light">
           <Modal.Title>
@@ -2001,7 +1955,7 @@ const Notificaciones: React.FC = () => {
                 <Col md={6}>
                   <div className="mb-3">
                     <small className="text-muted d-block">Fecha de recepción</small>
-                    <strong>{formatFechaHora(selectedNotificacion.createdAt)}</strong>
+                    <strong>{formatDateTimeDisplay(selectedNotificacion.createdAt)}</strong>
                   </div>
                 </Col>
                 <Col md={6}>
@@ -2046,7 +2000,6 @@ const Notificaciones: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Detalle de Vista */}
       <Modal show={showDetalleVistaModal} onHide={() => setShowDetalleVistaModal(false)} centered>
         <Modal.Header closeButton className="bg-light">
           <Modal.Title>
@@ -2085,9 +2038,8 @@ const Notificaciones: React.FC = () => {
               
               <div className="mb-3">
                 <small className="text-muted d-block">Fecha y Hora de Vista</small>
-                <strong>{formatFechaHora(selectedVista.FechaVista)}</strong>
+                <strong>{formatDateTimeDisplay(selectedVista.FechaVista)}</strong>
                 <br />
-                <small className="text-muted">{formatFechaRelativa(selectedVista.FechaVista)}</small>
               </div>
             </>
           )}
@@ -2099,7 +2051,6 @@ const Notificaciones: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Crear Notificación General */}
       <Modal show={showCrearGeneralModal} onHide={() => setShowCrearGeneralModal(false)} size="lg" centered>
         <Modal.Header closeButton className="bg-success text-white">
           <Modal.Title>
@@ -2205,7 +2156,6 @@ const Notificaciones: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Eliminar */}
       <Modal show={showEliminarModal} onHide={() => setShowEliminarModal(false)} centered>
         <Modal.Header closeButton className="border-bottom-0">
           <Modal.Title className="text-danger">

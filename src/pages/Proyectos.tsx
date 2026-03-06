@@ -74,6 +74,7 @@ import {
   faRedoAlt
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../services/api';
+import { formatDateDisplay, formatDateTimeDisplay, formatDateForInput } from '../utils/dateUtils';
 
 interface Proyecto {
   ID: number;
@@ -351,6 +352,65 @@ const Proyectos: React.FC = () => {
     if (!selectedProyecto || !miEmpleadoId) return false;
     return selectedProyecto.JefeProyectoID === miEmpleadoId;
   }, [selectedProyecto, miEmpleadoId]);
+  
+  // ==================== FUNCIONES DE PERMISOS ====================
+  
+  const puedeEditarTarea = useCallback((tarea: Tarea): boolean => {
+    // Admin siempre puede editar
+    if (isAdmin) return true;
+    
+    // Jefe del proyecto puede editar cualquier tarea
+    if (soyJefeDelProyecto()) return true;
+    
+    // Usuario asignado a la tarea puede editar
+    if (miEmpleadoId && tarea.EmpleadoAsignadoID === miEmpleadoId) return true;
+    
+    // Tarea sin asignar puede ser editada por cualquiera con acceso al proyecto
+    if (!tarea.EmpleadoAsignadoID) return true;
+    
+    return false;
+  }, [isAdmin, soyJefeDelProyecto, miEmpleadoId]);
+
+  const puedeCambiarEstadoTarea = useCallback((tarea: Tarea): boolean => {
+    // Admin siempre puede cambiar estado
+    if (isAdmin) return true;
+    
+    // Jefe del proyecto puede cambiar estado de cualquier tarea
+    if (soyJefeDelProyecto()) return true;
+    
+    // Usuario asignado a la tarea puede cambiar su estado
+    if (miEmpleadoId && tarea.EmpleadoAsignadoID === miEmpleadoId) return true;
+    
+    // Tarea sin asignar puede ser cambiada por cualquiera con acceso al proyecto
+    if (!tarea.EmpleadoAsignadoID) return true;
+    
+    return false;
+  }, [isAdmin, soyJefeDelProyecto, miEmpleadoId]);
+
+const puedeReasignarTarea = useCallback((tarea?: Tarea): boolean => {
+  // Admin siempre puede reasignar
+  if (isAdmin) return true;
+  
+  // Jefe del proyecto puede reasignar cualquier tarea
+  if (soyJefeDelProyecto()) return true;
+  
+  // Empleado asignado a la tarea puede reasignarla a otro
+  if (tarea && miEmpleadoId && tarea.EmpleadoAsignadoID === miEmpleadoId) return true;
+  
+  return false;
+}, [isAdmin, soyJefeDelProyecto, miEmpleadoId]);
+
+  const puedeEliminarTarea = useCallback((): boolean => {
+    // Solo admin o jefe del proyecto pueden eliminar tareas
+    return isAdmin || soyJefeDelProyecto();
+  }, [isAdmin, soyJefeDelProyecto]);
+  
+  const puedeAsignarEmpleado = useCallback((): boolean => {
+    // Solo admin o jefe del proyecto pueden asignar empleados al proyecto
+    return isAdmin || soyJefeDelProyecto();
+  }, [isAdmin, soyJefeDelProyecto]);
+  
+  // ==================== FUNCIONES DE CARGA ====================
   
   const refreshSection = async (section: string, projectId?: number) => {
     setRefreshing(prev => ({ ...prev, [section]: true }));
@@ -644,6 +704,8 @@ const Proyectos: React.FC = () => {
     }
   }, [showAsignarEmpleadoModal, selectedProyecto, modoSeleccion]);
   
+  // ==================== FUNCIONES DE ACCIÓN ====================
+  
   const handleCreateProyecto = async () => {
     try {
       setError('');
@@ -751,6 +813,11 @@ const Proyectos: React.FC = () => {
   const handleAsignarEmpleado = async (empleadoId: number) => {
     if (!selectedProyecto) return;
     
+    if (!puedeAsignarEmpleado()) {
+      setError('No tienes permisos para asignar empleados');
+      return;
+    }
+    
     try {
       setLoading(true);
       
@@ -779,6 +846,11 @@ const Proyectos: React.FC = () => {
   const handleQuitarEmpleado = async () => {
     if (!selectedProyecto || !selectedEmpleado) return;
     
+    if (!puedeAsignarEmpleado()) {
+      setError('No tienes permisos para quitar empleados');
+      return;
+    }
+    
     try {
       setLoading(true);
       
@@ -804,6 +876,11 @@ const Proyectos: React.FC = () => {
   
   const handleCrearTarea = async () => {
     if (!selectedProyecto) return;
+    
+    if (!puedeAsignarEmpleado()) {
+      setError('No tienes permisos para crear tareas');
+      return;
+    }
     
     try {
       setError('');
@@ -842,6 +919,11 @@ const Proyectos: React.FC = () => {
 
   const handleActualizarTarea = async () => {
     if (!selectedProyecto || !selectedTarea) return;
+    
+    if (!puedeEditarTarea(selectedTarea)) {
+      setError('No tienes permiso para editar esta tarea');
+      return;
+    }
     
     try {
       setError('');
@@ -892,13 +974,7 @@ const Proyectos: React.FC = () => {
       return;
     }
     
-    const esJefeProyecto = selectedProyecto.JefeProyectoID === miEmpleadoId;
-    const esAsignado = tarea.EmpleadoAsignadoID === miEmpleadoId;
-    const tareaSinAsignar = !tarea.EmpleadoAsignadoID || tarea.estadoAsignacion === 'sin_asignar';
-    
-    const puedeCambiarEstado = isAdmin || esJefeProyecto || esAsignado || tareaSinAsignar;
-
-    if (!puedeCambiarEstado) {
+    if (!puedeCambiarEstadoTarea(tarea)) {
       setError('No tienes permisos para cambiar el estado de esta tarea');
       return;
     }
@@ -930,15 +1006,7 @@ const Proyectos: React.FC = () => {
   const handleReasignarTarea = async () => {
     if (!selectedProyecto || !selectedTarea) return;
     
-    const empleadoId = await obtenerEmpleadoId();
-    if (!empleadoId) {
-      setError('No se pudo verificar tu identidad');
-      return;
-    }
-    
-    const esJefeProyecto = selectedProyecto.JefeProyectoID === empleadoId;
-    
-    if (!isAdmin && !esJefeProyecto) {
+    if (!puedeReasignarTarea()) {
       setError('Solo el administrador o el jefe del proyecto pueden reasignar tareas');
       return;
     }
@@ -974,15 +1042,7 @@ const Proyectos: React.FC = () => {
   const handleEliminarTarea = async (tareaId: number) => {
     if (!selectedProyecto) return;
     
-    const empleadoId = await obtenerEmpleadoId();
-    if (!empleadoId) {
-      setError('No se pudo verificar tu identidad');
-      return;
-    }
-    
-    const esJefeProyecto = selectedProyecto.JefeProyectoID === empleadoId;
-    
-    if (!isAdmin && !esJefeProyecto) {
+    if (!puedeEliminarTarea()) {
       setError('Solo el administrador o el jefe del proyecto pueden eliminar tareas');
       return;
     }
@@ -1102,8 +1162,8 @@ const Proyectos: React.FC = () => {
     setEditData({
       nombre: proyecto.Nombre,
       descripcion: proyecto.Descripcion || '',
-      fechaInicio: proyecto.FechaInicio ? new Date(proyecto.FechaInicio).toISOString().split('T')[0] : '',
-      fechaFin: proyecto.FechaFin ? new Date(proyecto.FechaFin).toISOString().split('T')[0] : '',
+      fechaInicio: formatDateForInput(proyecto.FechaInicio),
+      fechaFin: formatDateForInput(proyecto.FechaFin),
       presupuesto: proyecto.Presupuesto,
       montoAsignado: proyecto.MontoAsignado,
       estado: proyecto.Estado
@@ -1132,6 +1192,10 @@ const Proyectos: React.FC = () => {
   };
 
   const openAsignarEmpleadoModal = (modo: 'supervisados' | 'todos' = 'todos') => {
+    if (!puedeAsignarEmpleado()) {
+      setError('No tienes permisos para asignar empleados');
+      return;
+    }
     resetFiltrosAsignar();
     setModoSeleccion(modo);
     loadEmpleadosParaAsignar({}, modo);
@@ -1139,6 +1203,10 @@ const Proyectos: React.FC = () => {
   };
 
   const openQuitarEmpleadoModal = (empleado: EmpleadoProyecto) => {
+    if (!puedeAsignarEmpleado()) {
+      setError('No tienes permisos para quitar empleados');
+      return;
+    }
     setSelectedEmpleado(empleado);
     setShowQuitarEmpleadoModal(true);
   };
@@ -1164,6 +1232,10 @@ const Proyectos: React.FC = () => {
   };
 
   const openCrearTareaModal = () => {
+    if (!puedeAsignarEmpleado()) {
+      setError('No tienes permisos para crear tareas');
+      return;
+    }
     setIsEditingTarea(false);
     setSelectedTarea(null);
     resetTareaForm();
@@ -1171,12 +1243,17 @@ const Proyectos: React.FC = () => {
   };
 
   const openEditarTareaModal = (tarea: Tarea) => {
+    if (!puedeEditarTarea(tarea)) {
+      setError('No tienes permiso para editar esta tarea');
+      return;
+    }
+    
     setIsEditingTarea(true);
     setSelectedTarea(tarea);
     setTareaData({
       titulo: tarea.Titulo,
       descripcion: tarea.Descripcion || '',
-      fechaVencimiento: tarea.FechaVencimiento || '',
+      fechaVencimiento: formatDateForInput(tarea.FechaVencimiento),
       prioridad: tarea.Prioridad as 'baja' | 'media' | 'alta' | 'urgente',
       estado: tarea.Estado,
       empleadoId: tarea.EmpleadoAsignadoID || null
@@ -1184,13 +1261,18 @@ const Proyectos: React.FC = () => {
     setShowTareaModal(true);
   };
 
-  const openReasignarTareaModal = (tarea: Tarea) => {
-    setSelectedTarea(tarea);
-    setReasignarData({
-      empleadoId: tarea.EmpleadoAsignadoID || null
-    });
-    setShowReasignarTareaModal(true);
-  };
+const openReasignarTareaModal = (tarea: Tarea) => {
+  if (!puedeReasignarTarea(tarea)) {
+    setError('No tienes permisos para reasignar esta tarea');
+    return;
+  }
+  
+  setSelectedTarea(tarea);
+  setReasignarData({
+    empleadoId: tarea.EmpleadoAsignadoID || null
+  });
+  setShowReasignarTareaModal(true);
+};
 
   const openNotaModal = async (tarea: Tarea) => {
     setSelectedTarea(tarea);
@@ -1205,6 +1287,8 @@ const Proyectos: React.FC = () => {
     if (!selectedProyecto) return;
     await loadTareas(selectedProyecto.ID, filtrosTareas);
   };
+  
+  // ==================== FUNCIONES DE UTILIDAD ====================
   
   const getPrioridadBadge = (prioridad: string) => {
     const config: Record<string, { bg: string; icon: any; label: string }> = {
@@ -1269,6 +1353,8 @@ const Proyectos: React.FC = () => {
     return faClock;
   };
   
+  // ==================== COMPONENTES INTERNOS ====================
+  
   const KanbanBoard: React.FC<{ tareas: Tarea[] }> = ({ tareas }) => {
     const [draggedTask, setDraggedTask] = useState<Tarea | null>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -1284,11 +1370,7 @@ const Proyectos: React.FC = () => {
     };
 
     const handleDragStart = (e: React.DragEvent, tarea: Tarea) => {
-      const esJefe = soyJefeDelProyecto();
-      const esAsignado = soyAsignadoATarea(tarea);
-      const tareaSinAsignar = !tarea.EmpleadoAsignadoID;
-      
-      const puedeArrastrar = isAdmin || esJefe || esAsignado || tareaSinAsignar;
+      const puedeArrastrar = puedeCambiarEstadoTarea(tarea);
       
       if (!puedeArrastrar) {
         e.preventDefault();
@@ -1374,7 +1456,7 @@ const Proyectos: React.FC = () => {
                     const esJefe = soyJefeDelProyecto();
                     const esAsignado = soyAsignadoATarea(tarea);
                     const tareaSinAsignar = !tarea.EmpleadoAsignadoID;
-                    const puedeArrastrar = isAdmin || esJefe || esAsignado || tareaSinAsignar;
+                    const puedeArrastrar = puedeCambiarEstadoTarea(tarea);
                     
                     const estadosMap = {
                       pendiente: { icon: faClock, color: 'secondary', label: 'Pendiente' },
@@ -1438,7 +1520,7 @@ const Proyectos: React.FC = () => {
                               <Dropdown.Menu>
                                 <Dropdown.Item 
                                   onClick={() => handleCambiarEstadoTarea(tarea.ID, 'pendiente')}
-                                  disabled={tarea.Estado === 'pendiente'}
+                                  disabled={tarea.Estado === 'pendiente' || !puedeCambiarEstadoTarea(tarea)}
                                   className={tarea.Estado === 'pendiente' ? 'bg-light' : ''}
                                 >
                                   <FontAwesomeIcon icon={faClock} className="me-2 text-secondary" />
@@ -1447,7 +1529,7 @@ const Proyectos: React.FC = () => {
                                 </Dropdown.Item>
                                 <Dropdown.Item 
                                   onClick={() => handleCambiarEstadoTarea(tarea.ID, 'en_proceso')}
-                                  disabled={tarea.Estado === 'en_proceso'}
+                                  disabled={tarea.Estado === 'en_proceso' || !puedeCambiarEstadoTarea(tarea)}
                                   className={tarea.Estado === 'en_proceso' ? 'bg-light' : ''}
                                 >
                                   <FontAwesomeIcon icon={faPlayCircle} className="me-2 text-primary" />
@@ -1456,7 +1538,7 @@ const Proyectos: React.FC = () => {
                                 </Dropdown.Item>
                                 <Dropdown.Item 
                                   onClick={() => handleCambiarEstadoTarea(tarea.ID, 'realizada')}
-                                  disabled={tarea.Estado === 'realizada'}
+                                  disabled={tarea.Estado === 'realizada' || !puedeCambiarEstadoTarea(tarea)}
                                   className={tarea.Estado === 'realizada' ? 'bg-light' : ''}
                                 >
                                   <FontAwesomeIcon icon={faCheckCircle} className="me-2 text-success" />
@@ -1479,7 +1561,7 @@ const Proyectos: React.FC = () => {
                             {tarea.FechaVencimiento && (
                               <OverlayTrigger
                                 placement="top"
-                                overlay={<Tooltip>Fecha límite: {new Date(tarea.FechaVencimiento).toLocaleDateString()}</Tooltip>}
+                                overlay={<Tooltip>Fecha límite: {formatDateDisplay(tarea.FechaVencimiento)}</Tooltip>}
                               >
                                 <Badge 
                                   bg={new Date(tarea.FechaVencimiento) < new Date() && tarea.Estado !== 'realizada' ? 'danger' : 'light'} 
@@ -1487,7 +1569,7 @@ const Proyectos: React.FC = () => {
                                   className="d-flex align-items-center"
                                 >
                                   <FontAwesomeIcon icon={faCalendar} className="me-1" size="sm" />
-                                  <small>{new Date(tarea.FechaVencimiento).toLocaleDateString()}</small>
+                                  <small>{formatDateDisplay(tarea.FechaVencimiento)}</small>
                                 </Badge>
                               </OverlayTrigger>
                             )}
@@ -1532,7 +1614,7 @@ const Proyectos: React.FC = () => {
                           </div>
                           
                           <div className="d-flex justify-content-end mt-2 pt-2 border-top">
-                            {(isAdmin || esJefe) && (
+                            {puedeReasignarTarea(tarea) && (
                               <Button
                                 variant="link"
                                 size="sm"
@@ -1559,14 +1641,14 @@ const Proyectos: React.FC = () => {
                                 <FontAwesomeIcon icon={faChevronDown} />
                               </Dropdown.Toggle>
                               <Dropdown.Menu>
-                                {(isAdmin || esJefe || esAsignado || tareaSinAsignar) && (
+                                {puedeEditarTarea(tarea) && (
                                   <Dropdown.Item onClick={() => openEditarTareaModal(tarea)}>
                                     <FontAwesomeIcon icon={faEdit} className="me-2 text-warning" />
                                     Editar
                                   </Dropdown.Item>
                                 )}
                                 
-                                {(isAdmin || esJefe) && (
+                                {puedeEliminarTarea() && (
                                   <Dropdown.Item 
                                     onClick={() => handleEliminarTarea(tarea.ID)}
                                     className="text-danger"
@@ -1683,7 +1765,7 @@ const Proyectos: React.FC = () => {
                           <Dropdown.Menu>
                             <Dropdown.Item 
                               onClick={() => handleCambiarEstadoTarea(tarea.ID, 'pendiente')}
-                              disabled={tarea.Estado === 'pendiente'}
+                              disabled={tarea.Estado === 'pendiente' || !puedeCambiarEstadoTarea(tarea)}
                               className={tarea.Estado === 'pendiente' ? 'bg-light' : ''}
                             >
                               <FontAwesomeIcon icon={faClock} className="me-2 text-secondary" />
@@ -1692,7 +1774,7 @@ const Proyectos: React.FC = () => {
                             </Dropdown.Item>
                             <Dropdown.Item 
                               onClick={() => handleCambiarEstadoTarea(tarea.ID, 'en_proceso')}
-                              disabled={tarea.Estado === 'en_proceso'}
+                              disabled={tarea.Estado === 'en_proceso' || !puedeCambiarEstadoTarea(tarea)}
                               className={tarea.Estado === 'en_proceso' ? 'bg-light' : ''}
                             >
                               <FontAwesomeIcon icon={faPlayCircle} className="me-2 text-primary" />
@@ -1701,7 +1783,7 @@ const Proyectos: React.FC = () => {
                             </Dropdown.Item>
                             <Dropdown.Item 
                               onClick={() => handleCambiarEstadoTarea(tarea.ID, 'realizada')}
-                              disabled={tarea.Estado === 'realizada'}
+                              disabled={tarea.Estado === 'realizada' || !puedeCambiarEstadoTarea(tarea)}
                               className={tarea.Estado === 'realizada' ? 'bg-light' : ''}
                             >
                               <FontAwesomeIcon icon={faCheckCircle} className="me-2 text-success" />
@@ -1720,7 +1802,7 @@ const Proyectos: React.FC = () => {
                         {tarea.FechaVencimiento && (
                           <small className="text-muted">
                             <FontAwesomeIcon icon={faCalendar} className="me-1" />
-                            Vence: {new Date(tarea.FechaVencimiento).toLocaleDateString()}
+                            Vence: {formatDateDisplay(tarea.FechaVencimiento)}
                             {new Date(tarea.FechaVencimiento) < new Date() && tarea.Estado !== 'realizada' && (
                               <Badge bg="danger" className="ms-2">ATRASADA</Badge>
                             )}
@@ -1753,7 +1835,7 @@ const Proyectos: React.FC = () => {
                       </Dropdown.Toggle>
                       <Dropdown.Menu>
                         <div className="d-none d-md-block">
-                          {(isAdmin || esJefe || esAsignado || tareaSinAsignar) && (
+                          {puedeCambiarEstadoTarea(tarea) && (
                             <>
                               <Dropdown.Item 
                                 onClick={() => handleCambiarEstadoTarea(tarea.ID, 'pendiente')}
@@ -1788,24 +1870,21 @@ const Proyectos: React.FC = () => {
                           <FontAwesomeIcon icon={faComment} className="me-2 text-info" />
                           Ver/Agregar Notas
                         </Dropdown.Item>
-                        
-                        {(isAdmin || esJefe) && (
-                          <>
-                            <Dropdown.Item onClick={() => openReasignarTareaModal(tarea)}>
-                              <FontAwesomeIcon icon={faUserFriends} className="me-2 text-primary" />
-                              Reasignar Tarea
-                            </Dropdown.Item>
-                          </>
+                        {puedeReasignarTarea(tarea) && (
+                          <Dropdown.Item onClick={() => openReasignarTareaModal(tarea)}>
+                            <FontAwesomeIcon icon={faUserFriends} className="me-2 text-primary" />
+                            Reasignar Tarea
+                          </Dropdown.Item>
                         )}
                         
-                        {(isAdmin || esJefe || esAsignado || tareaSinAsignar) && (
+                        {puedeEditarTarea(tarea) && (
                           <Dropdown.Item onClick={() => openEditarTareaModal(tarea)}>
                             <FontAwesomeIcon icon={faEdit} className="me-2 text-warning" />
                             Editar Tarea
                           </Dropdown.Item>
                         )}
                         
-                        {(isAdmin || esJefe) && (
+                        {puedeEliminarTarea() && (
                           <Dropdown.Item 
                             onClick={() => handleEliminarTarea(tarea.ID)}
                             className="text-danger"
@@ -2028,6 +2107,8 @@ const Proyectos: React.FC = () => {
       </div>
     );
   };
+  
+  // ==================== RENDERIZADO ====================
   
   if (!isAdmin && !isManager && !isEmployee) {
     return (
@@ -2269,7 +2350,7 @@ const Proyectos: React.FC = () => {
                         <div className="d-flex justify-content-between align-items-center mb-3">
                           <small className="text-muted">
                             <FontAwesomeIcon icon={faCalendar} className="me-1" />
-                            Inicio: {new Date(proyecto.FechaInicio).toLocaleDateString()}
+                            Inicio: {formatDateDisplay(proyecto.FechaInicio)}
                           </small>
                           <small className="text-muted">
                             <FontAwesomeIcon icon={faFlag} className="me-1" />
@@ -3054,8 +3135,8 @@ const Proyectos: React.FC = () => {
                   </div>
                   <p className="text-muted mb-0">
                     <FontAwesomeIcon icon={faCalendar} className="me-2" />
-                    Inicio: {new Date(selectedProyecto.FechaInicio).toLocaleDateString()}
-                    {selectedProyecto.FechaFin && ` - Fin: ${new Date(selectedProyecto.FechaFin).toLocaleDateString()}`}
+                    Inicio: {formatDateDisplay(selectedProyecto.FechaInicio)}
+                    {selectedProyecto.FechaFin && ` - Fin: ${formatDateDisplay(selectedProyecto.FechaFin)}`}
                   </p>
                 </div>
                 
@@ -3319,7 +3400,6 @@ const Proyectos: React.FC = () => {
                     ) : (
                       <Row>
                         {empleadosProyecto.map(emp => {
-                          // Validación mejorada para identificar al jefe del proyecto
                           const esElJefe = emp.Rol === 'jefe' || 
                                           emp.ID === selectedProyecto?.JefeProyectoID || 
                                           emp.RolApp === 'jefe' || 
@@ -3458,13 +3538,7 @@ const Proyectos: React.FC = () => {
                               <div className="d-flex justify-content-between align-items-center mb-2">
                                 <strong className="text-primary">{item.Accion}</strong>
                                 <small className="text-muted">
-                                  {new Date(item.createdAt).toLocaleString('es-MX', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    year: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
+                                  {formatDateTimeDisplay(item.createdAt)}
                                 </small>
                               </div>
                               <p className="mb-0">{item.Detalles || item.Accion}</p>
@@ -3837,115 +3911,118 @@ const Proyectos: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      <Modal 
-        show={showNotaModal} 
-        onHide={() => setShowNotaModal(false)} 
-        size="lg"
-        centered
-        scrollable
-      >
-        <Modal.Header closeButton className="bg-info text-white">
-          <Modal.Title className="d-flex align-items-center">
-            <FontAwesomeIcon icon={faComment} className="me-2" />
-            Notas - {selectedTarea?.Titulo}
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {selectedTarea && (
-            <>
-              {canManage && (
-                <Card className="mb-4 border-0 bg-light">
-                  <Card.Body>
-                    <h6 className="mb-3">Agregar Nueva Nota</h6>
-                    <Form.Group className="mb-3">
-                      <Form.Control
-                        as="textarea"
-                        rows={3}
-                        value={notaData.contenido}
-                        onChange={(e) => setNotaData({...notaData, contenido: e.target.value})}
-                        placeholder="Escribe tu nota aquí..."
-                        className="bg-white border-0"
-                      />
-                    </Form.Group>
-                    <Form.Check
-                      type="checkbox"
-                      label="Nota privada (solo visible para administradores)"
-                      checked={notaData.esPrivada}
-                      onChange={(e) => setNotaData({...notaData, esPrivada: e.target.checked})}
-                      className="mb-3"
-                    />
-                    <Button
-                      variant="primary"
-                      onClick={() => handleCrearNota(selectedTarea.ID)}
-                      disabled={!notaData.contenido.trim()}
-                      className="d-flex align-items-center"
-                    >
-                      <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
-                      Agregar Nota
-                    </Button>
-                  </Card.Body>
-                </Card>
-              )}
+<Modal 
+  show={showNotaModal} 
+  onHide={() => setShowNotaModal(false)} 
+  size="lg"
+  centered
+  scrollable
+>
+  <Modal.Header closeButton className="bg-info text-white">
+    <Modal.Title className="d-flex align-items-center">
+      <FontAwesomeIcon icon={faComment} className="me-2" />
+      Notas - {selectedTarea?.Titulo}
+    </Modal.Title>
+  </Modal.Header>
+  <Modal.Body>
+    {selectedTarea && (
+      <>
+        {/* Verificar si el usuario puede agregar notas: admin, jefe del proyecto, o empleado asignado */}
+        {(isAdmin || soyJefeDelProyecto() || soyAsignadoATarea(selectedTarea)) && (
+          <Card className="mb-4 border-0 bg-light">
+            <Card.Body>
+              <h6 className="mb-3">Agregar Nueva Nota</h6>
+              <Form.Group className="mb-3">
+                <Form.Control
+                  as="textarea"
+                  rows={3}
+                  value={notaData.contenido}
+                  onChange={(e) => setNotaData({...notaData, contenido: e.target.value})}
+                  placeholder="Escribe tu nota aquí..."
+                  className="bg-white border-0"
+                />
+              </Form.Group>
+              <Form.Check
+                type="checkbox"
+                label="Nota privada (solo visible para administradores)"
+                checked={notaData.esPrivada}
+                onChange={(e) => setNotaData({...notaData, esPrivada: e.target.checked})}
+                className="mb-3"
+              />
+              <Button
+                variant="primary"
+                onClick={() => handleCrearNota(selectedTarea.ID)}
+                disabled={!notaData.contenido.trim()}
+                className="d-flex align-items-center"
+              >
+                <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
+                Agregar Nota
+              </Button>
+            </Card.Body>
+          </Card>
+        )}
 
-              <h6 className="mb-3 d-flex align-items-center">
-                <FontAwesomeIcon icon={faHistory} className="me-2" />
-                Notas Anteriores ({notas.length})
-              </h6>
-              
-              {notas.length === 0 ? (
-                <Card className="text-center py-4 border-0 bg-light">
-                  <Card.Body>
-                    <FontAwesomeIcon icon={faComment} size="2x" className="text-muted mb-2 opacity-50" />
-                    <p className="text-muted mb-0">No hay notas para esta tarea</p>
-                  </Card.Body>
-                </Card>
-              ) : (
-                notas.map((nota: any) => {
-                  if (nota.EsPrivada && !isAdmin) return null;
-                  return (
-                    <Card key={nota.ID} className="mb-3 border-0 shadow-sm">
-                      <Card.Body>
-                        <div className="d-flex justify-content-between align-items-start mb-2">
-                          <div className="d-flex align-items-center">
-                            <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center me-2" 
-                                 style={{ width: '32px', height: '32px' }}>
-                              <FontAwesomeIcon icon={faUserCircle} className="text-white" size="sm" />
-                            </div>
-                            <div>
-                              <strong className="d-block">{nota.EmpleadoNombre}</strong>
-                              <small className="text-muted">
-                                {new Date(nota.createdAt).toLocaleString('es-MX', {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </small>
-                            </div>
-                          </div>
-                          {nota.EsPrivada && (
-                            <Badge bg="warning" text="dark">
-                              <FontAwesomeIcon icon={faLock} className="me-1" />
-                              Privada
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="mb-0 mt-2 ps-4">{nota.Contenido}</p>
-                      </Card.Body>
-                    </Card>
-                  );
-                })
-              )}
-            </>
-          )}
-        </Modal.Body>
-        <Modal.Footer className="border-0">
-          <Button variant="secondary" onClick={() => setShowNotaModal(false)}>
-            Cerrar
-          </Button>
-        </Modal.Footer>
-      </Modal>
+        <h6 className="mb-3 d-flex align-items-center">
+          <FontAwesomeIcon icon={faHistory} className="me-2" />
+          Notas Anteriores ({notas.length})
+        </h6>
+        
+        {notas.length === 0 ? (
+          <Card className="text-center py-4 border-0 bg-light">
+            <Card.Body>
+              <FontAwesomeIcon icon={faComment} size="2x" className="text-muted mb-2 opacity-50" />
+              <p className="text-muted mb-0">No hay notas para esta tarea</p>
+            </Card.Body>
+          </Card>
+        ) : (
+          notas.map((nota: any) => {
+            // Si es privada y no es admin, no mostrar
+            if (nota.EsPrivada && !isAdmin) return null;
+            
+            // Determinar si la nota es del usuario actual
+            const esMiNota = nota.EmpleadoID === miEmpleadoId;
+            
+            return (
+              <Card key={nota.ID} className="mb-3 border-0 shadow-sm">
+                <Card.Body>
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div className="d-flex align-items-center">
+                      <div className={`rounded-circle ${esMiNota ? 'bg-success' : 'bg-primary'} d-flex align-items-center justify-content-center me-2`} 
+                           style={{ width: '32px', height: '32px' }}>
+                        <FontAwesomeIcon icon={faUserCircle} className="text-white" size="sm" />
+                      </div>
+                      <div>
+                        <strong className="d-block">
+                          {nota.EmpleadoNombre}
+                          {esMiNota && ' (tú)'}
+                        </strong>
+                        <small className="text-muted">
+                          {formatDateTimeDisplay(nota.createdAt)}
+                        </small>
+                      </div>
+                    </div>
+                    {nota.EsPrivada && (
+                      <Badge bg="warning" text="dark">
+                        <FontAwesomeIcon icon={faLock} className="me-1" />
+                        Privada
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mb-0 mt-2 ps-4">{nota.Contenido}</p>
+                </Card.Body>
+              </Card>
+            );
+          })
+        )}
+      </>
+    )}
+  </Modal.Body>
+  <Modal.Footer className="border-0">
+    <Button variant="secondary" onClick={() => setShowNotaModal(false)}>
+      Cerrar
+    </Button>
+  </Modal.Footer>
+</Modal>
 
       <style>{`
         .timeline {

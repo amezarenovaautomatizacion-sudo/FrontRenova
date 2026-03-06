@@ -37,6 +37,7 @@ import {
   faSignInAlt,
   faCheckCircle
 } from '@fortawesome/free-solid-svg-icons';
+import { formatDateDisplay, calcularEdad, calcularAntiguedad } from '../utils/dateUtils';
 
 interface Empleado {
   ID: number;
@@ -80,7 +81,6 @@ interface Jefe {
   FechaAsignacion: string;
 }
 
-// Modal de Reautenticación
 interface ReauthModalProps {
   show: boolean;
   usuario: string;
@@ -233,7 +233,6 @@ const ReauthModal: React.FC<ReauthModalProps> = ({
   );
 };
 
-// Componente Principal Perfil
 const Perfil: React.FC = () => {
   const { user, logout, refreshAuth } = useAuth();
   const [empleado, setEmpleado] = useState<Empleado | null>(null);
@@ -246,19 +245,16 @@ const Perfil: React.FC = () => {
   const [showReauthModal, setShowReauthModal] = useState(false);
   const [reauthUser, setReauthUser] = useState('');
   
-  // Estados para cambio de contraseña
   const [passwordData, setPasswordData] = useState({
     contraseniaActual: '',
     nuevaContrasenia: '',
     confirmarContrasenia: ''
   });
 
-  // Estados para mostrar/ocultar contraseñas en el modal
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Cache para almacenar el último estado válido del colaborador
   const [empleadoCache, setEmpleadoCache] = useState<Empleado | null>(null);
 
   const cargarPerfilDesdeLocalStorage = () => {
@@ -276,7 +272,7 @@ const Perfil: React.FC = () => {
         };
         
         setEmpleado(empleadoCompleto);
-        setEmpleadoCache(empleadoCompleto); // Guardar en cache
+        setEmpleadoCache(empleadoCompleto);
         setReauthUser(userParsed.Usuario);
       }
     } catch (error) {
@@ -293,7 +289,6 @@ const Perfil: React.FC = () => {
     try {
       if (!empleado?.Usuario) return;
       
-      // Validaciones
       if (!passwordData.contraseniaActual) {
         setError('La contraseña actual es requerida');
         return;
@@ -309,7 +304,6 @@ const Perfil: React.FC = () => {
         return;
       }
       
-      // Cerrar el modal de cambio de contraseña y abrir el de reautenticación
       setShowPasswordModal(false);
       setShowReauthModal(true);
       
@@ -321,7 +315,6 @@ const Perfil: React.FC = () => {
 
   const handleReauthSuccess = async (contraseniaConfirmada: string) => {
     try {
-      // Actualizar passwordData.contraseniaActual con la contraseña confirmada
       const datosActualizados = {
         ...passwordData,
         contraseniaActual: contraseniaConfirmada
@@ -342,7 +335,6 @@ const Perfil: React.FC = () => {
       setLoading(true);
       setError('');
       
-      // Llamar al servicio de autenticación para cambiar contraseña propia
       const response = await authService.changeOwnPassword({
         contraseniaActual: datos.contraseniaActual,
         nuevaContrasenia: datos.nuevaContrasenia
@@ -351,14 +343,12 @@ const Perfil: React.FC = () => {
       if (response.success) {
         setSuccess('Contraseña cambiada exitosamente');
         
-        // Limpiar el formulario
         setPasswordData({
           contraseniaActual: '',
           nuevaContrasenia: '',
           confirmarContrasenia: ''
         });
         
-        // Cerrar sesión después de cambiar contraseña
         setTimeout(() => {
           alert('Tu contraseña ha sido cambiada. Por seguridad, se cerrará tu sesión.');
           logout();
@@ -378,7 +368,7 @@ const Perfil: React.FC = () => {
 
   const handleReauthCancel = () => {
     setShowReauthModal(false);
-    setShowPasswordModal(true); // Volver a mostrar el modal de cambio de contraseña
+    setShowPasswordModal(true);
     setError('Cambio de contraseña cancelado.');
   };
 
@@ -390,39 +380,11 @@ const Perfil: React.FC = () => {
     }));
   };
 
-  const calcularAntiguedad = (fechaIngreso: string) => {
-    const ingreso = new Date(fechaIngreso);
-    const hoy = new Date();
-    const diffTime = Math.abs(hoy.getTime() - ingreso.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    const years = Math.floor(diffDays / 365);
-    const months = Math.floor((diffDays % 365) / 30);
-    return { years, months };
-  };
-
-  const calcularEdad = (fechaNacimiento?: string) => {
-    if (!fechaNacimiento) return null;
-    const nacimiento = new Date(fechaNacimiento);
-    const hoy = new Date();
-    let edad = hoy.getFullYear() - nacimiento.getFullYear();
-    const mes = hoy.getMonth() - nacimiento.getMonth();
-    if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
-      edad--;
-    }
-    return edad;
-  };
-
   const getRolBadge = (rol: string) => {
     const colors: Record<string, string> = {
       admin: 'danger',
       manager: 'warning',
       employee: 'info'
-    };
-    
-    const textoRol = {
-      admin: 'ADMINISTRADOR',
-      manager: 'GERENTE',
-      employee: 'COLABORADOR'
     };
     
     return colors[rol] || 'secondary';
@@ -443,7 +405,6 @@ const Perfil: React.FC = () => {
       setError('');
       
       if (empleado?.ID) {
-        // Aquí iría la lógica de sincronización con el backend
         cargarPerfilDesdeLocalStorage();
         setSuccess('Perfil actualizado desde el servidor');
       } else {
@@ -459,7 +420,6 @@ const Perfil: React.FC = () => {
     }
   };
 
-  // Si no hay colaborador y está cargando
   if (!empleado && loading) {
     return (
       <Container className="py-5">
@@ -471,7 +431,6 @@ const Perfil: React.FC = () => {
     );
   }
 
-  // Si no hay colaborador después de cargar
   if (!empleado) {
     return (
       <Container className="py-5">
@@ -491,7 +450,6 @@ const Perfil: React.FC = () => {
 
   return (
     <Container fluid className="py-4">
-      {/* Alertas */}
       {error && (
         <Alert variant="danger" dismissible onClose={() => setError('')}>
           <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
@@ -537,9 +495,7 @@ const Perfil: React.FC = () => {
       </Row>
 
       <Row>
-        {/* Columna izquierda - Información principal */}
         <Col lg={4} md={5} className="mb-4">
-          {/* Tarjeta de información básica */}
           <Card className="shadow-sm mb-4">
             <Card.Body className="text-center">
               <div className="mb-3">
@@ -587,7 +543,6 @@ const Perfil: React.FC = () => {
             </Card.Body>
           </Card>
 
-          {/* Tarjeta de información de contacto */}
           <Card className="shadow-sm">
             <Card.Header className="bg-light d-flex justify-content-between align-items-center">
               <h6 className="mb-0">
@@ -622,7 +577,6 @@ const Perfil: React.FC = () => {
           </Card>
         </Col>
 
-        {/* Columna derecha - Información detallada */}
         <Col lg={8} md={7}>
           <Tab.Container defaultActiveKey="personal">
             <Card className="shadow-sm">
@@ -651,7 +605,6 @@ const Perfil: React.FC = () => {
               
               <Card.Body>
                 <Tab.Content>
-                  {/* Pestaña de Información Personal */}
                   <Tab.Pane eventKey="personal">
                     <Form>
                       <Row>
@@ -687,7 +640,7 @@ const Perfil: React.FC = () => {
                             <div>
                               <Form.Control plaintext readOnly defaultValue={
                                 empleado.FechaNacimiento 
-                                  ? new Date(empleado.FechaNacimiento).toLocaleDateString('es-ES')
+                                  ? formatDateDisplay(empleado.FechaNacimiento)
                                   : 'No registrada'
                               } />
                               {empleado.FechaNacimiento && (
@@ -734,7 +687,6 @@ const Perfil: React.FC = () => {
                     </Form>
                   </Tab.Pane>
 
-                  {/* Pestaña de Información Laboral */}
                   <Tab.Pane eventKey="laboral">
                     <Row>
                       <Col md={6}>
@@ -748,7 +700,7 @@ const Perfil: React.FC = () => {
                               <span>Fecha de Ingreso</span>
                               <strong>
                                 {empleado.FechaIngreso 
-                                  ? new Date(empleado.FechaIngreso).toLocaleDateString('es-ES')
+                                  ? formatDateDisplay(empleado.FechaIngreso)
                                   : 'No registrada'
                                 }
                               </strong>
@@ -820,7 +772,7 @@ const Perfil: React.FC = () => {
                                       <div>
                                         <div className="fw-medium">{jefe.NombreCompleto}</div>
                                         <small className="text-muted">
-                                          {getRolTexto(jefe.RolApp)} • Desde {new Date(jefe.FechaAsignacion).toLocaleDateString('es-ES')}
+                                          {getRolTexto(jefe.RolApp)} • Desde {formatDateDisplay(jefe.FechaAsignacion)}
                                         </small>
                                       </div>
                                     </div>
@@ -835,7 +787,6 @@ const Perfil: React.FC = () => {
                       </Col>
                     </Row>
 
-                    {/* Información adicional */}
                     <Card className="border-primary">
                       <Card.Header className="bg-primary text-white">
                         <h6 className="mb-0">
@@ -845,7 +796,7 @@ const Perfil: React.FC = () => {
                       </Card.Header>
                       <Card.Body>
                         <small className="text-muted">
-                          <div className="mb-1">Última actualización: {new Date().toLocaleDateString('es-ES')}</div>
+                          <div className="mb-1">Última actualización: {formatDateDisplay(new Date().toISOString())}</div>
                           <div>Usuario del sistema: {empleado.Usuario?.Usuario || user?.usuario}</div>
                           <div>ID de colaborador: {empleado.ID}</div>
                           <div>ID de usuario: {empleado.Usuario?.ID || user?.id}</div>
@@ -854,7 +805,6 @@ const Perfil: React.FC = () => {
                     </Card>
                   </Tab.Pane>
 
-                  {/* Pestaña de Documentos */}
                   <Tab.Pane eventKey="documentos">
                     <Alert variant="info" className="d-flex align-items-center">
                       <FontAwesomeIcon icon={faShieldAlt} className="me-3" size="lg" />
@@ -942,7 +892,6 @@ const Perfil: React.FC = () => {
         </Col>
       </Row>
 
-      {/* Modal para cambiar contraseña */}
       <Modal show={showPasswordModal} onHide={() => setShowPasswordModal(false)}>
         <Modal.Header closeButton>
           <Modal.Title>
@@ -1049,7 +998,6 @@ const Perfil: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Reautenticación */}
       <ReauthModal
         show={showReauthModal}
         usuario={reauthUser}

@@ -50,8 +50,8 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import ReauthModal from '../components/ReauthModal';
 import api from '../services/api';
+import { formatDateDisplay, formatDateForInput, calcularAntiguedad } from '../utils/dateUtils';
 
-// Interfaces basadas en la API (mantener nombres originales)
 interface User {
   id: number;
   usuario: string;
@@ -147,7 +147,6 @@ interface ApiError {
   message?: string;
 }
 
-// Estilos personalizados para DataTable
 const customStyles = {
   headRow: {
     style: {
@@ -205,48 +204,6 @@ const customStyles = {
   },
 };
 
-// Función auxiliar para formatear fechas en formato YYYY-MM-DD
-const formatDateForInput = (dateString?: string): string => {
-  if (!dateString) return '';
-  
-  try {
-    const date = new Date(dateString);
-    
-    if (isNaN(date.getTime())) {
-      console.warn('Fecha inválida:', dateString);
-      return '';
-    }
-    
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    
-    return `${year}-${month}-${day}`;
-  } catch (error) {
-    console.error('Error formateando fecha:', error);
-    return '';
-  }
-};
-
-// Función para formatear fecha para mostrar
-const formatDateDisplay = (dateString?: string): string => {
-  if (!dateString) return 'No especificada';
-  
-  try {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
-    
-    return date.toLocaleDateString('es-MX', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
-  } catch (error) {
-    return dateString;
-  }
-};
-
-// Componente para los filtros personalizados
 const FilterComponent = ({ filterText, onFilter, onClear, placeholder }: any) => (
   <div className="d-flex align-items-center">
     <InputGroup style={{ minWidth: '300px' }}>
@@ -318,21 +275,17 @@ const Empleados: React.FC = () => {
   
   const [editData, setEditData] = useState<UpdateEmpleadoData>({});
   
-  // Estados para DataTable
   const [filterText, setFilterText] = useState('');
   const [resetPaginationToggle, setResetPaginationToggle] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Empleado[]>([]);
   const [toggleCleared, setToggleCleared] = useState(false);
   const [perPage, setPerPage] = useState(10);
 
-  // ==================== FUNCIONES DE CARGA ====================
-
   const loadCatalogos = useCallback(async () => {
     if (!canCreate && !canEdit) return;
     
     try {
       const response = await api.get('/empleados/catalogos');
-      
       if (response.data.success) {
         setCatalogos(response.data.data);
       }
@@ -360,7 +313,7 @@ const Empleados: React.FC = () => {
       }
     } catch (error: unknown) {
       const apiError = error as ApiError;
-      console.error('❌ Error cargando colaboradores:', apiError);
+      console.error('Error cargando colaboradores:', apiError);
       if (apiError.response?.status === 403) {
         setError('No tienes permisos para acceder a esta sección');
         logout();
@@ -372,28 +325,22 @@ const Empleados: React.FC = () => {
     }
   }, [canViewAll, logout]);
 
-  // Función para cargar detalles completos del colaborador - OPTIMIZADA
   const loadEmpleadoDetalles = async (empleadoId: number) => {
     try {
       setLoadingDetalles(true);
       
-      // Cargar información básica (YA INCLUYE departamentos y jefes según tu controlador)
       const response = await api.get(`/empleados/empleados/${empleadoId}`);
       
       if (response.data.success) {
         const empleadoCompleto = response.data.data;
-        
-        // Establecer el colaborador seleccionado
         setSelectedEmpleado(empleadoCompleto);
         
-        // Establecer departamentos (vienen en la respuesta principal)
         if (empleadoCompleto.departamentos && Array.isArray(empleadoCompleto.departamentos)) {
           setDepartamentosEmpleado(empleadoCompleto.departamentos);
         } else {
           setDepartamentosEmpleado([]);
         }
         
-        // Establecer jefes (vienen en la respuesta principal)
         if (empleadoCompleto.jefes && Array.isArray(empleadoCompleto.jefes)) {
           setJefesEmpleado(empleadoCompleto.jefes);
         } else {
@@ -405,7 +352,7 @@ const Empleados: React.FC = () => {
         throw new Error('Error al cargar información del colaborador');
       }
     } catch (error) {
-      console.error('❌ Error cargando detalles del colaborador:', error);
+      console.error('Error cargando detalles del colaborador:', error);
       throw error;
     } finally {
       setLoadingDetalles(false);
@@ -420,7 +367,6 @@ const Empleados: React.FC = () => {
     loadCatalogos();
   }, [loadCatalogos]);
 
-  // Filtrado en tiempo real
   useEffect(() => {
     if (!filterText) {
       setFilteredEmpleados(empleados);
@@ -439,8 +385,6 @@ const Empleados: React.FC = () => {
       setFilteredEmpleados(filtered);
     }
   }, [filterText, empleados]);
-
-  // ==================== FUNCIONES DE CRUD ====================
 
   const handleCreate = async () => {
     if (!canCreate) {
@@ -533,7 +477,6 @@ const Empleados: React.FC = () => {
       
       const camposActualizados: UpdateEmpleadoData = {};
       
-      // Campos básicos
       if (editData.nombreCompleto && editData.nombreCompleto !== selectedEmpleado.NombreCompleto) {
         camposActualizados.nombreCompleto = editData.nombreCompleto;
       }
@@ -607,7 +550,7 @@ const Empleados: React.FC = () => {
       }
     } catch (error: unknown) {
       const apiError = error as ApiError;
-      console.error('❌ Error actualizando colaborador:', apiError);
+      console.error('Error actualizando colaborador:', apiError);
       setError(apiError.response?.data?.message || 'Error actualizando colaborador');
     } finally {
       setLoading(false);
@@ -679,7 +622,6 @@ const Empleados: React.FC = () => {
       setLoading(false);
     }
   };
-  // ==================== FUNCIONES AUXILIARES ====================
 
   const resetCreateForm = () => {
     setCreateData({
@@ -719,16 +661,6 @@ const Empleados: React.FC = () => {
         
         const deptosIds = departamentosEmpleado.map(d => d.ID);
         const jefesIds = jefesEmpleado.map(j => j.ID);
-        
-        if (catalogos) {
-          const deptosValidos = deptosIds.filter(id => 
-            catalogos.departamentos.some(d => d.ID === id)
-          );
-          const jefesValidos = jefesIds.filter(id => 
-            catalogos.empleados.some(e => e.ID === id)
-          );
-          
-        }
         
         setEditData({
           nombreCompleto: empleado.NombreCompleto,
@@ -789,7 +721,6 @@ const Empleados: React.FC = () => {
     );
   };
 
-  // Definición de columnas para DataTable
   const columns = [
     {
       name: 'Colaborador',
@@ -843,17 +774,20 @@ const Empleados: React.FC = () => {
       name: 'Antigüedad',
       selector: (row: Empleado) => row.FechaIngreso,
       sortable: true,
-      cell: (row: Empleado) => (
-        <div className="d-flex align-items-center">
-          <FontAwesomeIcon icon={faCalendar} className="text-muted me-2" />
-          <div>
-            <div>{formatDateDisplay(row.FechaIngreso)}</div>
-            <small className="text-muted">
-              {Math.floor((new Date().getTime() - new Date(row.FechaIngreso).getTime()) / (1000 * 60 * 60 * 24 * 30))} meses
-            </small>
+      cell: (row: Empleado) => {
+        const antiguedad = calcularAntiguedad(row.FechaIngreso);
+        return (
+          <div className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faCalendar} className="text-muted me-2" />
+            <div>
+              <div>{formatDateDisplay(row.FechaIngreso)}</div>
+              <small className="text-muted">
+                {antiguedad.years} años, {antiguedad.months} meses
+              </small>
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       name: 'Estado',
@@ -939,8 +873,6 @@ const Empleados: React.FC = () => {
     setPerPage(newPerPage);
   };
 
-  // ==================== RENDERIZADO ====================
-
   if (!canViewAll) {
     return (
       <Container fluid className="py-4">
@@ -971,7 +903,6 @@ const Empleados: React.FC = () => {
 
   return (
     <Container fluid className="py-4">
-      {/* Header */}
       <Row className="mb-4">
         <Col>
           <div className="d-flex justify-content-between align-items-center">
@@ -987,7 +918,6 @@ const Empleados: React.FC = () => {
             </div>
             
             <div className="d-flex gap-2">
-              
               <ButtonGroup className="shadow-sm">
                 <Button 
                   variant="outline-primary" 
@@ -1015,7 +945,6 @@ const Empleados: React.FC = () => {
         </Col>
       </Row>
 
-      {/* Alertas */}
       {error && (
         <Alert variant="danger" dismissible onClose={() => setError('')} className="shadow-sm">
           <FontAwesomeIcon icon={faTimesCircle} className="me-2" />
@@ -1030,7 +959,6 @@ const Empleados: React.FC = () => {
         </Alert>
       )}
 
-      {/* Barra de filtros y selección */}
       <Card className="mb-4 shadow-sm border-0">
         <Card.Body className="bg-gradient-primary-light">
           <Row>
@@ -1059,7 +987,6 @@ const Empleados: React.FC = () => {
         </Card.Body>
       </Card>
 
-      {/* DataTable */}
       <Card className="shadow-sm border-0">
         <Card.Body className="p-0">
           {loading && empleados.length === 0 ? (
@@ -1141,7 +1068,6 @@ const Empleados: React.FC = () => {
         </Card.Footer>
       </Card>
 
-      {/* Modal de Creación */}
       <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)} size="lg" scrollable centered>
         <Modal.Header closeButton className="bg-gradient-primary text-white border-0">
           <Modal.Title>
@@ -1400,7 +1326,6 @@ const Empleados: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Visualización - VERSIÓN MEJORADA */}
       <Modal show={showViewModal} onHide={() => setShowViewModal(false)} size="lg" centered>
         <Modal.Header closeButton className="bg-gradient-primary text-white border-0">
           <Modal.Title>
@@ -1543,10 +1468,8 @@ const Empleados: React.FC = () => {
                   </div>
                 </Tab>
                 
-                {/* TAB DE DEPARTAMENTOS Y JEFES - AHORA FUNCIONAL */}
                 <Tab eventKey="deptos-jefes" title="Departamentos y Jefes">
                   <div className="mt-3">
-                    {/* Departamentos */}
                     <div className="mb-4">
                       <h5 className="text-primary mb-3">
                         <FontAwesomeIcon icon={faHome} className="me-2" />
@@ -1574,7 +1497,6 @@ const Empleados: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Jefes Directos */}
                     <div className="mb-4">
                       <h5 className="text-primary mb-3">
                         <FontAwesomeIcon icon={faUserShield} className="me-2" />
@@ -1618,7 +1540,6 @@ const Empleados: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Resumen de asignaciones */}
                     {(departamentosEmpleado?.length > 0 || jefesEmpleado?.length > 0) && (
                       <div className="bg-light p-3 rounded mt-3">
                         <h6 className="text-primary mb-2">Resumen de Asignaciones:</h6>
@@ -1691,7 +1612,6 @@ const Empleados: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Edición - VERSIÓN CORREGIDA CON SELECTS VISIBLES */}
       <Modal show={showEditModal} onHide={() => setShowEditModal(false)} size="lg" scrollable centered>
         <Modal.Header closeButton className="bg-gradient-primary text-white border-0">
           <Modal.Title>
@@ -1868,7 +1788,6 @@ const Empleados: React.FC = () => {
                   
                   {catalogos && (
                     <>
-                      {/* DEPARTAMENTOS - VERSIÓN CORREGIDA */}
                       <Form.Group className="mb-3">
                         <Form.Label className="text-primary fw-semibold">Departamentos</Form.Label>
                         <Form.Select
@@ -1901,7 +1820,6 @@ const Empleados: React.FC = () => {
                         </Form.Text>
                       </Form.Group>
                       
-                      {/* JEFES DIRECTOS - VERSIÓN CORREGIDA */}
                       <Form.Group className="mb-3">
                         <Form.Label className="text-primary fw-semibold">Jefes Directos</Form.Label>
                         <Form.Select
@@ -1953,7 +1871,6 @@ const Empleados: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Eliminación */}
       <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
         <Modal.Header closeButton className="border-bottom-0">
           <Modal.Title className="text-danger">
@@ -1984,7 +1901,6 @@ const Empleados: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Reautenticación */}
       {user && (
         <ReauthModal
           show={showReauthModal}

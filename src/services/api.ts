@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Cambiar process.env por import.meta.env para Vite
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api-renova.vercel.app/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 // Interfaces para tipos
 export interface UpdateEmpleadoData {

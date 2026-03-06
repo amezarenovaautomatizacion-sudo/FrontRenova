@@ -76,8 +76,8 @@ import api from '../services/api';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { formatDateDisplay, formatDateTimeDisplay, formatDateForInput } from '../utils/dateUtils';
 
-// Interfaces actualizadas basadas en la API real
 interface Solicitud {
   ID: number;
   EmpleadoID: number;
@@ -176,7 +176,6 @@ interface DetalleSolicitudResponse {
   };
 }
 
-// Interfaz extendida para mostrar detalles completos en aprobación
 interface DetalleAprobacion extends AprobacionPendiente {
   MotivoCompleto?: string;
   Observaciones?: string;
@@ -184,7 +183,6 @@ interface DetalleAprobacion extends AprobacionPendiente {
   Puesto?: string;
 }
 
-// Estilos personalizados para DataTable
 const customStyles = {
   headRow: {
     style: {
@@ -242,7 +240,6 @@ const customStyles = {
   },
 };
 
-// Componente para los filtros personalizados
 const FilterComponent = ({ filterText, onFilter, onClear, placeholder }: any) => (
   <div className="d-flex align-items-center">
     <InputGroup style={{ minWidth: '300px' }}>
@@ -265,11 +262,10 @@ const FilterComponent = ({ filterText, onFilter, onClear, placeholder }: any) =>
   </div>
 );
 
-// Funciones de utilidad para días hábiles
 const esFinDeSemana = (fecha: string): boolean => {
   const date = new Date(fecha);
   const diaSemana = date.getDay();
-  return diaSemana === 0 || diaSemana === 6; // 0 = domingo, 6 = sábado
+  return diaSemana === 0 || diaSemana === 6;
 };
 
 const obtenerDiaHabilSiguiente = (fecha: Date): Date => {
@@ -283,38 +279,19 @@ const obtenerDiaHabilSiguiente = (fecha: Date): Date => {
   return siguiente;
 };
 
-const obtenerDiaHabilAnterior = (fecha: Date): Date => {
-  const anterior = new Date(fecha);
-  anterior.setDate(anterior.getDate() - 1);
-  
-  while (esFinDeSemana(anterior.toISOString().split('T')[0])) {
-    anterior.setDate(anterior.getDate() - 1);
-  }
-  
-  return anterior;
-};
-
-const obtenerProximoDiaHabil = (fecha: string | Date): string => {
-  const date = typeof fecha === 'string' ? new Date(fecha) : fecha;
-  const diaHabil = obtenerDiaHabilSiguiente(date);
-  return diaHabil.toISOString().split('T')[0];
-};
-
 const obtenerDiaHabilMasCercano = (fecha: string | Date): string => {
   const date = typeof fecha === 'string' ? new Date(fecha) : fecha;
   
-  // Si ya es día hábil, devolver la misma fecha
   if (!esFinDeSemana(date.toISOString().split('T')[0])) {
     return date.toISOString().split('T')[0];
   }
   
-  // Si es fin de semana, obtener el próximo lunes
   const diaSemana = date.getDay();
   let diasASumar = 1;
   
-  if (diaSemana === 0) { // Domingo
+  if (diaSemana === 0) {
     diasASumar = 1;
-  } else if (diaSemana === 6) { // Sábado
+  } else if (diaSemana === 6) {
     diasASumar = 2;
   }
   
@@ -331,12 +308,10 @@ const validarYCorregirFechasVacaciones = (
   let inicio = new Date(fechaInicio);
   let fin = new Date(fechaFin);
   
-  // Si la fecha fin es anterior a la fecha inicio, intercambiarlas
   if (fin < inicio) {
     [inicio, fin] = [fin, inicio];
   }
   
-  // Asegurar que ambas fechas sean días hábiles
   if (esFinDeSemana(inicio.toISOString().split('T')[0])) {
     inicio = new Date(obtenerDiaHabilMasCercano(inicio));
   }
@@ -345,7 +320,6 @@ const validarYCorregirFechasVacaciones = (
     fin = new Date(obtenerDiaHabilMasCercano(fin));
   }
   
-  // Si después de corregir, fin es menor que inicio, ajustar fin
   if (fin < inicio) {
     fin = new Date(inicio);
     fin.setDate(fin.getDate() + 1);
@@ -409,13 +383,11 @@ const Solicitudes: React.FC = () => {
   const canApprove = isAdmin || isManager;
   const canViewReports = isAdmin || isManager;
   
-  // Estados generales
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeTab, setActiveTab] = useState('mis-solicitudes');
   
-  // Estados para listados
   const [misSolicitudes, setMisSolicitudes] = useState<Solicitud[]>([]);
   const [filteredMisSolicitudes, setFilteredMisSolicitudes] = useState<Solicitud[]>([]);
   const [solicitudesPendientes, setSolicitudesPendientes] = useState<AprobacionPendiente[]>([]);
@@ -427,7 +399,6 @@ const Solicitudes: React.FC = () => {
   const [empleadosSelect, setEmpleadosSelect] = useState<any[]>([]);
   const [pendientesCount, setPendientesCount] = useState<number>(0);
   
-  // Estados para DataTable
   const [filterText, setFilterText] = useState('');
   const [filterTextPendientes, setFilterTextPendientes] = useState('');
   const [filterTextAprobadas, setFilterTextAprobadas] = useState('');
@@ -440,7 +411,6 @@ const Solicitudes: React.FC = () => {
   const [perPageAprobadas, setPerPageAprobadas] = useState(10);
   const [perPageHorasExtras, setPerPageHorasExtras] = useState(10);
   
-  // Estados para formularios
   const [showVacacionesModal, setShowVacacionesModal] = useState(false);
   const [showPermisoModal, setShowPermisoModal] = useState(false);
   const [showHorasExtrasModal, setShowHorasExtrasModal] = useState(false);
@@ -448,7 +418,6 @@ const Solicitudes: React.FC = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showEditAprobacionModal, setShowEditAprobacionModal] = useState(false);
   
-  // Datos de formularios
   const [vacacionesData, setVacacionesData] = useState({
     fechaInicio: '',
     fechaFin: '',
@@ -483,19 +452,16 @@ const Solicitudes: React.FC = () => {
     comentarios: ''
   });
   
-  // Estados para datos adicionales
   const [derechosVacacionales, setDerechosVacacionales] = useState<DerechosVacacionales | null>(null);
   const [selectedSolicitud, setSelectedSolicitud] = useState<Solicitud | null>(null);
   const [selectedSolicitudDetalle, setSelectedSolicitudDetalle] = useState<DetalleSolicitudResponse | null>(null);
   const [selectedAprobacion, setSelectedAprobacion] = useState<DetalleAprobacion | null>(null);
   
-  // Estados para filtros
   const [filterEstado, setFilterEstado] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
   const [filterFechaDesde, setFilterFechaDesde] = useState('');
   const [filterFechaHasta, setFilterFechaHasta] = useState('');
-  
-  // Filtrado en tiempo real para mis solicitudes
+
   useEffect(() => {
     if (!filterText) {
       setFilteredMisSolicitudes(misSolicitudes);
@@ -513,7 +479,6 @@ const Solicitudes: React.FC = () => {
     }
   }, [filterText, misSolicitudes]);
 
-  // Filtrado en tiempo real para solicitudes pendientes
   useEffect(() => {
     if (!filterTextPendientes) {
       setFilteredSolicitudesPendientes(solicitudesPendientes);
@@ -530,7 +495,6 @@ const Solicitudes: React.FC = () => {
     }
   }, [filterTextPendientes, solicitudesPendientes]);
 
-  // Filtrado en tiempo real para solicitudes aprobadas
   useEffect(() => {
     if (!filterTextAprobadas) {
       setFilteredSolicitudesAprobadas(solicitudesAprobadas);
@@ -548,7 +512,6 @@ const Solicitudes: React.FC = () => {
     }
   }, [filterTextAprobadas, solicitudesAprobadas]);
 
-  // Filtrado en tiempo real para reporte de horas extras
   useEffect(() => {
     if (!filterTextHorasExtras) {
       setFilteredReporteHorasExtras(reporteHorasExtras);
@@ -566,7 +529,6 @@ const Solicitudes: React.FC = () => {
     }
   }, [filterTextHorasExtras, reporteHorasExtras]);
 
-  // Cargar datos iniciales
   useEffect(() => {
     loadDerechosVacacionales();
     if (canViewAll) {
@@ -584,7 +546,6 @@ const Solicitudes: React.FC = () => {
   useEffect(() => {
     if (!canApprove) return;
     
-    // Actualizar cada 30 segundos
     const interval = setInterval(() => {
       loadPendientesCount();
     }, 30000);
@@ -607,7 +568,6 @@ const Solicitudes: React.FC = () => {
         break;
     }
     
-    // Siempre actualizar el contador de pendientes cuando se cambia de pestaña
     if (canApprove && activeTab !== 'pendientes') {
       loadPendientesCount();
     }
@@ -616,7 +576,6 @@ const Solicitudes: React.FC = () => {
   const loadDerechosVacacionales = async () => {
     try {
       const response = await api.get('/solicitudes/vacaciones/derechos');
-      console.log('Derechos vacacionales:', response.data);
       
       if (response.data.success) {
         const data = response.data.data;
@@ -636,7 +595,6 @@ const Solicitudes: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Error cargando derechos vacacionales:', error);
-      // Si falla, crear datos por defecto
       setDerechosVacacionales({
         DiasDisponibles: 12,
         DiasTomados: 0,
@@ -672,8 +630,6 @@ const Solicitudes: React.FC = () => {
         response = await api.get('/solicitudes/mis-solicitudes');
       }
       
-      console.log('Mis solicitudes respuesta:', response.data);
-      
       if (response.data.success) {
         let solicitudes = response.data.data || [];
         
@@ -702,7 +658,6 @@ const Solicitudes: React.FC = () => {
       setError('');
       
       const response = await api.get('/solicitudes/aprobaciones/pendientes');
-      console.log('Aprobaciones pendientes respuesta:', response.data);
       
       if (response.data.success) {
         const data = response.data.data || [];
@@ -732,7 +687,6 @@ const Solicitudes: React.FC = () => {
       if (filterTipo) params.append('tipo', filterTipo);
       
       const response = await api.get(`/solicitudes/aprobadas?${params}`);
-      console.log('Solicitudes aprobadas respuesta:', response.data);
       
       if (response.data.success) {
         const data = response.data.data;
@@ -762,7 +716,6 @@ const Solicitudes: React.FC = () => {
       if (filterFechaHasta) params.append('fechaHasta', filterFechaHasta);
       
       const response = await api.get(`/solicitudes/horas-extras/reporte?${params}`);
-      console.log('Reporte horas extras respuesta:', response.data);
       
       if (response.data.success) {
         const data = response.data.data;
@@ -788,7 +741,6 @@ const Solicitudes: React.FC = () => {
       if (response.data.success) {
         const count = response.data.data?.length || 0;
         setPendientesCount(count);
-        console.log('📊 Pendientes count actualizado:', count);
       }
     } catch (error: any) {
       console.error('Error cargando contador de pendientes:', error);
@@ -800,8 +752,6 @@ const Solicitudes: React.FC = () => {
       setError('');
       setSelectedSolicitudDetalle(null);
       
-      console.log('Cargando detalle de solicitud:', solicitudId);
-      
       let solicitudBasica = misSolicitudes.find(s => s.ID === solicitudId);
       
       if (!solicitudBasica && canViewAll) {
@@ -811,7 +761,6 @@ const Solicitudes: React.FC = () => {
       let detalleCompleto = null;
       try {
         const response = await api.get(`/solicitudes/detalle/${solicitudId}`);
-        console.log('Detalle completo respuesta:', response.data);
         
         if (response.data.success) {
           detalleCompleto = response.data.data;
@@ -829,8 +778,6 @@ const Solicitudes: React.FC = () => {
         Motivo: solicitudBasica?.Motivo || detalleCompleto?.solicitud?.Motivo || 'No disponible',
         FechaSolicitud: solicitudBasica?.FechaSolicitud || detalleCompleto?.solicitud?.FechaSolicitud || new Date().toISOString()
       } as Solicitud;
-      
-      console.log('Solicitud combinada:', solicitudCombinada);
       
       setSelectedSolicitud(solicitudCombinada);
       setSelectedSolicitudDetalle(detalleCompleto);
@@ -873,13 +820,11 @@ const Solicitudes: React.FC = () => {
         return;
       }
       
-      // Validar que la fecha de inicio no sea fin de semana
       if (esFinDeSemana(vacacionesData.fechaInicio)) {
         setError('Las vacaciones no pueden comenzar en fin de semana. Por favor selecciona un día hábil.');
         return;
       }
       
-      // Calcular días hábiles
       const diasHabiles = calcularDiasHabiles(vacacionesData.fechaInicio, vacacionesData.fechaFin);
       
       if (diasHabiles <= 0) {
@@ -887,7 +832,6 @@ const Solicitudes: React.FC = () => {
         return;
       }
       
-      // Verificar que tenga días disponibles
       if (derechosVacacionales && diasHabiles > derechosVacacionales.DiasDisponibles) {
         setError(`Solo tienes ${derechosVacacionales.DiasDisponibles} días disponibles. Estás solicitando ${diasHabiles} días hábiles.`);
         return;
@@ -900,10 +844,7 @@ const Solicitudes: React.FC = () => {
         diasSolicitados: diasHabiles
       };
       
-      console.log('Enviando solicitud de vacaciones:', solicitudData);
-      
       const response = await api.post('/solicitudes/vacaciones/solicitar', solicitudData);
-      console.log('Respuesta vacaciones:', response.data);
       
       if (response.data.success) {
         setSuccess('Solicitud de vacaciones enviada exitosamente');
@@ -943,13 +884,11 @@ const Solicitudes: React.FC = () => {
         return;
       }
       
-      // Validar que no sea fin de semana
       if (esFinDeSemana(permisoData.fechaInicio)) {
         setError('Los permisos no pueden solicitarse en fin de semana. Por favor selecciona un día hábil.');
         return;
       }
       
-      // Validar 24 horas de anticipación
       const fechaSeleccionada = new Date(permisoData.fechaInicio);
       const ahora = new Date();
       const diferenciaHoras = (fechaSeleccionada.getTime() - ahora.getTime()) / (1000 * 60 * 60);
@@ -959,14 +898,10 @@ const Solicitudes: React.FC = () => {
         return;
       }
       
-      console.log('Enviando solicitud de permiso:', permisoData);
-      
       const response = await api.post('/solicitudes/permisos/solicitar', {
         ...permisoData,
         fechaInicio: fechaSeleccionada.toISOString().split('T')[0]
       });
-      
-      console.log('Respuesta permiso:', response.data);
       
       if (response.data.success) {
         setSuccess('Solicitud de permiso enviada exitosamente');
@@ -1004,7 +939,6 @@ const Solicitudes: React.FC = () => {
         return;
       }
       
-      // Validar que no sea fin de semana
       if (esFinDeSemana(horasExtrasData.fechaInicio)) {
         setError('Las horas extras no pueden solicitarse en fin de semana. Por favor selecciona un día hábil.');
         return;
@@ -1023,10 +957,7 @@ const Solicitudes: React.FC = () => {
         fechaInicio: new Date(horasExtrasData.fechaInicio).toISOString().split('T')[0]
       };
       
-      console.log('Enviando solicitud de horas extras:', solicitudData);
-      
       const response = await api.post('/solicitudes/horas-extras/solicitar', solicitudData);
-      console.log('Respuesta horas extras:', response.data);
       
       if (response.data.success) {
         setSuccess('Solicitud de horas extras enviada exitosamente');
@@ -1058,8 +989,6 @@ const Solicitudes: React.FC = () => {
         return;
       }
       
-      console.log('Procesando aprobación:', aprobacionData);
-      
       const estadoAPI = aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
       
       const response = await api.patch(
@@ -1069,8 +998,6 @@ const Solicitudes: React.FC = () => {
           comentarios: aprobacionData.comentarios 
         }
       );
-      
-      console.log('Respuesta procesar aprobación:', response.data);
       
       if (response.data.success) {
         setSuccess(`Aprobación ${aprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'} exitosamente`);
@@ -1103,8 +1030,6 @@ const Solicitudes: React.FC = () => {
         return;
       }
       
-      console.log('Editando aprobación:', editAprobacionData);
-      
       const estadoAPI = editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazado';
       
       const response = await api.patch(
@@ -1114,8 +1039,6 @@ const Solicitudes: React.FC = () => {
           comentarios: editAprobacionData.comentarios 
         }
       );
-      
-      console.log('Respuesta editar aprobación:', response.data);
       
       if (response.data.success) {
         setSuccess(`Aprobación actualizada a ${editAprobacionData.estado === 'aprobada' ? 'aprobada' : 'rechazada'}`);
@@ -1145,11 +1068,7 @@ const Solicitudes: React.FC = () => {
     try {
       setError('');
       
-      console.log('Cancelando solicitud:', solicitudId);
-      
       const response = await api.patch(`/solicitudes/${solicitudId}/cancelar`);
-      
-      console.log('Respuesta cancelar:', response.data);
       
       if (response.data.success) {
         setSuccess('Solicitud cancelada exitosamente');
@@ -1254,43 +1173,11 @@ const Solicitudes: React.FC = () => {
     );
   };
   
-  const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return 'No disponible';
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return 'Fecha inválida';
-      return date.toLocaleDateString('es-MX', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-    } catch (error) {
-      return 'Fecha inválida';
-    }
-  };
-  
-  const formatDateTime = (dateString: string | null | undefined) => {
-    if (!dateString) return 'No disponible';
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return 'Fecha inválida';
-      return date.toLocaleDateString('es-MX', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch (error) {
-      return 'Fecha inválida';
-    }
-  };
-  
   const getDetalleSolicitud = (aprobacion: DetalleAprobacion) => {
     if (aprobacion.Tipo === 'vacaciones') {
       const dias = aprobacion.DiasSolicitados || 0;
-      const fechaInicio = aprobacion.FechaInicio ? formatDate(aprobacion.FechaInicio) : 'N/A';
-      const fechaFin = aprobacion.FechaFin ? formatDate(aprobacion.FechaFin) : 'N/A';
+      const fechaInicio = aprobacion.FechaInicio ? formatDateDisplay(aprobacion.FechaInicio) : 'N/A';
+      const fechaFin = aprobacion.FechaFin ? formatDateDisplay(aprobacion.FechaFin) : 'N/A';
       return (
         <div className="mb-3 p-3 bg-light rounded">
           <div className="d-flex align-items-center mb-2">
@@ -1313,7 +1200,7 @@ const Solicitudes: React.FC = () => {
     
     if (aprobacion.Tipo === 'permiso') {
       const conGoce = aprobacion.ConGoce ? 'Sí' : 'No';
-      const fecha = aprobacion.FechaInicio ? formatDate(aprobacion.FechaInicio) : 'N/A';
+      const fecha = aprobacion.FechaInicio ? formatDateDisplay(aprobacion.FechaInicio) : 'N/A';
       return (
         <div className="mb-3 p-3 bg-light rounded">
           <div className="d-flex align-items-center mb-2">
@@ -1336,7 +1223,7 @@ const Solicitudes: React.FC = () => {
     
     if (aprobacion.Tipo === 'horas_extras') {
       const horas = aprobacion.HorasSolicitadas || 0;
-      const fecha = aprobacion.FechaInicio ? formatDate(aprobacion.FechaInicio) : 'N/A';
+      const fecha = aprobacion.FechaInicio ? formatDateDisplay(aprobacion.FechaInicio) : 'N/A';
       return (
         <div className="mb-3 p-3 bg-light rounded">
           <div className="d-flex align-items-center mb-2">
@@ -1386,9 +1273,7 @@ const Solicitudes: React.FC = () => {
     return fechaMinima.toISOString().split('T')[0];
   };
 
-  // Función mejorada para manejar cambio en fecha inicio de vacaciones
   const handleFechaInicioVacacionesChange = (fecha: string) => {
-    // Si la fecha está vacía, simplemente actualizar
     if (!fecha) {
       setVacacionesData(prev => ({
         ...prev,
@@ -1397,7 +1282,6 @@ const Solicitudes: React.FC = () => {
       return;
     }
 
-    // Corregir a día hábil si es necesario
     const fechaCorregida = obtenerDiaHabilMasCercano(fecha);
     
     setVacacionesData(prev => {
@@ -1406,7 +1290,6 @@ const Solicitudes: React.FC = () => {
         fechaInicio: fechaCorregida
       };
       
-      // Si ya hay fecha fin, validar y corregir ambas fechas
       if (prev.fechaFin) {
         const fechasCorregidas = validarYCorregirFechasVacaciones(
           fechaCorregida, 
@@ -1423,9 +1306,7 @@ const Solicitudes: React.FC = () => {
     });
   };
 
-  // Función mejorada para manejar cambio en fecha fin de vacaciones
   const handleFechaFinVacacionesChange = (fecha: string) => {
-    // Si la fecha está vacía, simplemente actualizar
     if (!fecha) {
       setVacacionesData(prev => ({
         ...prev,
@@ -1434,11 +1315,9 @@ const Solicitudes: React.FC = () => {
       return;
     }
 
-    // Corregir a día hábil si es necesario
     const fechaCorregida = obtenerDiaHabilMasCercano(fecha);
     
     setVacacionesData(prev => {
-      // Si ya hay fecha inicio, validar y corregir ambas fechas
       if (prev.fechaInicio) {
         const fechasCorregidas = validarYCorregirFechasVacaciones(
           prev.fechaInicio, 
@@ -1458,9 +1337,7 @@ const Solicitudes: React.FC = () => {
     });
   };
 
-  // Función mejorada para manejar cambio en fecha de permiso
   const handleFechaPermisoChange = (fecha: string) => {
-    // Si la fecha está vacía, simplemente actualizar
     if (!fecha) {
       setPermisoData(prev => ({
         ...prev,
@@ -1469,7 +1346,6 @@ const Solicitudes: React.FC = () => {
       return;
     }
 
-    // Corregir a día hábil si es necesario
     const fechaCorregida = obtenerDiaHabilMasCercano(fecha);
     
     setPermisoData(prev => ({
@@ -1478,9 +1354,7 @@ const Solicitudes: React.FC = () => {
     }));
   };
 
-  // Función mejorada para manejar cambio en fecha de horas extras
   const handleFechaHorasExtrasChange = (fecha: string) => {
-    // Si la fecha está vacía, simplemente actualizar
     if (!fecha) {
       setHorasExtrasData(prev => ({
         ...prev,
@@ -1489,7 +1363,6 @@ const Solicitudes: React.FC = () => {
       return;
     }
 
-    // Corregir a día hábil si es necesario
     const fechaCorregida = obtenerDiaHabilMasCercano(fecha);
     
     setHorasExtrasData(prev => ({
@@ -1498,31 +1371,25 @@ const Solicitudes: React.FC = () => {
     }));
   };
 
-  // Función para manejar el cambio en fecha inicio de vacaciones (input directo)
   const handleFechaInicioInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fecha = e.target.value;
     handleFechaInicioVacacionesChange(fecha);
   };
 
-  // Función para manejar el cambio en fecha fin de vacaciones (input directo)
   const handleFechaFinInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fecha = e.target.value;
     handleFechaFinVacacionesChange(fecha);
   };
 
-  // Función para manejar el cambio en fecha de permiso (input directo)
   const handleFechaPermisoInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fecha = e.target.value;
     handleFechaPermisoChange(fecha);
   };
 
-  // Función para manejar el cambio en fecha de horas extras (input directo)
   const handleFechaHorasExtrasInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fecha = e.target.value;
     handleFechaHorasExtrasChange(fecha);
   };
-
-  // ==================== FUNCIONES DE EXPORTACIÓN ====================
 
   const exportToExcel = (data: any[], filename: string) => {
     try {
@@ -1554,11 +1421,11 @@ const Solicitudes: React.FC = () => {
       const doc = new jsPDF();
       
       doc.setFontSize(18);
-      doc.setTextColor(13, 110, 253); // Color primary
+      doc.setTextColor(13, 110, 253);
       doc.text(`Reporte de ${filename}`, 14, 22);
       doc.setFontSize(11);
       doc.setTextColor(44, 62, 80);
-      doc.text(`Generado: ${new Date().toLocaleDateString('es-MX')}`, 14, 32);
+      doc.text(`Generado: ${formatDateDisplay(new Date().toISOString())}`, 14, 32);
       doc.text(`Total de registros: ${data.length}`, 14, 38);
 
       const tableColumn = columns.map(col => col.name);
@@ -1588,7 +1455,6 @@ const Solicitudes: React.FC = () => {
     }
   };
 
-  // Definición de columnas para DataTable - Mis Solicitudes
   const columnsMisSolicitudes = [
     {
       name: 'ID',
@@ -1606,7 +1472,7 @@ const Solicitudes: React.FC = () => {
       name: 'Fecha Solicitud',
       selector: (row: Solicitud) => row.FechaSolicitud,
       sortable: true,
-      cell: (row: Solicitud) => formatDateTime(row.FechaSolicitud),
+      cell: (row: Solicitud) => formatDateTimeDisplay(row.FechaSolicitud),
     },
     {
       name: 'Periodo / Detalles',
@@ -1618,11 +1484,11 @@ const Solicitudes: React.FC = () => {
             <div>
               <div>
                 <FontAwesomeIcon icon={faCalendarPlus} className="me-1" />
-                {formatDate(row.FechaInicio!)}
+                {formatDateDisplay(row.FechaInicio!)}
                 {row.FechaFin && (
                   <>
                     <FontAwesomeIcon icon={faArrowRight} className="mx-2" />
-                    {formatDate(row.FechaFin!)}
+                    {formatDateDisplay(row.FechaFin!)}
                   </>
                 )}
               </div>
@@ -1637,7 +1503,7 @@ const Solicitudes: React.FC = () => {
             <div>
               <div>
                 <FontAwesomeIcon icon={faCalendarCheck} className="me-1" />
-                {formatDate(row.FechaInicio!)}
+                {formatDateDisplay(row.FechaInicio!)}
               </div>
               <small className="text-muted">{row.ConGoce ? 'Con goce' : 'Sin goce'}</small>
             </div>
@@ -1648,7 +1514,7 @@ const Solicitudes: React.FC = () => {
             <div>
               <div>
                 <FontAwesomeIcon icon={faClock} className="me-1" />
-                {formatDate(row.FechaInicio!)}
+                {formatDateDisplay(row.FechaInicio!)}
               </div>
               {row.HorasSolicitadas && (
                 <small className="text-muted">{row.HorasSolicitadas} horas</small>
@@ -1713,7 +1579,6 @@ const Solicitudes: React.FC = () => {
     },
   ];
 
-  // Definición de columnas para DataTable - Solicitudes Pendientes
   const columnsPendientes = [
     {
       name: 'Colaborador',
@@ -1734,7 +1599,7 @@ const Solicitudes: React.FC = () => {
       name: 'Fecha Solicitud',
       selector: (row: AprobacionPendiente) => row.FechaSolicitud,
       sortable: true,
-      cell: (row: AprobacionPendiente) => formatDateTime(row.FechaSolicitud),
+      cell: (row: AprobacionPendiente) => formatDateTimeDisplay(row.FechaSolicitud),
     },
     {
       name: 'Detalles',
@@ -1745,7 +1610,7 @@ const Solicitudes: React.FC = () => {
           return (
             <div>
               <div>
-                {formatDate(row.FechaInicio!)} → {formatDate(row.FechaFin!)}
+                {formatDateDisplay(row.FechaInicio!)} → {formatDateDisplay(row.FechaFin!)}
               </div>
               <small className="text-muted">{row.DiasSolicitados} días hábiles</small>
             </div>
@@ -1755,7 +1620,7 @@ const Solicitudes: React.FC = () => {
           return (
             <div>
               <div>
-                {formatDate(row.FechaInicio!)}
+                {formatDateDisplay(row.FechaInicio!)}
               </div>
               <small className="text-muted">{row.ConGoce ? 'Con goce' : 'Sin goce'}</small>
             </div>
@@ -1765,7 +1630,7 @@ const Solicitudes: React.FC = () => {
           return (
             <div>
               <div>
-                {formatDate(row.FechaInicio!)}
+                {formatDateDisplay(row.FechaInicio!)}
               </div>
               <small className="text-muted">{row.HorasSolicitadas} horas</small>
             </div>
@@ -1828,7 +1693,6 @@ const Solicitudes: React.FC = () => {
     },
   ];
 
-  // Definición de columnas para DataTable - Solicitudes Aprobadas
   const columnsAprobadas = [
     {
       name: 'Colaborador',
@@ -1854,7 +1718,7 @@ const Solicitudes: React.FC = () => {
       name: 'Fecha Solicitud',
       selector: (row: Solicitud) => row.FechaSolicitud,
       sortable: true,
-      cell: (row: Solicitud) => formatDateTime(row.FechaSolicitud),
+      cell: (row: Solicitud) => formatDateTimeDisplay(row.FechaSolicitud),
     },
     {
       name: 'Periodo / Detalles',
@@ -1866,11 +1730,11 @@ const Solicitudes: React.FC = () => {
             <div>
               <div>
                 <FontAwesomeIcon icon={faCalendarPlus} className="me-1" />
-                {formatDate(row.FechaInicio!)}
+                {formatDateDisplay(row.FechaInicio!)}
                 {row.FechaFin && (
                   <>
                     <FontAwesomeIcon icon={faArrowRight} className="mx-2" />
-                    {formatDate(row.FechaFin!)}
+                    {formatDateDisplay(row.FechaFin!)}
                   </>
                 )}
               </div>
@@ -1885,7 +1749,7 @@ const Solicitudes: React.FC = () => {
             <div>
               <div>
                 <FontAwesomeIcon icon={faCalendarCheck} className="me-1" />
-                {formatDate(row.FechaInicio!)}
+                {formatDateDisplay(row.FechaInicio!)}
               </div>
             </div>
           );
@@ -1895,7 +1759,7 @@ const Solicitudes: React.FC = () => {
             <div>
               <div>
                 <FontAwesomeIcon icon={faClock} className="me-1" />
-                {formatDate(row.FechaInicio!)}
+                {formatDateDisplay(row.FechaInicio!)}
               </div>
               {row.HorasSolicitadas && (
                 <small className="text-muted">{row.HorasSolicitadas} horas</small>
@@ -1945,7 +1809,6 @@ const Solicitudes: React.FC = () => {
     },
   ];
 
-  // Definición de columnas para DataTable - Reporte Horas Extras
   const columnsHorasExtras = [
     {
       name: 'Colaborador',
@@ -1965,7 +1828,7 @@ const Solicitudes: React.FC = () => {
       name: 'Fecha',
       selector: (row: ReporteHorasExtras) => row.FechaInicio,
       sortable: true,
-      cell: (row: ReporteHorasExtras) => formatDate(row.FechaInicio),
+      cell: (row: ReporteHorasExtras) => formatDateDisplay(row.FechaInicio),
     },
     {
       name: 'Horas',
@@ -2226,7 +2089,6 @@ const Solicitudes: React.FC = () => {
     );
   };
   
-  // Verificación de usuario
   if (!user) {
     return (
       <Container fluid className="py-4">
@@ -2369,9 +2231,9 @@ const Solicitudes: React.FC = () => {
                               dataToExport.map(s => ({
                                 ID: s.ID,
                                 Tipo: s.Tipo,
-                                'Fecha Solicitud': formatDateTime(s.FechaSolicitud),
-                                'Fecha Inicio': s.FechaInicio ? formatDate(s.FechaInicio) : '',
-                                'Fecha Fin': s.FechaFin ? formatDate(s.FechaFin) : '',
+                                'Fecha Solicitud': formatDateTimeDisplay(s.FechaSolicitud),
+                                'Fecha Inicio': s.FechaInicio ? formatDateDisplay(s.FechaInicio) : '',
+                                'Fecha Fin': s.FechaFin ? formatDateDisplay(s.FechaFin) : '',
                                 'Días/Horas': s.DiasSolicitados || s.HorasSolicitadas || '',
                                 Motivo: s.Motivo,
                                 Estado: s.Estado
@@ -2519,9 +2381,9 @@ const Solicitudes: React.FC = () => {
                                 filteredSolicitudesPendientes.map(s => ({
                                   Colaborador: s.EmpleadoNombre,
                                   Tipo: s.Tipo,
-                                  'Fecha Solicitud': formatDateTime(s.FechaSolicitud),
-                                  'Fecha Inicio': s.FechaInicio ? formatDate(s.FechaInicio) : '',
-                                  'Fecha Fin': s.FechaFin ? formatDate(s.FechaFin) : '',
+                                  'Fecha Solicitud': formatDateTimeDisplay(s.FechaSolicitud),
+                                  'Fecha Inicio': s.FechaInicio ? formatDateDisplay(s.FechaInicio) : '',
+                                  'Fecha Fin': s.FechaFin ? formatDateDisplay(s.FechaFin) : '',
                                   'Días/Horas': s.DiasSolicitados || s.HorasSolicitadas || '',
                                   Motivo: s.Motivo
                                 })),
@@ -2644,9 +2506,9 @@ const Solicitudes: React.FC = () => {
                                   ID: s.ID,
                                   Colaborador: s.EmpleadoNombre || '',
                                   Tipo: s.Tipo,
-                                  'Fecha Solicitud': formatDateTime(s.FechaSolicitud),
-                                  'Fecha Inicio': s.FechaInicio ? formatDate(s.FechaInicio) : '',
-                                  'Fecha Fin': s.FechaFin ? formatDate(s.FechaFin) : '',
+                                  'Fecha Solicitud': formatDateTimeDisplay(s.FechaSolicitud),
+                                  'Fecha Inicio': s.FechaInicio ? formatDateDisplay(s.FechaInicio) : '',
+                                  'Fecha Fin': s.FechaFin ? formatDateDisplay(s.FechaFin) : '',
                                   'Días/Horas': s.DiasSolicitados || s.HorasSolicitadas || '',
                                   Motivo: s.Motivo,
                                   Estado: s.Estado
@@ -2818,7 +2680,7 @@ const Solicitudes: React.FC = () => {
                               exportToExcel(
                                 filteredReporteHorasExtras.map(item => ({
                                   Colaborador: item.EmpleadoNombre,
-                                  Fecha: formatDate(item.FechaInicio),
+                                  Fecha: formatDateDisplay(item.FechaInicio),
                                   Horas: item.HorasSolicitadas,
                                   Motivo: item.Motivo,
                                   Estado: item.Estado,
@@ -2917,7 +2779,6 @@ const Solicitudes: React.FC = () => {
         </Card.Body>
       </Card>
 
-      {/* Modal de Vacaciones */}
       <Modal show={showVacacionesModal} onHide={() => setShowVacacionesModal(false)} size="lg" centered>
         <Modal.Header closeButton className="bg-primary text-white">
           <Modal.Title>
@@ -2973,7 +2834,7 @@ const Solicitudes: React.FC = () => {
                   <Form.Label>Fecha de Inicio *</Form.Label>
                   <Form.Control
                     type="date"
-                    value={vacacionesData.fechaInicio}
+                    value={formatDateForInput(vacacionesData.fechaInicio)}
                     onChange={handleFechaInicioInputChange}
                     min={new Date().toISOString().split('T')[0]}
                     disabled={estadisticasVacaciones?.disponibles <= 0}
@@ -2992,7 +2853,7 @@ const Solicitudes: React.FC = () => {
                   <Form.Label>Fecha de Fin *</Form.Label>
                   <Form.Control
                     type="date"
-                    value={vacacionesData.fechaFin}
+                    value={formatDateForInput(vacacionesData.fechaFin)}
                     onChange={handleFechaFinInputChange}
                     min={vacacionesData.fechaInicio || new Date().toISOString().split('T')[0]}
                     disabled={estadisticasVacaciones?.disponibles <= 0 || !vacacionesData.fechaInicio}
@@ -3075,7 +2936,6 @@ const Solicitudes: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Permiso */}
       <Modal show={showPermisoModal} onHide={() => setShowPermisoModal(false)} centered>
         <Modal.Header closeButton className="bg-info text-white">
           <Modal.Title>
@@ -3096,7 +2956,7 @@ const Solicitudes: React.FC = () => {
               <Form.Label>Fecha *</Form.Label>
               <Form.Control
                 type="date"
-                value={permisoData.fechaInicio}
+                value={formatDateForInput(permisoData.fechaInicio)}
                 onChange={handleFechaPermisoInputChange}
                 min={calcularFechaMinimaPermiso()}
                 required
@@ -3170,7 +3030,6 @@ const Solicitudes: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Horas Extras */}
       <Modal show={showHorasExtrasModal} onHide={() => setShowHorasExtrasModal(false)} centered>
         <Modal.Header closeButton className="bg-warning text-dark">
           <Modal.Title>
@@ -3206,7 +3065,7 @@ const Solicitudes: React.FC = () => {
               <Form.Label>Fecha *</Form.Label>
               <Form.Control
                 type="date"
-                value={horasExtrasData.fechaInicio}
+                value={formatDateForInput(horasExtrasData.fechaInicio)}
                 onChange={handleFechaHorasExtrasInputChange}
                 min={new Date().toISOString().split('T')[0]}
                 required
@@ -3273,7 +3132,6 @@ const Solicitudes: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Aprobar/Rechazar */}
       <Modal show={showApproveModal} onHide={() => setShowApproveModal(false)} size="lg" centered>
         <Modal.Header closeButton className={aprobacionData.estado === 'aprobada' ? 'bg-success text-white' : 'bg-danger text-white'}>
           <Modal.Title>
@@ -3313,7 +3171,7 @@ const Solicitudes: React.FC = () => {
                   <Row>
                     <Col md={6} className="mb-2">
                       <small className="text-muted d-block">Fecha de solicitud</small>
-                      <strong>{formatDateTime(selectedAprobacion.FechaSolicitud)}</strong>
+                      <strong>{formatDateTimeDisplay(selectedAprobacion.FechaSolicitud)}</strong>
                     </Col>
                     <Col md={6} className="mb-2">
                       <small className="text-muted d-block">Motivo</small>
@@ -3430,7 +3288,6 @@ const Solicitudes: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Editar Aprobación */}
       <Modal show={showEditAprobacionModal} onHide={() => setShowEditAprobacionModal(false)} size="lg" centered>
         <Modal.Header closeButton className="bg-warning text-dark">
           <Modal.Title>
@@ -3460,7 +3317,7 @@ const Solicitudes: React.FC = () => {
                   <p className="mb-2"><strong>Motivo:</strong> {selectedAprobacion.Motivo}</p>
                   <p className="mb-0 text-muted small">
                     <FontAwesomeIcon icon={faCalendarAlt} className="me-1" />
-                    Solicitado el {formatDateTime(selectedAprobacion.FechaSolicitud)}
+                    Solicitado el {formatDateTimeDisplay(selectedAprobacion.FechaSolicitud)}
                   </p>
                 </Card.Body>
               </Card>
@@ -3513,7 +3370,6 @@ const Solicitudes: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Detalle de Solicitud */}
       <Modal show={showDetailModal} onHide={() => setShowDetailModal(false)} size="lg" scrollable centered>
         <Modal.Header closeButton className="bg-light">
           <Modal.Title>
@@ -3556,7 +3412,7 @@ const Solicitudes: React.FC = () => {
                       <ListGroup.Item>
                         <div className="d-flex justify-content-between">
                           <strong><FontAwesomeIcon icon={faCalendarAlt} className="me-2" /> Fecha de Solicitud:</strong>
-                          <span>{formatDateTime(selectedSolicitud.FechaSolicitud)}</span>
+                          <span>{formatDateTimeDisplay(selectedSolicitud.FechaSolicitud)}</span>
                         </div>
                       </ListGroup.Item>
                       
@@ -3566,7 +3422,7 @@ const Solicitudes: React.FC = () => {
                             <ListGroup.Item>
                               <div className="d-flex justify-content-between">
                                 <strong><FontAwesomeIcon icon={faCalendarPlus} className="me-2" /> Fecha Inicio:</strong>
-                                <span>{formatDate(selectedSolicitud.FechaInicio)}</span>
+                                <span>{formatDateDisplay(selectedSolicitud.FechaInicio)}</span>
                               </div>
                             </ListGroup.Item>
                           )}
@@ -3575,7 +3431,7 @@ const Solicitudes: React.FC = () => {
                             <ListGroup.Item>
                               <div className="d-flex justify-content-between">
                                 <strong><FontAwesomeIcon icon={faCalendarMinus} className="me-2" /> Fecha Fin:</strong>
-                                <span>{formatDate(selectedSolicitud.FechaFin)}</span>
+                                <span>{formatDateDisplay(selectedSolicitud.FechaFin)}</span>
                               </div>
                             </ListGroup.Item>
                           )}
@@ -3597,7 +3453,7 @@ const Solicitudes: React.FC = () => {
                             <ListGroup.Item>
                               <div className="d-flex justify-content-between">
                                 <strong><FontAwesomeIcon icon={faCalendarCheck} className="me-2" /> Fecha:</strong>
-                                <span>{formatDate(selectedSolicitud.FechaInicio)}</span>
+                                <span>{formatDateDisplay(selectedSolicitud.FechaInicio)}</span>
                               </div>
                             </ListGroup.Item>
                           )}
@@ -3617,7 +3473,7 @@ const Solicitudes: React.FC = () => {
                             <ListGroup.Item>
                               <div className="d-flex justify-content-between">
                                 <strong><FontAwesomeIcon icon={faClock} className="me-2" /> Fecha:</strong>
-                                <span>{formatDate(selectedSolicitud.FechaInicio)}</span>
+                                <span>{formatDateDisplay(selectedSolicitud.FechaInicio)}</span>
                               </div>
                             </ListGroup.Item>
                           )}
@@ -3674,7 +3530,7 @@ const Solicitudes: React.FC = () => {
                               {aprobacion.FechaAprobacion && (
                                 <>
                                   <FontAwesomeIcon icon={faCalendarAlt} className="ms-3 me-1" />
-                                  {formatDateTime(aprobacion.FechaAprobacion)}
+                                  {formatDateTimeDisplay(aprobacion.FechaAprobacion)}
                                 </>
                               )}
                             </div>
@@ -3707,7 +3563,7 @@ const Solicitudes: React.FC = () => {
                                 <strong>{historial.UsuarioNombre || 'Usuario'}</strong>
                               </div>
                               <div className="small text-muted">
-                                {formatDateTime(historial.createdAt)}
+                                {formatDateTimeDisplay(historial.createdAt)}
                               </div>
                             </div>
                             <div className="small">

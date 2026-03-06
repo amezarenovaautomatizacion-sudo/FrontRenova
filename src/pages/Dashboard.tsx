@@ -35,6 +35,7 @@ import {
   faPlus
 } from '@fortawesome/free-solid-svg-icons';
 import { Link } from 'react-router-dom';
+import { formatDateDisplay, formatDateTimeDisplay } from '../utils/dateUtils';
 
 interface Estadisticas {
   totalEmpleados: number;
@@ -110,13 +111,11 @@ const Dashboard: React.FC = () => {
     aprobacionesPendientes: 0
   });
   
-  // Estados para datos
   const [misSolicitudes, setMisSolicitudes] = useState<Solicitud[]>([]);
   const [aprobacionesPendientes, setAprobacionesPendientes] = useState<AprobacionPendiente[]>([]);
   const [notificacionesRecientes, setNotificacionesRecientes] = useState<Notificacion[]>([]);
   const [proyectosActivos, setProyectosActivos] = useState<Proyecto[]>([]);
   
-  // Estados de carga
   const [loading, setLoading] = useState({
     estadisticas: true,
     solicitudes: true,
@@ -125,7 +124,6 @@ const Dashboard: React.FC = () => {
     proyectos: true
   });
 
-  // Determinar rol
   useEffect(() => {
     const rol = user?.rol || user?.Rol || 'employee';
     setUserRol(rol);
@@ -135,21 +133,15 @@ const Dashboard: React.FC = () => {
   const isManager = userRol === 'manager';
   const canApprove = isAdmin || isManager;
 
-  // ==================== FUNCIONES DE CARGA ====================
-
   const cargarEstadisticas = async () => {
     try {
       setLoading(prev => ({ ...prev, estadisticas: true }));
       
-      // 1. TOTAL COLABORADORES - CORREGIDO
       let totalEmpleados = 0;
       try {
         const empleadosRes = await api.get('/empleados/empleados?limit=1');
-        console.log('Respuesta colaboradores:', empleadosRes.data);
-        
         if (empleadosRes.data.success) {
           const data = empleadosRes.data.data;
-          
           if (data && data.pagination && data.pagination.total) {
             totalEmpleados = data.pagination.total;
           } else if (data && data.empleados && Array.isArray(data.empleados)) {
@@ -164,15 +156,11 @@ const Dashboard: React.FC = () => {
         console.error('Error cargando colaboradores:', error);
       }
 
-      // 2. TOTAL PROYECTOS - CORREGIDO
       let totalProyectos = 0;
       try {
         const proyectosRes = await api.get('/proyectos?limit=1');
-        console.log('Respuesta proyectos:', proyectosRes.data);
-        
         if (proyectosRes.data.success) {
           const data = proyectosRes.data.data;
-          
           if (data && data.pagination && data.pagination.total) {
             totalProyectos = data.pagination.total;
           } else if (data && data.proyectos && Array.isArray(data.proyectos)) {
@@ -187,7 +175,6 @@ const Dashboard: React.FC = () => {
         console.error('Error cargando total proyectos:', error);
       }
       
-      // 3. NOTIFICACIONES SIN LEER - RESUMEN
       let notificacionesSinLeer = 0;
       try {
         const notificacionesRes = await api.get('/notificaciones/resumen');
@@ -219,8 +206,6 @@ const Dashboard: React.FC = () => {
       if (response.data.success) {
         const solicitudes = response.data.data || [];
         setMisSolicitudes(solicitudes);
-        
-        // Actualizar contador de mis solicitudes pendientes
         const misPendientes = solicitudes.filter((s: Solicitud) => s.Estado === 'pendiente').length;
         setEstadisticas(prev => ({ ...prev, solicitudesPendientes: misPendientes }));
       }
@@ -260,14 +245,10 @@ const Dashboard: React.FC = () => {
       if (response.data.success) {
         const data = response.data.data;
         let notificaciones = data.notificaciones || data || [];
-        
         if (!Array.isArray(notificaciones)) {
           notificaciones = [];
         }
-        
         setNotificacionesRecientes(notificaciones);
-        
-        // Actualizar contador de notificaciones sin leer
         const sinLeer = notificaciones.filter((n: any) => n.Estado === 'no_vista').length;
         setEstadisticas(prev => ({ ...prev, notificacionesSinLeer: sinLeer }));
       } else {
@@ -292,19 +273,16 @@ const Dashboard: React.FC = () => {
         const data = response.data.data;
         let proyectos = [];
         
-        // Manejar diferentes estructuras de respuesta
         if (data && data.proyectos) {
           proyectos = data.proyectos;
         } else if (Array.isArray(data)) {
           proyectos = data;
         }
         
-        // Filtrar solo activos
         const activos = proyectos.filter((p: any) => 
           p.Estado && p.Estado.toLowerCase() === 'activo'
         );
         
-        // Calcular progreso para cada proyecto
         const proyectosConProgreso = activos.map((p: any) => ({
           ...p,
           Progreso: p.TotalTareas && p.TotalTareas > 0 
@@ -325,7 +303,6 @@ const Dashboard: React.FC = () => {
   };
 
   const cargarDashboard = useCallback(async () => {
-    // Cargar todo en paralelo
     await Promise.all([
       cargarEstadisticas(),
       cargarMisSolicitudes(),
@@ -336,7 +313,6 @@ const Dashboard: React.FC = () => {
   }, [canApprove, isAdmin, isManager]);
 
   useEffect(() => {
-    // Obtener datos del colaborador del localStorage
     const empleadoData = localStorage.getItem('renova_empleado');
     if (empleadoData) {
       try {
@@ -346,122 +322,12 @@ const Dashboard: React.FC = () => {
       }
     }
 
-    // Cargar datos del dashboard
     cargarDashboard();
   }, [cargarDashboard]);
 
-  // ==================== FUNCIONES AUXILIARES ====================
-
-  const formatFecha = (fecha: string) => {
-    if (!fecha) return 'N/A';
-    
-    try {
-      const date = new Date(fecha);
-      
-      if (isNaN(date.getTime())) {
-        const parts = fecha.split('T')[0].split('-');
-        if (parts.length === 3) {
-          const year = parseInt(parts[0]);
-          const month = parseInt(parts[1]) - 1;
-          const day = parseInt(parts[2]);
-          const date2 = new Date(year, month, day);
-          if (!isNaN(date2.getTime())) {
-            return date2.toLocaleDateString('es-ES', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric'
-            });
-          }
-        }
-        return 'Fecha inválida';
-      }
-      
-      return date.toLocaleDateString('es-ES', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      });
-    } catch (error) {
-      return 'Fecha inválida';
-    }
-  };
-
-  const formatFechaHora = (fecha: string) => {
-    if (!fecha) return 'N/A';
-    
-    try {
-      const date = new Date(fecha);
-      
-      if (isNaN(date.getTime())) {
-        return 'Fecha inválida';
-      }
-      
-      return date.toLocaleDateString('es-ES', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch (error) {
-      return 'Fecha inválida';
-    }
-  };
-
-  const getEstadoBadge = (estado: string) => {
-    // Mapeo de estados del sistema a textos en español
-    const estadoEnEspanol: Record<string, { texto: string, variante: string, icono: any }> = {
-      'pendiente': { texto: 'Pendiente', variante: 'warning', icono: faHourglassHalf },
-      'aprobada': { texto: 'Aprobada', variante: 'success', icono: faCheckCircle },
-      'aprobado': { texto: 'Aprobado', variante: 'success', icono: faCheckCircle },
-      'rechazada': { texto: 'Rechazada', variante: 'danger', icono: faTimesCircle },
-      'rechazado': { texto: 'Rechazado', variante: 'danger', icono: faTimesCircle },
-      'cancelada': { texto: 'Cancelada', variante: 'secondary', icono: faBan },
-      'cancelado': { texto: 'Cancelado', variante: 'secondary', icono: faBan },
-      'no_vista': { texto: 'No leída', variante: 'danger', icono: faBell },
-      'vista': { texto: 'Leída', variante: 'info', icono: faBell },
-      'activo': { texto: 'Activo', variante: 'success', icono: faCheckCircle },
-      'pausado': { texto: 'Pausado', variante: 'warning', icono: faClock },
-      'finalizado': { texto: 'Finalizado', variante: 'secondary', icono: faTimesCircle }
-    };
-
-    const config = estadoEnEspanol[estado.toLowerCase()] || { 
-      texto: estado, 
-      variante: 'info', 
-      icono: faExclamationCircle 
-    };
-    
-    return (
-      <Badge bg={config.variante} className="d-flex align-items-center gap-1" style={{ padding: '0.35rem 0.65rem' }}>
-        <FontAwesomeIcon icon={config.icono} size="xs" />
-        <span>{config.texto}</span>
-      </Badge>
-    );
-  };
-
-  const getTipoSolicitud = (tipo: string) => {
-    const tipos: Record<string, { nombre: string, color: string, icon: any }> = {
-      'vacaciones': { nombre: 'Vacaciones', color: 'primary', icon: faCalendarAlt },
-      'permiso': { nombre: 'Permiso', color: 'info', icon: faUserClock },
-      'horas_extras': { nombre: 'Horas Extras', color: 'warning', icon: faClock }
-    };
-
-    const config = tipos[tipo] || { nombre: tipo, color: 'secondary', icon: faFileAlt };
-    
-    return (
-      <Badge bg={config.color} className="me-2 d-inline-flex align-items-center gap-1">
-        <FontAwesomeIcon icon={config.icon} size="xs" />
-        {config.nombre}
-      </Badge>
-    );
-  };
-
-  // Obtener las solicitudes más recientes (máximo 5)
   const solicitudesRecientes = misSolicitudes
     .sort((a, b) => new Date(b.FechaSolicitud).getTime() - new Date(a.FechaSolicitud).getTime())
     .slice(0, 5);
-
-  // ==================== RENDERIZADO ====================
 
   if (loading.estadisticas && loading.solicitudes && loading.aprobaciones) {
     return (
@@ -478,9 +344,7 @@ const Dashboard: React.FC = () => {
   return (
     <Container fluid className="grow py-4">
       <Row>
-        {/* Sidebar izquierda */}
         <Col lg={3} md={4} className="mb-4">
-          {/* Información del usuario */}
           <Card className="shadow-sm mb-4 border-0">
             <Card.Body className="text-center bg-gradient bg-light">
               <div className="mb-3">
@@ -503,7 +367,6 @@ const Dashboard: React.FC = () => {
             </Card.Body>
           </Card>
 
-          {/* Estadísticas rápidas */}
           <Card className="shadow-sm mb-4 border-0">
             <Card.Header className="bg-light border-0">
               <h6 className="mb-0">
@@ -555,7 +418,6 @@ const Dashboard: React.FC = () => {
             </Card.Body>
           </Card>
 
-          {/* Acceso rápido */}
           <Card className="shadow-sm border-0">
             <Card.Header className="bg-light border-0">
               <h6 className="mb-0">
@@ -623,9 +485,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
 
-        {/* Contenido principal */}
         <Col lg={9} md={8}>
-          {/* Header del dashboard */}
           <div className="d-flex justify-content-between align-items-center mb-4">
             <div>
               <h2 className="mb-1 fw-bold">
@@ -638,17 +498,11 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="bg-light p-3 rounded">
               <small className="text-muted">
-                {new Date().toLocaleDateString('es-ES', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })}
+                {formatDateDisplay(new Date().toISOString())}
               </small>
             </div>
           </div>
 
-          {/* Tarjetas de estadísticas */}
           <Row className="mb-4">
             <Col md={6} lg={3} className="mb-3">
               <Card className="border-0 shadow-sm h-100">
@@ -774,7 +628,6 @@ const Dashboard: React.FC = () => {
             </Col>
           </Row>
 
-          {/* Tabs de solicitudes */}
           <Row className="mb-4">
             <Col lg={12}>
               <Card className="shadow-sm border-0">
@@ -834,19 +687,23 @@ const Dashboard: React.FC = () => {
                               >
                                 <div className="d-flex justify-content-between align-items-start mb-2">
                                   <div className="d-flex align-items-center">
-                                    {getTipoSolicitud(solicitud.Tipo)}
+                                    <Badge bg={solicitud.Tipo === 'vacaciones' ? 'primary' : solicitud.Tipo === 'permiso' ? 'info' : 'warning'} className="me-2">
+                                      {solicitud.Tipo === 'vacaciones' ? 'Vacaciones' : solicitud.Tipo === 'permiso' ? 'Permiso' : 'Horas Extras'}
+                                    </Badge>
                                     <span className="fw-medium ms-2">
                                       {solicitud.Motivo && solicitud.Motivo.length > 40 
                                         ? `${solicitud.Motivo.substring(0, 40)}...` 
                                         : solicitud.Motivo || 'Sin motivo'}
                                     </span>
                                   </div>
-                                  {getEstadoBadge(solicitud.Estado)}
+                                  <Badge bg={solicitud.Estado === 'pendiente' ? 'warning' : solicitud.Estado === 'aprobada' ? 'success' : 'secondary'}>
+                                    {solicitud.Estado}
+                                  </Badge>
                                 </div>
                                 <div className="d-flex justify-content-between align-items-center">
                                   <small className="text-muted">
                                     <FontAwesomeIcon icon={faCalendarAlt} className="me-1" />
-                                    {formatFecha(solicitud.FechaSolicitud)}
+                                    {formatDateDisplay(solicitud.FechaSolicitud)}
                                   </small>
                                   {solicitud.Tipo === 'vacaciones' && solicitud.DiasSolicitados && (
                                     <small className="text-muted">
@@ -863,7 +720,6 @@ const Dashboard: React.FC = () => {
                             ))}
                           </ListGroup>
                           
-                          {/* Texto centrado con solicitudes faltantes */}
                           {solicitudesRecientes.length > 2 && (
                             <div className="text-center mt-3 mb-2">
                               <small className="text-muted fw-medium">
@@ -925,7 +781,9 @@ const Dashboard: React.FC = () => {
                                   <div className="d-flex justify-content-between align-items-start mb-2">
                                     <div>
                                       <div className="d-flex align-items-center mb-1">
-                                        {getTipoSolicitud(aprobacion.Tipo)}
+                                        <Badge bg={aprobacion.Tipo === 'vacaciones' ? 'primary' : aprobacion.Tipo === 'permiso' ? 'info' : 'warning'} className="me-2">
+                                          {aprobacion.Tipo === 'vacaciones' ? 'Vacaciones' : aprobacion.Tipo === 'permiso' ? 'Permiso' : 'Horas Extras'}
+                                        </Badge>
                                         <span className="ms-2 fw-medium">
                                           {aprobacion.EmpleadoNombre}
                                         </span>
@@ -943,7 +801,7 @@ const Dashboard: React.FC = () => {
                                   <div className="d-flex justify-content-between align-items-center">
                                     <small className="text-muted">
                                       <FontAwesomeIcon icon={faCalendarAlt} className="me-1" />
-                                      {formatFecha(aprobacion.FechaSolicitud)}
+                                      {formatDateDisplay(aprobacion.FechaSolicitud)}
                                     </small>
                                     <small className="text-muted">
                                       {aprobacion.DiasHoras}
@@ -953,7 +811,6 @@ const Dashboard: React.FC = () => {
                               ))}
                             </ListGroup>
                             
-                            {/* Texto centrado con aprobaciones faltantes */}
                             {aprobacionesPendientes.length > 2 && (
                               <div className="text-center mt-3 mb-2">
                                 <small className="text-muted fw-medium">
@@ -977,7 +834,6 @@ const Dashboard: React.FC = () => {
             </Col>
           </Row>
 
-          {/* Proyectos activos */}
           <Row className="mb-4">
             <Col lg={12}>
               <Card className="shadow-sm border-0">
@@ -1013,7 +869,9 @@ const Dashboard: React.FC = () => {
                                       </small>
                                     )}
                                   </div>
-                                  {getEstadoBadge(proyecto.Estado)}
+                                  <Badge bg={proyecto.Estado === 'activo' ? 'success' : proyecto.Estado === 'pausado' ? 'warning' : 'secondary'}>
+                                    {proyecto.Estado}
+                                  </Badge>
                                 </div>
                                 <p className="text-muted small mb-3">
                                   {proyecto.Descripcion 
@@ -1036,7 +894,7 @@ const Dashboard: React.FC = () => {
                                 <div className="d-flex justify-content-between align-items-center mt-3">
                                   <small className="text-muted">
                                     <FontAwesomeIcon icon={faCalendarAlt} className="me-1" />
-                                    Inicio: {formatFecha(proyecto.FechaInicio)}
+                                    Inicio: {formatDateDisplay(proyecto.FechaInicio)}
                                   </small>
                                   <Button 
                                     variant="outline-primary" 
@@ -1053,7 +911,6 @@ const Dashboard: React.FC = () => {
                         ))}
                       </Row>
                       
-                      {/* Texto centrado con proyectos faltantes */}
                       {proyectosActivos.length > 2 && (
                         <div className="text-center mt-2 mb-1">
                           <small className="text-muted fw-medium">
@@ -1073,7 +930,6 @@ const Dashboard: React.FC = () => {
             </Col>
           </Row>
 
-          {/* Notificaciones recientes */}
           <Row>
             <Col lg={12}>
               <Card className="shadow-sm border-0">
@@ -1120,7 +976,9 @@ const Dashboard: React.FC = () => {
                                       </small>
                                     )}
                                   </div>
-                                  {getEstadoBadge(notificacion.Estado)}
+                                  <Badge bg={notificacion.Estado === 'no_vista' ? 'danger' : 'secondary'}>
+                                    {notificacion.Estado === 'no_vista' ? 'Nueva' : 'Vista'}
+                                  </Badge>
                                 </div>
                                 <p className="text-muted small mb-1">
                                   {notificacion.Mensaje && notificacion.Mensaje.length > 100 
@@ -1129,7 +987,7 @@ const Dashboard: React.FC = () => {
                                 </p>
                                 <small className="text-muted">
                                   <FontAwesomeIcon icon={faClock} className="me-1" />
-                                  {formatFechaHora(notificacion.FechaCreacion)}
+                                  {formatDateTimeDisplay(notificacion.FechaCreacion)}
                                 </small>
                               </div>
                             </div>
@@ -1137,7 +995,6 @@ const Dashboard: React.FC = () => {
                         ))}
                       </ListGroup>
                       
-                      {/* Texto centrado con notificaciones faltantes */}
                       {notificacionesRecientes.length > 2 && (
                         <div className="text-center mt-3 mb-2">
                           <small className="text-muted fw-medium">

@@ -50,13 +50,13 @@ import api from '../services/api';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { formatDateDisplay, formatDateTimeDisplay } from '../utils/dateUtils';
 
-// Interfaces actualizadas según la API real
 interface TipoIncidencia {
   ID: number;
   Nombre: string;
   Descripcion?: string;
-  Activo: number; // La API devuelve 1 o 0
+  Activo: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -69,7 +69,6 @@ interface EmpleadoSelect {
   PuestoNombre?: string | null;
 }
 
-// Interfaz para la respuesta de /incidencias (admin/manager)
 interface IncidenciaFromAPI {
   ID: number;
   EmpleadoID: number;
@@ -78,7 +77,7 @@ interface IncidenciaFromAPI {
   FechaIncidencia: string;
   HoraIncidencia: string | null;
   Observaciones: string | null;
-  Activo: number; // 1 o 0
+  Activo: number;
   CreadoPor: number;
   createdAt: string;
   updatedAt: string;
@@ -86,10 +85,9 @@ interface IncidenciaFromAPI {
   TipoIncidenciaNombre: string;
   EmpleadoNombre: string;
   EmpleadoCorreo: string;
-  CreadoPorUsuario: string; // Email de quien creó
+  CreadoPorUsuario: string;
 }
 
-// Interfaz para la respuesta de /mis-incidencias (employee)
 interface MisIncidenciaFromAPI extends IncidenciaFromAPI {
   TipoIncidenciaDescripcion?: string;
   TipoSolicitud?: string;
@@ -97,7 +95,6 @@ interface MisIncidenciaFromAPI extends IncidenciaFromAPI {
   MotivoSolicitud?: string;
 }
 
-// Interfaz unificada para usar en el frontend
 interface Incidencia {
   ID: number;
   EmpleadoID: number;
@@ -109,11 +106,10 @@ interface Incidencia {
   FechaIncidencia: string;
   HoraIncidencia?: string | null;
   Observaciones?: string | null;
-  activo: boolean; // Convertido de Activo (1/0)
+  activo: boolean;
   CreadoPor: number;
-  CreadorEmail: string; // Cambiado de CreadorNombre a CreadorEmail
+  CreadorEmail: string;
   FechaCreacion: string;
-  // Campos opcionales de mis-incidencias
   TipoSolicitud?: string;
   EstadoSolicitud?: string;
 }
@@ -135,7 +131,6 @@ interface UpdateIncidenciaData {
   observaciones?: string;
 }
 
-// Estilos personalizados para DataTable
 const customStyles = {
   headRow: {
     style: {
@@ -193,7 +188,6 @@ const customStyles = {
   },
 };
 
-// Componente para los filtros personalizados
 const FilterComponent = ({ filterText, onFilter, onClear, placeholder }: any) => (
   <div className="d-flex align-items-center">
     <InputGroup style={{ minWidth: '300px' }}>
@@ -245,7 +239,6 @@ const Incidencias: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   
-  // Estados para DataTable
   const [filterText, setFilterText] = useState('');
   const [filterTextTipos, setFilterTextTipos] = useState('');
   const [resetPaginationToggle, setResetPaginationToggle] = useState(false);
@@ -255,7 +248,6 @@ const Incidencias: React.FC = () => {
   const [perPage, setPerPage] = useState(10);
   const [perPageTipos, setPerPageTipos] = useState(10);
   
-  // Estados para modales
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -263,7 +255,6 @@ const Incidencias: React.FC = () => {
   const [showCreateTipoModal, setShowCreateTipoModal] = useState(false);
   const [showEditTipoModal, setShowEditTipoModal] = useState(false);
   
-  // Estados para formularios
   const [selectedIncidencia, setSelectedIncidencia] = useState<Incidencia | null>(null);
   const [selectedTipo, setSelectedTipo] = useState<TipoIncidencia | null>(null);
   const [createData, setCreateData] = useState<CreateIncidenciaData>({
@@ -277,7 +268,6 @@ const Incidencias: React.FC = () => {
   const [tipoData, setTipoData] = useState({ nombre: '', descripcion: '' });
   const [editTipoData, setEditTipoData] = useState({ nombre: '', descripcion: '' });
   
-  // Estados para filtros
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEmpleado, setFilterEmpleado] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
@@ -288,7 +278,6 @@ const Incidencias: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const itemsPerPage = 10;
 
-  // Función para cargar incidencias (admin/manager)
   const loadIncidencias = useCallback(async () => {
     if (!canViewAll) return;
     
@@ -347,7 +336,6 @@ const Incidencias: React.FC = () => {
     }
   }, [currentPage, searchTerm, filterEmpleado, filterTipo, filterFechaDesde, filterFechaHasta, canViewAll]);
 
-  // Función para cargar mis incidencias (employee)
   const loadMisIncidencias = useCallback(async () => {
     if (!isEmployee) return;
     
@@ -396,7 +384,6 @@ const Incidencias: React.FC = () => {
     }
   }, [isEmployee]);
 
-  // Función para cargar tipos de incidencia
   const loadTiposIncidencia = useCallback(async () => {
     if (!canViewTipos) return;
     
@@ -420,13 +407,11 @@ const Incidencias: React.FC = () => {
     }
   }, [canViewTipos]);
 
-  // Función para cargar colaboradores supervisados
   const loadEmpleadosSupervisados = useCallback(async () => {
     if (!canCreate) return;
     
     try {
       const response = await api.get('/incidencias/empleados/supervisados');
-      
       if (response.data.success) {
         setEmpleadosSupervisados(response.data.data || []);
       }
@@ -435,7 +420,6 @@ const Incidencias: React.FC = () => {
     }
   }, [canCreate]);
 
-  // Filtrado en tiempo real para incidencias (admin/manager)
   useEffect(() => {
     if (!filterText) {
       setFilteredIncidencias(incidencias);
@@ -453,7 +437,6 @@ const Incidencias: React.FC = () => {
     }
   }, [filterText, incidencias]);
 
-  // Filtrado en tiempo real para mis incidencias (employee)
   useEffect(() => {
     if (!filterText) {
       setFilteredMisIncidencias(misIncidencias);
@@ -470,7 +453,6 @@ const Incidencias: React.FC = () => {
     }
   }, [filterText, misIncidencias]);
 
-  // Filtrado en tiempo real para tipos de incidencia
   useEffect(() => {
     if (!filterTextTipos) {
       setFilteredTiposIncidencia(tiposIncidencia);
@@ -486,7 +468,6 @@ const Incidencias: React.FC = () => {
     }
   }, [filterTextTipos, tiposIncidencia]);
 
-  // Efecto principal
   useEffect(() => {
     if (canViewTipos) {
       loadTiposIncidencia();
@@ -520,7 +501,6 @@ const Incidencias: React.FC = () => {
     loadEmpleadosSupervisados
   ]);
 
-  // Función para crear incidencia
   const handleCreateIncidencia = async () => {
     if (!canCreate) {
       setError('No tienes permisos para crear incidencias');
@@ -561,7 +541,6 @@ const Incidencias: React.FC = () => {
     }
   };
 
-  // Función para actualizar incidencia
   const handleUpdateIncidencia = async () => {
     if (!selectedIncidencia || !canEdit) return;
     
@@ -588,7 +567,6 @@ const Incidencias: React.FC = () => {
     }
   };
 
-  // Función para eliminar incidencia
   const handleDeleteIncidencia = async () => {
     if (!selectedIncidencia || !canDelete) return;
     
@@ -615,7 +593,6 @@ const Incidencias: React.FC = () => {
     }
   };
 
-  // Función para cambiar estado de incidencia (activar/desactivar)
   const handleToggleStatusIncidencia = async (incidencia: Incidencia) => {
     if (!canChangeStatus) {
       setError('No tienes permisos para cambiar el estado de incidencias');
@@ -650,7 +627,6 @@ const Incidencias: React.FC = () => {
     }
   };
 
-  // Función para crear tipo de incidencia
   const handleCreateTipo = async () => {
     if (!canManageTipos) {
       setError('Solo administradores pueden crear tipos de incidencia');
@@ -682,7 +658,6 @@ const Incidencias: React.FC = () => {
     }
   };
 
-  // Función para actualizar tipo de incidencia
   const handleUpdateTipo = async () => {
     if (!selectedTipo || !canManageTipos) return;
     
@@ -710,7 +685,6 @@ const Incidencias: React.FC = () => {
     }
   };
 
-  // Función para cambiar estado de tipo de incidencia
   const handleToggleStatusTipo = async (tipo: TipoIncidencia) => {
     if (!canManageTipos) {
       setError('Solo administradores pueden cambiar el estado de tipos');
@@ -741,7 +715,6 @@ const Incidencias: React.FC = () => {
     }
   };
 
-  // Función para resetear formulario de creación
   const resetCreateForm = () => {
     setCreateData({
       empleadoId: empleadosSupervisados.length > 0 ? empleadosSupervisados[0].ID : 0,
@@ -752,7 +725,6 @@ const Incidencias: React.FC = () => {
     });
   };
 
-  // Función para abrir modal de creación
   const openCreateModal = () => {
     if (!canCreate) {
       setError('No tienes permisos para crear incidencias');
@@ -773,13 +745,11 @@ const Incidencias: React.FC = () => {
     setShowCreateModal(true);
   };
 
-  // Función para abrir modal de vista
   const openViewModal = (incidencia: Incidencia) => {
     setSelectedIncidencia(incidencia);
     setShowViewModal(true);
   };
 
-  // Función para abrir modal de edición
   const openEditModal = (incidencia: Incidencia) => {
     if (!canEdit) {
       setError('No tienes permisos para editar incidencias');
@@ -797,7 +767,6 @@ const Incidencias: React.FC = () => {
     setShowEditModal(true);
   };
 
-  // Función para abrir modal de eliminación
   const openDeleteModal = (incidencia: Incidencia) => {
     if (!canDelete) {
       setError('Solo administradores pueden eliminar incidencias');
@@ -808,7 +777,6 @@ const Incidencias: React.FC = () => {
     setShowDeleteModal(true);
   };
 
-  // Función para abrir modal de edición de tipo
   const openEditTipoModal = (tipo: TipoIncidencia) => {
     if (!canManageTipos) {
       setError('Solo administradores pueden editar tipos de incidencia');
@@ -822,8 +790,6 @@ const Incidencias: React.FC = () => {
     });
     setShowEditTipoModal(true);
   };
-
-  // ==================== FUNCIONES DE EXPORTACIÓN ====================
 
   const exportToExcel = (data: any[], filename: string) => {
     try {
@@ -855,11 +821,11 @@ const Incidencias: React.FC = () => {
       const doc = new jsPDF();
       
       doc.setFontSize(18);
-      doc.setTextColor(255, 193, 7); // Color warning
+      doc.setTextColor(255, 193, 7);
       doc.text(`Reporte de ${filename}`, 14, 22);
       doc.setFontSize(11);
       doc.setTextColor(44, 62, 80);
-      doc.text(`Generado: ${new Date().toLocaleDateString('es-MX')}`, 14, 32);
+      doc.text(`Generado: ${formatDateDisplay(new Date().toISOString())}`, 14, 32);
       doc.text(`Total de registros: ${data.length}`, 14, 38);
 
       const tableColumn = columns.map(col => col.name);
@@ -889,7 +855,6 @@ const Incidencias: React.FC = () => {
     }
   };
 
-  // Función para obtener badge de activo/inactivo
   const getActivoBadge = (activo: boolean) => {
     return activo ? (
       <Badge bg="success">Activo</Badge>
@@ -898,66 +863,6 @@ const Incidencias: React.FC = () => {
     );
   };
 
-  // Función para formatear fecha
-  const formatFecha = (fecha: string | undefined) => {
-    if (!fecha) return 'Fecha no disponible';
-    
-    try {
-      const date = new Date(fecha);
-      if (isNaN(date.getTime())) {
-        return 'Fecha inválida';
-      }
-      
-      return date.toLocaleDateString('es-MX', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-    } catch (error) {
-      console.error('Error formateando fecha:', error);
-      return 'Error en fecha';
-    }
-  };
-
-  const formatFechaHora = (fecha: string) => {
-    if (!fecha) return 'N/A';
-    try {
-      const date = new Date(fecha);
-      if (isNaN(date.getTime())) return 'Fecha inválida';
-      return date.toLocaleDateString('es-MX', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch {
-      return 'Fecha inválida';
-    }
-  };
-
-  const formatFechaRelativa = (fecha: string) => {
-    if (!fecha) return '';
-    try {
-      const date = new Date(fecha);
-      const ahora = new Date();
-      const diffMs = ahora.getTime() - date.getTime();
-      const diffMin = Math.floor(diffMs / 60000);
-      const diffHoras = Math.floor(diffMs / 3600000);
-      const diffDias = Math.floor(diffMs / 86400000);
-      
-      if (diffMin < 1) return 'Ahora mismo';
-      if (diffMin < 60) return `Hace ${diffMin} minutos`;
-      if (diffHoras < 24) return `Hace ${diffHoras} horas`;
-      if (diffDias === 1) return 'Ayer';
-      if (diffDias < 7) return `Hace ${diffDias} días`;
-      return formatFechaHora(fecha);
-    } catch {
-      return formatFechaHora(fecha);
-    }
-  };
-
-  // Definición de columnas para DataTable - Incidencias (admin/manager)
   const columnsIncidencias = [
     {
       name: 'ID',
@@ -1014,7 +919,7 @@ const Incidencias: React.FC = () => {
       sortable: true,
       cell: (row: Incidencia) => (
         <div>
-          <div>{formatFecha(row.FechaIncidencia)}</div>
+          <div>{formatDateDisplay(row.FechaIncidencia)}</div>
           {row.HoraIncidencia && (
             <small className="text-muted">
               <FontAwesomeIcon icon={faClock} className="me-1" />
@@ -1105,7 +1010,6 @@ const Incidencias: React.FC = () => {
     },
   ];
 
-  // Definición de columnas para DataTable - Mis Incidencias (employee)
   const columnsMisIncidencias = [
     {
       name: 'ID',
@@ -1144,7 +1048,7 @@ const Incidencias: React.FC = () => {
       sortable: true,
       cell: (row: Incidencia) => (
         <div>
-          <div>{formatFecha(row.FechaIncidencia)}</div>
+          <div>{formatDateDisplay(row.FechaIncidencia)}</div>
           {row.HoraIncidencia && (
             <small className="text-muted">
               <FontAwesomeIcon icon={faClock} className="me-1" />
@@ -1193,7 +1097,6 @@ const Incidencias: React.FC = () => {
     },
   ];
 
-  // Definición de columnas para DataTable - Tipos de Incidencia
   const columnsTipos = [
     {
       name: 'ID',
@@ -1270,7 +1173,6 @@ const Incidencias: React.FC = () => {
     },
   ];
 
-  // Verificación de usuario
   if (!user) {
     return (
       <Container fluid className="py-4">
@@ -1282,7 +1184,6 @@ const Incidencias: React.FC = () => {
     );
   }
 
-  // Verificación de permisos
   if (!canViewAll && !isEmployee) {
     return (
       <Container fluid className="py-4">
@@ -1312,7 +1213,6 @@ const Incidencias: React.FC = () => {
 
   return (
     <Container fluid className="py-4">
-      {/* Header */}
       <Row className="mb-4">
         <Col>
           <div className="d-flex justify-content-between align-items-center">
@@ -1359,7 +1259,6 @@ const Incidencias: React.FC = () => {
         </Col>
       </Row>
 
-      {/* Alertas */}
       {error && (
         <Alert variant="danger" dismissible onClose={() => setError('')} className="mb-4 shadow-sm">
           <div className="d-flex align-items-center">
@@ -1380,7 +1279,6 @@ const Incidencias: React.FC = () => {
         </Alert>
       )}
 
-      {/* Tabs principales */}
       <Tabs
         activeKey={activeTab}
         onSelect={(k) => {
@@ -1410,7 +1308,6 @@ const Incidencias: React.FC = () => {
             </span>
           }
         >
-          {/* Filtros para incidencias (solo para admin/manager) */}
           {canViewAll && (
             <Card className="mb-4 shadow-sm border-0">
               <Card.Header className="bg-light">
@@ -1536,7 +1433,6 @@ const Incidencias: React.FC = () => {
             </Card>
           )}
 
-          {/* Estadísticas */}
           <Row className="mb-4">
             <Col md={3}>
               <Card className="text-center shadow-sm border-warning">
@@ -1582,7 +1478,6 @@ const Incidencias: React.FC = () => {
             </Col>
           </Row>
 
-          {/* Tabla de Incidencias con DataTable */}
           <Card className="shadow-sm border-0">
             <Card.Body className="p-0">
               <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
@@ -1604,7 +1499,7 @@ const Incidencias: React.FC = () => {
                           Colaborador: i.EmpleadoNombre,
                           Tipo: i.TipoIncidenciaNombre,
                           Descripción: i.Descripcion,
-                          Fecha: i.FechaIncidencia,
+                          Fecha: formatDateDisplay(i.FechaIncidencia),
                           Hora: i.HoraIncidencia || '',
                           Estado: i.activo ? 'Activo' : 'Inactivo',
                           Registrado_por: i.CreadorEmail
@@ -1728,7 +1623,6 @@ const Incidencias: React.FC = () => {
           </Card>
         </Tab>
         
-        {/* Tab de Tipos de Incidencia (solo admin/manager) */}
         {canViewTipos && (
           <Tab 
             eventKey="tipos" 
@@ -1887,7 +1781,6 @@ const Incidencias: React.FC = () => {
         )}
       </Tabs>
 
-      {/* Modal para Crear Incidencia */}
       <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)} size="lg" centered>
         <Modal.Header closeButton className="bg-warning text-white">
           <Modal.Title>
@@ -2012,7 +1905,6 @@ const Incidencias: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal para Ver Incidencia */}
       <Modal show={showViewModal} onHide={() => setShowViewModal(false)} size="lg" centered>
         <Modal.Header closeButton className="bg-light">
           <Modal.Title>
@@ -2051,7 +1943,7 @@ const Incidencias: React.FC = () => {
                 
                 <ListGroup.Item className="d-flex justify-content-between align-items-center">
                   <span><strong>Fecha:</strong></span>
-                  <span>{formatFecha(selectedIncidencia.FechaIncidencia)}</span>
+                  <span>{formatDateDisplay(selectedIncidencia.FechaIncidencia)}</span>
                 </ListGroup.Item>
                 
                 {selectedIncidencia.HoraIncidencia && (
@@ -2075,7 +1967,7 @@ const Incidencias: React.FC = () => {
                 
                 <ListGroup.Item className="d-flex justify-content-between align-items-center">
                   <span><strong>Fecha de registro:</strong></span>
-                  <span>{formatFecha(selectedIncidencia.FechaCreacion)}</span>
+                  <span>{formatDateDisplay(selectedIncidencia.FechaCreacion)}</span>
                 </ListGroup.Item>
 
                 {selectedIncidencia.EstadoSolicitud && (
@@ -2121,7 +2013,6 @@ const Incidencias: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal para Editar Incidencia */}
       <Modal show={showEditModal} onHide={() => setShowEditModal(false)} size="lg" centered>
         <Modal.Header closeButton className="bg-warning text-white">
           <Modal.Title>
@@ -2208,7 +2099,6 @@ const Incidencias: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal para Eliminar Incidencia */}
       <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
         <Modal.Header closeButton className="border-bottom-0">
           <Modal.Title className="text-danger">
@@ -2243,7 +2133,6 @@ const Incidencias: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal para Crear Tipo de Incidencia */}
       <Modal show={showCreateTipoModal} onHide={() => setShowCreateTipoModal(false)} centered>
         <Modal.Header closeButton className="bg-info text-white">
           <Modal.Title>
@@ -2290,7 +2179,6 @@ const Incidencias: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal para Editar Tipo de Incidencia */}
       <Modal show={showEditTipoModal} onHide={() => setShowEditTipoModal(false)} centered>
         <Modal.Header closeButton className="bg-info text-white">
           <Modal.Title>
