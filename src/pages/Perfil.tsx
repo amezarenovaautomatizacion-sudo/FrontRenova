@@ -63,7 +63,7 @@ interface Empleado {
     ID: number;
     Usuario: string;
     Rol: string;
-    Activo: boolean;
+    Activo: number | boolean;
   };
 }
 
@@ -266,9 +266,12 @@ const Perfil: React.FC = () => {
         const empleadoParsed = JSON.parse(empleadoData);
         const userParsed = JSON.parse(userData);
         
+        const usuarioActivo = userParsed.Activo === 1 || userParsed.Activo === true;
+        
         const empleadoCompleto = {
           ...empleadoParsed,
-          Usuario: userParsed
+          Usuario: userParsed,
+          UsuarioActivo: usuarioActivo
         };
         
         setEmpleado(empleadoCompleto);
@@ -399,6 +402,16 @@ const Perfil: React.FC = () => {
     return textos[rol] || rol.toUpperCase();
   };
 
+  const isUsuarioActivo = (): boolean => {
+    if (!empleado) return false;
+    
+    if (empleado.Usuario && empleado.Usuario.Activo !== undefined) {
+      return empleado.Usuario.Activo === 1 || empleado.Usuario.Activo === true;
+    }
+    
+    return empleado.UsuarioActivo === true;
+  };
+
   const handleRefreshProfile = async () => {
     try {
       setRefreshing(true);
@@ -447,6 +460,8 @@ const Perfil: React.FC = () => {
       </Container>
     );
   }
+
+  const activo = isUsuarioActivo();
 
   return (
     <Container fluid className="py-4">
@@ -728,8 +743,8 @@ const Perfil: React.FC = () => {
                             </ListGroup.Item>
                             <ListGroup.Item className="d-flex justify-content-between align-items-center">
                               <span>Estado</span>
-                              <Badge bg={empleado.UsuarioActivo ? 'success' : 'danger'}>
-                                {empleado.UsuarioActivo ? 'ACTIVO' : 'INACTIVO'}
+                              <Badge bg-success>
+                                ACTIVO
                               </Badge>
                             </ListGroup.Item>
                           </ListGroup>
