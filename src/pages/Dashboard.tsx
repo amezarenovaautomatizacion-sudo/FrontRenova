@@ -25,14 +25,19 @@ import {
   faProjectDiagram,
   faClock,
   faCheckCircle,
-  faTimesCircle,
   faExclamationCircle,
   faArrowRight,
   faUserCircle,
   faUserClock,
   faHourglassHalf,
-  faBan,
-  faPlus
+  faPlus,
+  faPlayCircle,
+  faPauseCircle,
+  faStopCircle,
+  faFlag,
+  faRedoAlt,
+  faCrown,
+  faUserFriends
 } from '@fortawesome/free-solid-svg-icons';
 import { Link } from 'react-router-dom';
 import { formatDateDisplay, formatDateTimeDisplay } from '../utils/dateUtils';
@@ -94,9 +99,19 @@ interface Proyecto {
   FechaInicio: string;
   FechaFin?: string;
   Progreso?: number;
+  JefeProyectoID?: number;
   JefeProyectoNombre?: string;
   TotalTareas?: number;
   TareasCompletadas?: number;
+  estadisticas?: {
+    total_tareas: number;
+    tareas_completadas: number;
+    total_empleados: number;
+    tareas_pendientes: number;
+    tareas_en_proceso: number;
+  };
+  Presupuesto?: number;
+  Moneda?: string;
 }
 
 const Dashboard: React.FC = () => {
@@ -115,6 +130,7 @@ const Dashboard: React.FC = () => {
   const [aprobacionesPendientes, setAprobacionesPendientes] = useState<AprobacionPendiente[]>([]);
   const [notificacionesRecientes, setNotificacionesRecientes] = useState<Notificacion[]>([]);
   const [proyectosActivos, setProyectosActivos] = useState<Proyecto[]>([]);
+  const [miEmpleadoId, setMiEmpleadoId] = useState<number | null>(null);
   
   const [loading, setLoading] = useState({
     estadisticas: true,
@@ -124,6 +140,8 @@ const Dashboard: React.FC = () => {
     proyectos: true
   });
 
+  const [refreshing, setRefreshing] = useState<{[key: string]: boolean}>({});
+
   useEffect(() => {
     const rol = user?.rol || user?.Rol || 'employee';
     setUserRol(rol);
@@ -132,6 +150,84 @@ const Dashboard: React.FC = () => {
   const isAdmin = userRol === 'admin';
   const isManager = userRol === 'manager';
   const canApprove = isAdmin || isManager;
+
+  const obtenerEmpleadoId = useCallback(async (): Promise<number | null> => {
+    if (!user) return null;
+    
+    const cachedId = sessionStorage.getItem('empleadoId');
+    if (cachedId) {
+      const id = parseInt(cachedId);
+      setMiEmpleadoId(id);
+      return id;
+    }
+    
+    if ((user as any).empleadoId) {
+      const empleadoId = (user as any).empleadoId;
+      sessionStorage.setItem('empleadoId', empleadoId.toString());
+      setMiEmpleadoId(empleadoId);
+      return empleadoId;
+    }
+    
+    try {
+      const response = await api.get('/auth/profile');
+      
+      if (response.data?.success && response.data?.data?.empleado?.ID) {
+        const empleadoId = response.data.data.empleado.ID;
+        sessionStorage.setItem('empleadoId', empleadoId.toString());
+        setMiEmpleadoId(empleadoId);
+        return empleadoId;
+      }
+    } catch (error) {
+      console.error('Error obteniendo empleadoId:', error);
+    }
+    
+    return null;
+  }, [user]);
+
+  const soyJefeDelProyecto = useCallback((proyecto: Proyecto): boolean => {
+    if (!miEmpleadoId || !proyecto) return false;
+    return proyecto.JefeProyectoID === miEmpleadoId;
+  }, [miEmpleadoId]);
+
+  const soyMiembroDelProyecto = useCallback((proyecto: Proyecto): boolean => {
+    if (!miEmpleadoId || !proyecto) return false;
+    // Por ahora, consideramos miembro si es jefe (esto se puede mejorar)
+    return proyecto.JefeProyectoID === miEmpleadoId;
+  }, [miEmpleadoId]);
+
+  const refreshSection = async (section: string) => {
+    setRefreshing(prev => ({ ...prev, [section]: true }));
+    try {
+      switch(section) {
+        case 'estadisticas':
+          await cargarEstadisticas();
+          break;
+        case 'solicitudes':
+          await cargarMisSolicitudes();
+          break;
+        case 'aprobaciones':
+          await cargarAprobacionesPendientes();
+          break;
+        case 'notificaciones':
+          await cargarNotificacionesRecientes();
+          break;
+        case 'proyectos':
+          await cargarProyectosActivos();
+          break;
+        case 'todo':
+          await Promise.all([
+            cargarEstadisticas(),
+            cargarMisSolicitudes(),
+            cargarAprobacionesPendientes(),
+            cargarNotificacionesRecientes(),
+            cargarProyectosActivos()
+          ]);
+          break;
+      }
+    } finally {
+      setRefreshing(prev => ({ ...prev, [section]: false }));
+    }
+  };
 
   const cargarEstadisticas = async () => {
     try {
@@ -262,32 +358,54 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  // ==================== FUNCIÓN CORREGIDA PARA CARGAR PROYECTOS ====================
   const cargarProyectosActivos = async () => {
     try {
       setLoading(prev => ({ ...prev, proyectos: true }));
       
-      const endpoint = isAdmin || isManager ? '/proyectos?limit=100' : '/proyectos/asignados?limit=100';
-      const response = await api.get(endpoint);
+      let proyectos = [];
+      
+      // Construir parámetros como en Proyectos.tsx
+      const params = new URLSearchParams({
+        limit: '100' // Límite alto para obtener todos los proyectos activos
+      });
+      
+      // Filtrar por estado activo (como en Proyectos.tsx cuando se usa filterEstado)
+      params.append('estado', 'activo');
+      
+      console.log('Cargando proyectos con params:', params.toString());
+      
+      // Usar el mismo endpoint que en Proyectos.tsx para todos los roles
+      const response = await api.get(`/proyectos?${params}`);
       
       if (response.data.success) {
+        // Manejar la estructura de respuesta exactamente como en Proyectos.tsx
         const data = response.data.data;
-        let proyectos = [];
         
+        // Extraer proyectos como en Proyectos.tsx: response.data.data.proyectos
         if (data && data.proyectos) {
           proyectos = data.proyectos;
         } else if (Array.isArray(data)) {
           proyectos = data;
+        } else {
+          proyectos = [];
         }
         
+        console.log('Proyectos recibidos:', proyectos.length);
+        
+        // Filtrar por estado activo (por si acaso)
         const activos = proyectos.filter((p: any) => 
           p.Estado && p.Estado.toLowerCase() === 'activo'
         );
         
+        // Calcular progreso para cada proyecto
         const proyectosConProgreso = activos.map((p: any) => ({
           ...p,
           Progreso: p.TotalTareas && p.TotalTareas > 0 
             ? Math.round((p.TareasCompletadas || 0) / p.TotalTareas * 100) 
-            : 0
+            : p.estadisticas?.total_tareas && p.estadisticas?.total_tareas > 0
+              ? Math.round((p.estadisticas.tareas_completadas || 0) / p.estadisticas.total_tareas * 100)
+              : 0
         }));
         
         setProyectosActivos(proyectosConProgreso);
@@ -303,6 +421,10 @@ const Dashboard: React.FC = () => {
   };
 
   const cargarDashboard = useCallback(async () => {
+    // Primero aseguramos que tenemos el ID del empleado
+    const empleadoId = await obtenerEmpleadoId();
+    
+    // Luego cargamos todos los datos
     await Promise.all([
       cargarEstadisticas(),
       cargarMisSolicitudes(),
@@ -310,26 +432,61 @@ const Dashboard: React.FC = () => {
       cargarNotificacionesRecientes(),
       cargarProyectosActivos()
     ]);
-  }, [canApprove, isAdmin, isManager]);
+  }, [canApprove, isAdmin, isManager, obtenerEmpleadoId]);
 
   useEffect(() => {
     const empleadoData = localStorage.getItem('renova_empleado');
     if (empleadoData) {
       try {
-        setEmpleado(JSON.parse(empleadoData));
+        const parsedEmpleado = JSON.parse(empleadoData);
+        setEmpleado(parsedEmpleado);
       } catch (error) {
         console.error('Error al parsear datos del colaborador:', error);
       }
     }
+    
+    // Si no hay datos en localStorage, intentar obtener del user
+    if (!empleadoData && user) {
+      setEmpleado({
+        ID: (user as any).EmpleadoID || (user as any).id,
+        NombreCompleto: (user as any).NombreCompleto || (user as any).nombre,
+        PuestoNombre: (user as any).PuestoNombre
+      });
+    }
 
     cargarDashboard();
-  }, [cargarDashboard]);
+  }, [cargarDashboard, user]);
 
   const solicitudesRecientes = misSolicitudes
     .sort((a, b) => new Date(b.FechaSolicitud).getTime() - new Date(a.FechaSolicitud).getTime())
     .slice(0, 5);
 
-  if (loading.estadisticas && loading.solicitudes && loading.aprobaciones) {
+  const getEstadoBadge = (estado: string) => {
+    const config: Record<string, { bg: string; icon: any; label: string }> = {
+      pendiente: { bg: 'secondary', icon: faClock, label: 'PENDIENTE' },
+      en_proceso: { bg: 'primary', icon: faPlayCircle, label: 'EN PROCESO' },
+      realizada: { bg: 'success', icon: faCheckCircle, label: 'FINALIZADA' },
+      activo: { bg: 'success', icon: faPlayCircle, label: 'ACTIVO' },
+      pausado: { bg: 'warning', icon: faPauseCircle, label: 'PAUSADO' },
+      finalizado: { bg: 'danger', icon: faStopCircle, label: 'FINALIZADO' }
+    };
+    const cfg = config[estado] || { bg: 'secondary', icon: faClock, label: estado.toUpperCase() };
+    return (
+      <Badge bg={cfg.bg} className="d-flex align-items-center" style={{ padding: '0.4rem 0.6rem' }}>
+        <FontAwesomeIcon icon={cfg.icon} className="me-1" size="sm" />
+        {cfg.label}
+      </Badge>
+    );
+  };
+
+  const getProgresoColor = (porcentaje: number) => {
+    if (porcentaje >= 75) return 'success';
+    if (porcentaje >= 50) return 'info';
+    if (porcentaje >= 25) return 'warning';
+    return 'danger';
+  };
+
+  if (loading.estadisticas && loading.solicitudes && loading.aprobaciones && loading.proyectos) {
     return (
       <Container fluid className="grow py-4">
         <div className="d-flex flex-column justify-content-center align-items-center" style={{ minHeight: '70vh' }}>
@@ -368,17 +525,28 @@ const Dashboard: React.FC = () => {
           </Card>
 
           <Card className="shadow-sm mb-4 border-0">
-            <Card.Header className="bg-light border-0">
+            <Card.Header className="bg-light border-0 d-flex justify-content-between align-items-center">
               <h6 className="mb-0">
                 <FontAwesomeIcon icon={faChartBar} className="me-2 text-primary" />
                 Mis Estadísticas
               </h6>
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => refreshSection('estadisticas')}
+                disabled={refreshing.estadisticas}
+                className="p-0"
+              >
+                <FontAwesomeIcon icon={faRedoAlt} spin={refreshing.estadisticas} />
+              </Button>
             </Card.Header>
             <Card.Body>
               <div className="mb-3 p-2 bg-light rounded">
                 <small className="text-muted d-block mb-1">Mis Solicitudes Pendientes</small>
                 <div className="d-flex justify-content-between align-items-center">
-                  <h3 className="mb-0 fw-bold text-warning">{estadisticas.solicitudesPendientes}</h3>
+                  <h3 className="mb-0 fw-bold text-warning">
+                    {loading.solicitudes ? <Spinner animation="border" size="sm" /> : estadisticas.solicitudesPendientes}
+                  </h3>
                   <FontAwesomeIcon icon={faHourglassHalf} className="text-warning fa-2x" />
                 </div>
               </div>
@@ -387,7 +555,9 @@ const Dashboard: React.FC = () => {
                 <div className="mb-3 p-2 bg-light rounded">
                   <small className="text-muted d-block mb-1">Por Aprobar</small>
                   <div className="d-flex justify-content-between align-items-center">
-                    <h3 className="mb-0 fw-bold text-danger">{estadisticas.aprobacionesPendientes}</h3>
+                    <h3 className="mb-0 fw-bold text-danger">
+                      {loading.aprobaciones ? <Spinner animation="border" size="sm" /> : estadisticas.aprobacionesPendientes}
+                    </h3>
                     <FontAwesomeIcon icon={faUserClock} className="text-danger fa-2x" />
                   </div>
                 </div>
@@ -401,9 +571,6 @@ const Dashboard: React.FC = () => {
                   </h3>
                   <FontAwesomeIcon icon={faBell} className="text-info fa-2x" />
                 </div>
-                <small className="text-muted d-block mt-1">
-                  {notificacionesRecientes.length} recientes
-                </small>
               </div>
               
               <div className="p-2 bg-light rounded">
@@ -496,10 +663,22 @@ const Dashboard: React.FC = () => {
                 Bienvenido al sistema de gestión RENOVA
               </p>
             </div>
-            <div className="bg-light p-3 rounded">
-              <small className="text-muted">
-                {formatDateDisplay(new Date().toISOString())}
-              </small>
+            <div className="d-flex gap-2">
+              <Button
+                variant="light"
+                size="sm"
+                onClick={() => refreshSection('todo')}
+                disabled={refreshing.todo}
+                className="d-flex align-items-center"
+              >
+                <FontAwesomeIcon icon={faRedoAlt} spin={refreshing.todo} className="me-2" />
+                Actualizar todo
+              </Button>
+              <div className="bg-light p-3 rounded">
+                <small className="text-muted">
+                  {formatDateDisplay(new Date().toISOString())}
+                </small>
+              </div>
             </div>
           </div>
 
@@ -605,7 +784,6 @@ const Dashboard: React.FC = () => {
                       <h2 className="text-info mb-0 fw-bold">
                         {loading.notificaciones ? <Spinner animation="border" size="sm" /> : estadisticas.notificacionesSinLeer}
                       </h2>
-                      <small className="text-muted">{notificacionesRecientes.length} recientes</small>
                     </div>
                     <div className="bg-info bg-opacity-10 p-3 rounded">
                       <FontAwesomeIcon icon={faBell} size="lg" className="text-info" />
@@ -631,12 +809,22 @@ const Dashboard: React.FC = () => {
           <Row className="mb-4">
             <Col lg={12}>
               <Card className="shadow-sm border-0">
-                <Card.Header className="bg-light border-0">
-                  <div className="d-flex justify-content-between align-items-center">
-                    <h6 className="mb-0">
-                      <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
-                      Solicitudes
-                    </h6>
+                <Card.Header className="bg-light border-0 d-flex justify-content-between align-items-center">
+                  <h6 className="mb-0">
+                    <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
+                    Solicitudes
+                  </h6>
+                  <div className="d-flex gap-2">
+                    <Button 
+                      variant="link" 
+                      size="sm" 
+                      onClick={() => refreshSection('solicitudes')}
+                      disabled={refreshing.solicitudes}
+                      className="p-0"
+                    >
+                      <FontAwesomeIcon icon={faRedoAlt} spin={refreshing.solicitudes} className="me-2" />
+                      Refrescar
+                    </Button>
                     <Button 
                       variant="link" 
                       size="sm" 
@@ -842,10 +1030,22 @@ const Dashboard: React.FC = () => {
                     <FontAwesomeIcon icon={faProjectDiagram} className="me-2 text-success" />
                     Proyectos Activos
                   </h6>
-                  <Button variant="link" size="sm" as={Link as any} to="/proyectos" className="text-decoration-none">
-                    Ver todos
-                    <FontAwesomeIcon icon={faArrowRight} className="ms-2" />
-                  </Button>
+                  <div className="d-flex gap-2">
+                    <Button 
+                      variant="link" 
+                      size="sm" 
+                      onClick={() => refreshSection('proyectos')}
+                      disabled={refreshing.proyectos}
+                      className="p-0"
+                    >
+                      <FontAwesomeIcon icon={faRedoAlt} spin={refreshing.proyectos} className="me-2" />
+                      Refrescar
+                    </Button>
+                    <Button variant="link" size="sm" as={Link as any} to="/proyectos" className="text-decoration-none">
+                      Ver todos
+                      <FontAwesomeIcon icon={faArrowRight} className="ms-2" />
+                    </Button>
+                  </div>
                 </Card.Header>
                 <Card.Body>
                   {loading.proyectos ? (
@@ -856,59 +1056,73 @@ const Dashboard: React.FC = () => {
                   ) : proyectosActivos.length > 0 ? (
                     <>
                       <Row>
-                        {proyectosActivos.slice(0, 2).map((proyecto) => (
-                          <Col md={6} key={proyecto.ID} className="mb-3">
-                            <Card className="h-100 border-0 shadow-sm">
-                              <Card.Body>
-                                <div className="d-flex justify-content-between align-items-start mb-3">
-                                  <div>
-                                    <h6 className="mb-1 fw-bold">{proyecto.Nombre}</h6>
-                                    {proyecto.JefeProyectoNombre && (
-                                      <small className="text-muted d-block">
-                                        Jefe: {proyecto.JefeProyectoNombre}
+                        {proyectosActivos.slice(0, 2).map((proyecto) => {
+                          const esJefe = soyJefeDelProyecto(proyecto);
+                          
+                          return (
+                            <Col md={6} key={proyecto.ID} className="mb-3">
+                              <Card className="h-100 border-0 shadow-sm">
+                                <Card.Body>
+                                  <div className="d-flex justify-content-between align-items-start mb-3">
+                                    <div>
+                                      <h6 className="mb-1 fw-bold d-flex align-items-center flex-wrap gap-2">
+                                        {proyecto.Nombre}
+                                        {esJefe && (
+                                          <Badge bg="warning" text="dark" size="sm">
+                                            <FontAwesomeIcon icon={faCrown} className="me-1" size="sm" />
+                                            JEFE
+                                          </Badge>
+                                        )}
+                                      </h6>
+                                      {proyecto.JefeProyectoNombre && (
+                                        <small className="text-muted d-block">
+                                          Jefe: {proyecto.JefeProyectoNombre}
+                                        </small>
+                                      )}
+                                    </div>
+                                    {getEstadoBadge(proyecto.Estado)}
+                                  </div>
+                                  <p className="text-muted small mb-3">
+                                    {proyecto.Descripcion 
+                                      ? (proyecto.Descripcion.length > 80 
+                                          ? `${proyecto.Descripcion.substring(0, 80)}...` 
+                                          : proyecto.Descripcion)
+                                      : 'Sin descripción'}
+                                  </p>
+                                  <div className="mb-2">
+                                    <div className="d-flex justify-content-between align-items-center mb-1">
+                                      <small className="text-muted">Progreso</small>
+                                      <small className="fw-bold d-flex align-items-center">
+                                        <span className={`text-${getProgresoColor(proyecto.Progreso || 0)}`}>
+                                          {proyecto.Progreso || 0}%
+                                        </span>
                                       </small>
-                                    )}
+                                    </div>
+                                    <ProgressBar 
+                                      now={proyecto.Progreso || 0} 
+                                      variant={getProgresoColor(proyecto.Progreso || 0)}
+                                      style={{ height: '6px' }}
+                                    />
                                   </div>
-                                  <Badge bg={proyecto.Estado === 'activo' ? 'success' : proyecto.Estado === 'pausado' ? 'warning' : 'secondary'}>
-                                    {proyecto.Estado}
-                                  </Badge>
-                                </div>
-                                <p className="text-muted small mb-3">
-                                  {proyecto.Descripcion 
-                                    ? (proyecto.Descripcion.length > 80 
-                                        ? `${proyecto.Descripcion.substring(0, 80)}...` 
-                                        : proyecto.Descripcion)
-                                    : 'Sin descripción'}
-                                </p>
-                                <div className="mb-2">
-                                  <div className="d-flex justify-content-between align-items-center mb-1">
-                                    <small className="text-muted">Progreso</small>
-                                    <small className="fw-bold">{proyecto.Progreso || 0}%</small>
+                                  <div className="d-flex justify-content-between align-items-center mt-3">
+                                    <small className="text-muted">
+                                      <FontAwesomeIcon icon={faCalendarAlt} className="me-1" />
+                                      Inicio: {formatDateDisplay(proyecto.FechaInicio)}
+                                    </small>
+                                    <Button 
+                                      variant="outline-primary" 
+                                      size="sm"
+                                      as={Link as any}
+                                      to={`/proyectos`}
+                                    >
+                                      Ver detalles
+                                    </Button>
                                   </div>
-                                  <ProgressBar 
-                                    now={proyecto.Progreso || 0} 
-                                    variant={proyecto.Progreso && proyecto.Progreso >= 100 ? 'success' : 'primary'}
-                                    style={{ height: '6px' }}
-                                  />
-                                </div>
-                                <div className="d-flex justify-content-between align-items-center mt-3">
-                                  <small className="text-muted">
-                                    <FontAwesomeIcon icon={faCalendarAlt} className="me-1" />
-                                    Inicio: {formatDateDisplay(proyecto.FechaInicio)}
-                                  </small>
-                                  <Button 
-                                    variant="outline-primary" 
-                                    size="sm"
-                                    as={Link as any}
-                                    to={`/proyectos`}
-                                  >
-                                    Ver detalles
-                                  </Button>
-                                </div>
-                              </Card.Body>
-                            </Card>
-                          </Col>
-                        ))}
+                                </Card.Body>
+                              </Card>
+                            </Col>
+                          );
+                        })}
                       </Row>
                       
                       {proyectosActivos.length > 2 && (
@@ -922,7 +1136,21 @@ const Dashboard: React.FC = () => {
                   ) : (
                     <div className="text-center py-4">
                       <FontAwesomeIcon icon={faProjectDiagram} size="2x" className="text-muted mb-3" />
-                      <p className="text-muted mb-0">No hay proyectos activos asignados</p>
+                      <p className="text-muted mb-0">
+                        No hay proyectos activos en el sistema
+                      </p>
+                      {(isAdmin || isManager) && (
+                        <Button 
+                          variant="primary" 
+                          size="sm"
+                          as={Link as any}
+                          to="/proyectos"
+                          className="mt-3"
+                        >
+                          <FontAwesomeIcon icon={faPlus} className="me-2" />
+                          Crear Proyecto
+                        </Button>
+                      )}
                     </div>
                   )}
                 </Card.Body>
@@ -938,10 +1166,22 @@ const Dashboard: React.FC = () => {
                     <FontAwesomeIcon icon={faBell} className="me-2 text-info" />
                     Notificaciones Recientes
                   </h6>
-                  <Button variant="link" size="sm" as={Link as any} to="/notificaciones" className="text-decoration-none">
-                    Ver todas
-                    <FontAwesomeIcon icon={faArrowRight} className="ms-2" />
-                  </Button>
+                  <div className="d-flex gap-2">
+                    <Button 
+                      variant="link" 
+                      size="sm" 
+                      onClick={() => refreshSection('notificaciones')}
+                      disabled={refreshing.notificaciones}
+                      className="p-0"
+                    >
+                      <FontAwesomeIcon icon={faRedoAlt} spin={refreshing.notificaciones} className="me-2" />
+                      Refrescar
+                    </Button>
+                    <Button variant="link" size="sm" as={Link as any} to="/notificaciones" className="text-decoration-none">
+                      Ver todas
+                      <FontAwesomeIcon icon={faArrowRight} className="ms-2" />
+                    </Button>
+                  </div>
                 </Card.Header>
                 <Card.Body>
                   {loading.notificaciones ? (
