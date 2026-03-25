@@ -301,6 +301,60 @@ const obtenerDiaHabilMasCercano = (fecha: string | Date): string => {
   return proximoLunes.toISOString().split('T')[0];
 };
 
+// ========== FUNCIONES UTC PARA MANEJO CORRECTO DE FECHAS ==========
+
+// Obtener fecha UTC sin horas
+const getUTCDate = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+};
+
+// Obtener fecha actual UTC sin horas
+const getCurrentUTCDate = (): Date => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+};
+
+// Formatear fecha UTC a string YYYY-MM-DD
+const formatUTCDate = (date: Date): string => {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Calcular fecha mínima para permisos (mañana en UTC, ajustado a días hábiles)
+const calcularFechaMinimaPermiso = (): string => {
+  const hoyUTC = getCurrentUTCDate();
+  const fechaMinima = new Date(hoyUTC);
+  fechaMinima.setUTCDate(hoyUTC.getUTCDate() + 1);
+  
+  let fechaStr = formatUTCDate(fechaMinima);
+  
+  // Si es fin de semana, avanzar al siguiente día hábil
+  while (esFinDeSemana(fechaStr)) {
+    fechaMinima.setUTCDate(fechaMinima.getUTCDate() + 1);
+    fechaStr = formatUTCDate(fechaMinima);
+  }
+  
+  return fechaStr;
+};
+
+// Validar si una fecha tiene al menos 24 horas de anticipación
+const tiene24HorasAnticipacion = (fechaSeleccionadaStr: string): boolean => {
+  const fechaSeleccionada = getUTCDate(fechaSeleccionadaStr);
+  const ahoraUTC = getCurrentUTCDate();
+  
+  // La fecha mínima es mañana
+  const fechaMinima = new Date(ahoraUTC);
+  fechaMinima.setUTCDate(ahoraUTC.getUTCDate() + 1);
+  
+  // La fecha seleccionada debe ser mayor o igual a la fecha mínima
+  return fechaSeleccionada >= fechaMinima;
+};
+
+// ========== FIN FUNCIONES UTC ==========
+
 const validarYCorregirFechasVacaciones = (
   fechaInicio: string, 
   fechaFin: string
@@ -426,7 +480,7 @@ const Solicitudes: React.FC = () => {
   });
   
   const [permisoData, setPermisoData] = useState({
-    fechaInicio: new Date().toISOString().split('T')[0],
+    fechaInicio: calcularFechaMinimaPermiso(),
     motivo: '',
     conGoce: true,
     observaciones: ''
@@ -874,6 +928,7 @@ const Solicitudes: React.FC = () => {
     }
   };
   
+  // ========== FUNCIÓN CORREGIDA PARA SOLICITAR PERMISO ==========
   const handleSolicitarPermiso = async () => {
     try {
       setError('');
@@ -884,30 +939,35 @@ const Solicitudes: React.FC = () => {
         return;
       }
       
+      // Validar que no sea fin de semana
       if (esFinDeSemana(permisoData.fechaInicio)) {
         setError('Los permisos no pueden solicitarse en fin de semana. Por favor selecciona un día hábil.');
         return;
       }
       
-      const fechaSeleccionada = new Date(permisoData.fechaInicio);
-      const ahora = new Date();
-      const diferenciaHoras = (fechaSeleccionada.getTime() - ahora.getTime()) / (1000 * 60 * 60);
-      
-      if (diferenciaHoras < 24) {
-        setError('Los permisos deben solicitarse con al menos 24 horas de anticipación');
+      // Validar que tenga al menos 24 horas de anticipación usando UTC
+      if (!tiene24HorasAnticipacion(permisoData.fechaInicio)) {
+        const fechaMinima = calcularFechaMinimaPermiso();
+        setError(`Los permisos deben solicitarse con al menos 24 horas de anticipación. La fecha mínima permitida es ${fechaMinima}`);
         return;
       }
       
+      // Debug - para verificar la validación
+      console.log('=== ENVIANDO SOLICITUD DE PERMISO ===');
+      console.log('Fecha seleccionada:', permisoData.fechaInicio);
+      console.log('Fecha mínima permitida:', calcularFechaMinimaPermiso());
+      console.log('Validación superada: OK');
+      
       const response = await api.post('/solicitudes/permisos/solicitar', {
         ...permisoData,
-        fechaInicio: fechaSeleccionada.toISOString().split('T')[0]
+        fechaInicio: permisoData.fechaInicio
       });
       
       if (response.data.success) {
         setSuccess('Solicitud de permiso enviada exitosamente');
         setShowPermisoModal(false);
         setPermisoData({
-          fechaInicio: obtenerSiguienteDiaHabil(new Date()).toISOString().split('T')[0],
+          fechaInicio: calcularFechaMinimaPermiso(),
           motivo: '',
           conGoce: true,
           observaciones: ''
@@ -920,13 +980,14 @@ const Solicitudes: React.FC = () => {
       console.error('Error en handleSolicitarPermiso:', error);
       const errorMsg = error.response?.data?.message || error.message || 'Error enviando solicitud';
       
-      if (errorMsg.includes('24 horas')) {
-        setError('Los permisos deben solicitarse con al menos 24 horas de anticipación');
+      if (errorMsg.includes('24 horas') || errorMsg.includes('anticipación')) {
+        setError(`Los permisos deben solicitarse con al menos 24 horas de anticipación. La fecha mínima es ${calcularFechaMinimaPermiso()}`);
       } else {
         setError(errorMsg);
       }
     }
   };
+  // ========== FIN FUNCIÓN CORREGIDA ==========
   
   const handleSolicitarHorasExtras = async () => {
     try {
@@ -1260,17 +1321,6 @@ const Solicitudes: React.FC = () => {
   const calcularDiasSolicitados = () => {
     if (!vacacionesData.fechaInicio || !vacacionesData.fechaFin) return 0;
     return calcularDiasHabiles(vacacionesData.fechaInicio, vacacionesData.fechaFin);
-  };
-  
-  const calcularFechaMinimaPermiso = () => {
-    const ahora = new Date();
-    const fechaMinima = new Date(ahora.getTime() + 24 * 60 * 60 * 1000);
-    
-    while (esFinDeSemana(fechaMinima.toISOString().split('T')[0])) {
-      fechaMinima.setDate(fechaMinima.getDate() + 1);
-    }
-    
-    return fechaMinima.toISOString().split('T')[0];
   };
 
   const handleFechaInicioVacacionesChange = (fecha: string) => {
@@ -2936,6 +2986,7 @@ const Solicitudes: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
+      {/* Modal de Permiso CORREGIDO */}
       <Modal show={showPermisoModal} onHide={() => setShowPermisoModal(false)} centered>
         <Modal.Header closeButton className="bg-info text-white">
           <Modal.Title>
@@ -2947,8 +2998,7 @@ const Solicitudes: React.FC = () => {
           <Alert variant="info" className="mb-3">
             <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
             <strong>Importante:</strong> Los permisos solo pueden solicitarse en días hábiles (lunes a viernes) 
-            y con al menos 24 horas de anticipación. Si seleccionas un fin de semana, se ajustará automáticamente 
-            al siguiente día hábil.
+            y con al menos 24 horas de anticipación. La fecha mínima permitida es <strong>{calcularFechaMinimaPermiso()}</strong>.
           </Alert>
           
           <Form>
@@ -3015,13 +3065,7 @@ const Solicitudes: React.FC = () => {
             disabled={
               !permisoData.fechaInicio || 
               !permisoData.motivo ||
-              (() => {
-                if (!permisoData.fechaInicio) return true;
-                const fechaSeleccionada = new Date(permisoData.fechaInicio);
-                const ahora = new Date();
-                const diferenciaHoras = (fechaSeleccionada.getTime() - ahora.getTime()) / (1000 * 60 * 60);
-                return diferenciaHoras < 24;
-              })()
+              !tiene24HorasAnticipacion(permisoData.fechaInicio)
             }
           >
             <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
