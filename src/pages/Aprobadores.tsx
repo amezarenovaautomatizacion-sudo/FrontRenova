@@ -99,44 +99,54 @@ const Aprobadores: React.FC = () => {
     }
   }, [isAdmin]);
 
-  const loadAprobadores = async () => {
-    if (!isAdmin) return;
+const loadAprobadores = async () => {
+  if (!isAdmin) return;
+  
+  try {
+    setLoading(true);
+    setError('');
     
-    try {
-      setLoading(true);
-      setError('');
+    const response = await api.get('/aprobadores/activos');
+    
+    if (response.data.success) {
+      const aprobadoresData = response.data.data || [];
+      console.log('Respuesta completa de API:', response.data);
+      console.log('Datos de aprobadores (raw):', aprobadoresData);
       
-      const response = await api.get('/aprobadores/activos');
+      const formattedAprobadores = aprobadoresData.map((ap: any) => ({
+        id: ap.id || ap.ID || 0,
+        // CORRECCIÓN IMPORTANTE: Intentar obtener usuarioId de diferentes formas
+        usuarioId: ap.usuarioId || ap.usuarioID || ap.UsuarioID || ap.Usuario?.ID || ap.userId || 0,
+        usuario: ap.usuario || ap.Usuario || ap.user || '',
+        nombreCompleto: ap.nombreCompleto || ap.NombreCompleto || ap.Empleado?.NombreCompleto || 'Nombre no disponible',
+        correoElectronico: ap.correoElectronico || ap.CorreoElectronico || ap.email || '',
+        rol: ap.rol || ap.Rol || 'employee',
+        activo: ap.activo !== undefined ? ap.activo : true,
+        fechaCreacion: ap.fechaCreacion || ap.createdAt || new Date().toISOString(),
+        puesto: ap.puesto || ap.PuestoNombre || ''
+      }));
       
-      if (response.data.success) {
-        const aprobadoresData = response.data.data || [];
-        const formattedAprobadores = aprobadoresData.map((ap: any) => ({
-          id: ap.id || ap.ID || 0,
-          usuarioId: ap.usuarioId || ap.usuarioID || ap.ID || 0,
-          usuario: ap.usuario || ap.Usuario || '',
-          nombreCompleto: ap.nombreCompleto || ap.NombreCompleto || 'Nombre no disponible',
-          correoElectronico: ap.correoElectronico || ap.CorreoElectronico || '',
-          rol: ap.rol || ap.Rol || 'employee',
-          activo: ap.activo !== undefined ? ap.activo : true,
-          fechaCreacion: ap.fechaCreacion || ap.createdAt || new Date().toISOString(),
-          puesto: ap.puesto || ap.PuestoNombre || ''
-        }));
-        
-        setAprobadores(formattedAprobadores);
-      } else {
-        setError(response.data.message || 'Error cargando aprobadores');
-      }
-    } catch (error: any) {
-      console.error('Error cargando aprobadores:', error);
-      if (error.response?.status === 403) {
-        setError('No tienes permisos para ver aprobadores');
-      } else {
-        setError(error.response?.data?.message || 'Error cargando aprobadores');
-      }
-    } finally {
-      setLoading(false);
+      setAprobadores(formattedAprobadores);
+      console.log('Aprobadores formateados:', formattedAprobadores);
+      console.log('Detalle de aprobadores:', formattedAprobadores.map(a => ({ 
+        idAprobador: a.id, 
+        usuarioId: a.usuarioId, 
+        nombre: a.nombreCompleto 
+      })));
+    } else {
+      setError(response.data.message || 'Error cargando aprobadores');
     }
-  };
+  } catch (error: any) {
+    console.error('Error cargando aprobadores:', error);
+    if (error.response?.status === 403) {
+      setError('No tienes permisos para ver aprobadores');
+    } else {
+      setError(error.response?.data?.message || 'Error cargando aprobadores');
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   const loadUsuariosParaAprobador = async () => {
     if (!isAdmin) return;
@@ -152,6 +162,7 @@ const Aprobadores: React.FC = () => {
             emp.RolApp === 'manager' || emp.RolApp === 'admin'
           );
         setUsuarios(usuariosFiltrados);
+        console.log('Usuarios disponibles para aprobador:', usuariosFiltrados);
       }
     } catch (error: any) {
       console.error('Error cargando usuarios:', error);
@@ -169,6 +180,9 @@ const Aprobadores: React.FC = () => {
     try {
       setError('');
       setSuccess('');
+      setLoading(true);
+      
+      console.log('Agregando aprobador con usuarioId:', selectedUsuario);
       
       const response = await api.post('/aprobadores/agregar', {
         usuarioId: selectedUsuario
@@ -178,7 +192,10 @@ const Aprobadores: React.FC = () => {
         setSuccess(response.data.message || 'Usuario agregado como aprobador exitosamente');
         setShowAddModal(false);
         setSelectedUsuario(null);
-        loadAprobadores();
+        await Promise.all([
+          loadAprobadores(),
+          loadUsuariosParaAprobador()
+        ]);
       } else {
         setError(response.data.message || 'Error agregando aprobador');
       }
@@ -191,6 +208,8 @@ const Aprobadores: React.FC = () => {
       } else {
         setError(error.response?.data?.message || 'Error agregando aprobador');
       }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -200,6 +219,9 @@ const Aprobadores: React.FC = () => {
     try {
       setError('');
       setSuccess('');
+      setLoading(true);
+      
+      console.log('Removiendo aprobador con usuarioId:', usuarioToRemove.usuarioId);
       
       const response = await api.delete(`/aprobadores/quitar/${usuarioToRemove.usuarioId}`);
       
@@ -207,7 +229,10 @@ const Aprobadores: React.FC = () => {
         setSuccess(response.data.message || 'Usuario removido como aprobador exitosamente');
         setShowRemoveModal(false);
         setUsuarioToRemove(null);
-        loadAprobadores();
+        await Promise.all([
+          loadAprobadores(),
+          loadUsuariosParaAprobador()
+        ]);
       } else {
         setError(response.data.message || 'Error removiendo aprobador');
       }
@@ -218,14 +243,19 @@ const Aprobadores: React.FC = () => {
       } else {
         setError(error.response?.data?.message || 'Error removiendo aprobador');
       }
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleVerifyAprobador = async (usuarioId?: number) => {
     if (!isAdmin) return;
     
+    // IMPORTANTE: Usar el usuarioId, no el id del registro de aprobador
     const idToVerify = usuarioId || (usuarioToVerify?.usuarioId);
     if (!idToVerify) return;
+    
+    console.log('Verificando aprobador con usuarioId:', idToVerify);
     
     try {
       setVerificationLoading(true);
@@ -233,6 +263,8 @@ const Aprobadores: React.FC = () => {
       setVerificationResult(null);
       
       const response = await api.get(`/aprobadores/verificar/${idToVerify}`);
+      
+      console.log('Respuesta de verificación:', response.data);
       
       if (response.data.success) {
         setVerificationResult(response.data.data);
@@ -297,10 +329,12 @@ const Aprobadores: React.FC = () => {
     setShowRemoveModal(true);
   };
 
-  const openVerifyModal = (aprobador: Aprobador) => {
-    setUsuarioToVerify(aprobador);
-    handleVerifyAprobador(aprobador.usuarioId);
-  };
+const openVerifyModal = (aprobador: Aprobador) => {
+  console.log('Abriendo modal de verificación para:', aprobador.nombreCompleto);
+  console.log('Usuario ID a verificar:', aprobador.usuarioId);
+  setUsuarioToVerify(aprobador);
+  handleVerifyAprobador(aprobador.usuarioId);
+};
 
   const filteredAprobadores = aprobadores.filter(aprobador =>
     aprobador.nombreCompleto.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -349,6 +383,10 @@ const Aprobadores: React.FC = () => {
                 <FontAwesomeIcon icon={faUserShield} className="me-2 text-danger" />
                 Gestión de Aprobadores
               </h2>
+              <p className="text-muted mt-2">
+                <FontAwesomeIcon icon={faInfoCircle} className="me-1" />
+                Los aprobadores son los usuarios que pueden aprobar solicitudes de vacaciones, permisos y horas extras
+              </p>
             </div>
             
             <div className="d-flex gap-2">
@@ -513,7 +551,7 @@ const Aprobadores: React.FC = () => {
                             )}
                             <div className="d-flex align-items-center">
                               <FontAwesomeIcon icon={faBuilding} className="text-muted me-2" size="sm" />
-                              <small>ID: {aprobador.usuarioId}</small>
+                              <small>ID Usuario: {aprobador.usuarioId}</small>
                             </div>
                           </div>
                         </td>
@@ -677,9 +715,9 @@ const Aprobadores: React.FC = () => {
           <Button 
             variant="danger" 
             onClick={handleAddAprobador}
-            disabled={!selectedUsuario || loadingUsuarios}
+            disabled={!selectedUsuario || loadingUsuarios || loading}
           >
-            <FontAwesomeIcon icon={faUserShield} className="me-2" />
+            {loading ? <Spinner size="sm" className="me-2" /> : <FontAwesomeIcon icon={faUserShield} className="me-2" />}
             Agregar como Aprobador
           </Button>
         </Modal.Footer>
@@ -713,6 +751,10 @@ const Aprobadores: React.FC = () => {
                   <span>{getRolBadge(usuarioToRemove.rol)}</span>
                 </ListGroup.Item>
                 <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                  <span><strong>ID Usuario:</strong></span>
+                  <span>{usuarioToRemove.usuarioId}</span>
+                </ListGroup.Item>
+                <ListGroup.Item className="d-flex justify-content-between align-items-center">
                   <span><strong>Registrado desde:</strong></span>
                   <span>{formatDateDisplay(usuarioToRemove.fechaCreacion)}</span>
                 </ListGroup.Item>
@@ -730,8 +772,8 @@ const Aprobadores: React.FC = () => {
           <Button variant="secondary" onClick={() => setShowRemoveModal(false)}>
             Cancelar
           </Button>
-          <Button variant="warning" onClick={handleRemoveAprobador}>
-            <FontAwesomeIcon icon={faUserMinus} className="me-2" />
+          <Button variant="warning" onClick={handleRemoveAprobador} disabled={loading}>
+            {loading ? <Spinner size="sm" className="me-2" /> : <FontAwesomeIcon icon={faUserMinus} className="me-2" />}
             Sí, Remover Aprobador
           </Button>
         </Modal.Footer>

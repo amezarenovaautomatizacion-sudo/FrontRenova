@@ -303,19 +303,16 @@ const obtenerDiaHabilMasCercano = (fecha: string | Date): string => {
 
 // ========== FUNCIONES UTC PARA MANEJO CORRECTO DE FECHAS ==========
 
-// Obtener fecha UTC sin horas
 const getUTCDate = (dateStr: string): Date => {
   const [year, month, day] = dateStr.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
 };
 
-// Obtener fecha actual UTC sin horas
 const getCurrentUTCDate = (): Date => {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
 };
 
-// Formatear fecha UTC a string YYYY-MM-DD
 const formatUTCDate = (date: Date): string => {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -323,7 +320,6 @@ const formatUTCDate = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-// Calcular fecha mínima para permisos (mañana en UTC, ajustado a días hábiles)
 const calcularFechaMinimaPermiso = (): string => {
   const hoyUTC = getCurrentUTCDate();
   const fechaMinima = new Date(hoyUTC);
@@ -331,7 +327,6 @@ const calcularFechaMinimaPermiso = (): string => {
   
   let fechaStr = formatUTCDate(fechaMinima);
   
-  // Si es fin de semana, avanzar al siguiente día hábil
   while (esFinDeSemana(fechaStr)) {
     fechaMinima.setUTCDate(fechaMinima.getUTCDate() + 1);
     fechaStr = formatUTCDate(fechaMinima);
@@ -340,16 +335,13 @@ const calcularFechaMinimaPermiso = (): string => {
   return fechaStr;
 };
 
-// Validar si una fecha tiene al menos 24 horas de anticipación
 const tiene24HorasAnticipacion = (fechaSeleccionadaStr: string): boolean => {
   const fechaSeleccionada = getUTCDate(fechaSeleccionadaStr);
   const ahoraUTC = getCurrentUTCDate();
   
-  // La fecha mínima es mañana
   const fechaMinima = new Date(ahoraUTC);
   fechaMinima.setUTCDate(ahoraUTC.getUTCDate() + 1);
   
-  // La fecha seleccionada debe ser mayor o igual a la fecha mínima
   return fechaSeleccionada >= fechaMinima;
 };
 
@@ -429,13 +421,45 @@ const Solicitudes: React.FC = () => {
   const isAdmin = userRol === 'admin';
   const isManager = userRol === 'manager';
   const isEmployee = userRol === 'employee';
-  
-  const canViewAll = isAdmin || isManager;
+
+  // ========== VERIFICACIÓN DE APROBADOR VÍA API ==========
+  const [esAprobador, setEsAprobador] = useState<boolean>(false);
+  const [loadingAprobador, setLoadingAprobador] = useState<boolean>(true);
+
+  useEffect(() => {
+    const verificarAprobador = async () => {
+      // Solo admin/manager pueden ser aprobadores; si es employee, saltar la llamada
+      if (!user?.id || isEmployee) {
+        setEsAprobador(false);
+        setLoadingAprobador(false);
+        return;
+      }
+      try {
+        const response = await api.get(`/aprobadores/verificar/${user.id}`);
+        if (response.data.success) {
+          setEsAprobador(response.data.data.esAprobador === true);
+        } else {
+          setEsAprobador(false);
+        }
+      } catch (error) {
+        console.error('Error verificando aprobador:', error);
+        setEsAprobador(false);
+      } finally {
+        setLoadingAprobador(false);
+      }
+    };
+
+    verificarAprobador();
+  }, [user?.id]);
+  // ========== FIN VERIFICACIÓN DE APROBADOR ==========
+
+  // Permisos: el rol sigue siendo requerido, pero además debe estar en la tabla de aprobadores
+  const canViewAll = (isAdmin || isManager) && esAprobador;
   const canCreateVacaciones = true;
   const canCreatePermiso = true;
   const canCreateHorasExtras = isAdmin || isManager;
-  const canApprove = isAdmin || isManager;
-  const canViewReports = isAdmin || isManager;
+  const canApprove = (isAdmin || isManager) && esAprobador;
+  const canViewReports = (isAdmin || isManager) && esAprobador;
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -583,7 +607,10 @@ const Solicitudes: React.FC = () => {
     }
   }, [filterTextHorasExtras, reporteHorasExtras]);
 
+  // Esperar a que la verificación de aprobador termine antes de cargar datos dependientes
   useEffect(() => {
+    if (loadingAprobador) return;
+
     loadDerechosVacacionales();
     if (canViewAll) {
       loadEmpleadosSelect();
@@ -591,11 +618,12 @@ const Solicitudes: React.FC = () => {
     if (canApprove) {
       loadPendientesCount();
     }
-  }, []);
+  }, [loadingAprobador]);
   
   useEffect(() => {
+    if (loadingAprobador) return;
     loadTabData();
-  }, [activeTab, filterEstado, filterTipo, filterFechaDesde, filterFechaHasta]);
+  }, [activeTab, filterEstado, filterTipo, filterFechaDesde, filterFechaHasta, loadingAprobador]);
 
   useEffect(() => {
     if (!canApprove) return;
@@ -928,7 +956,6 @@ const Solicitudes: React.FC = () => {
     }
   };
   
-  // ========== FUNCIÓN CORREGIDA PARA SOLICITAR PERMISO ==========
   const handleSolicitarPermiso = async () => {
     try {
       setError('');
@@ -939,20 +966,17 @@ const Solicitudes: React.FC = () => {
         return;
       }
       
-      // Validar que no sea fin de semana
       if (esFinDeSemana(permisoData.fechaInicio)) {
         setError('Los permisos no pueden solicitarse en fin de semana. Por favor selecciona un día hábil.');
         return;
       }
       
-      // Validar que tenga al menos 24 horas de anticipación usando UTC
       if (!tiene24HorasAnticipacion(permisoData.fechaInicio)) {
         const fechaMinima = calcularFechaMinimaPermiso();
         setError(`Los permisos deben solicitarse con al menos 24 horas de anticipación. La fecha mínima permitida es ${fechaMinima}`);
         return;
       }
       
-      // Debug - para verificar la validación
       console.log('=== ENVIANDO SOLICITUD DE PERMISO ===');
       console.log('Fecha seleccionada:', permisoData.fechaInicio);
       console.log('Fecha mínima permitida:', calcularFechaMinimaPermiso());
@@ -987,7 +1011,6 @@ const Solicitudes: React.FC = () => {
       }
     }
   };
-  // ========== FIN FUNCIÓN CORREGIDA ==========
   
   const handleSolicitarHorasExtras = async () => {
     try {
@@ -1325,120 +1348,67 @@ const Solicitudes: React.FC = () => {
 
   const handleFechaInicioVacacionesChange = (fecha: string) => {
     if (!fecha) {
-      setVacacionesData(prev => ({
-        ...prev,
-        fechaInicio: fecha
-      }));
+      setVacacionesData(prev => ({ ...prev, fechaInicio: fecha }));
       return;
     }
-
     const fechaCorregida = obtenerDiaHabilMasCercano(fecha);
-    
     setVacacionesData(prev => {
-      let newData = {
-        ...prev,
-        fechaInicio: fechaCorregida
-      };
-      
+      let newData = { ...prev, fechaInicio: fechaCorregida };
       if (prev.fechaFin) {
-        const fechasCorregidas = validarYCorregirFechasVacaciones(
-          fechaCorregida, 
-          prev.fechaFin
-        );
-        newData = {
-          ...newData,
-          fechaInicio: fechasCorregidas.fechaInicio,
-          fechaFin: fechasCorregidas.fechaFin
-        };
+        const fechasCorregidas = validarYCorregirFechasVacaciones(fechaCorregida, prev.fechaFin);
+        newData = { ...newData, fechaInicio: fechasCorregidas.fechaInicio, fechaFin: fechasCorregidas.fechaFin };
       }
-      
       return newData;
     });
   };
 
   const handleFechaFinVacacionesChange = (fecha: string) => {
     if (!fecha) {
-      setVacacionesData(prev => ({
-        ...prev,
-        fechaFin: fecha
-      }));
+      setVacacionesData(prev => ({ ...prev, fechaFin: fecha }));
       return;
     }
-
     const fechaCorregida = obtenerDiaHabilMasCercano(fecha);
-    
     setVacacionesData(prev => {
       if (prev.fechaInicio) {
-        const fechasCorregidas = validarYCorregirFechasVacaciones(
-          prev.fechaInicio, 
-          fechaCorregida
-        );
-        return {
-          ...prev,
-          fechaInicio: fechasCorregidas.fechaInicio,
-          fechaFin: fechasCorregidas.fechaFin
-        };
+        const fechasCorregidas = validarYCorregirFechasVacaciones(prev.fechaInicio, fechaCorregida);
+        return { ...prev, fechaInicio: fechasCorregidas.fechaInicio, fechaFin: fechasCorregidas.fechaFin };
       }
-      
-      return {
-        ...prev,
-        fechaFin: fechaCorregida
-      };
+      return { ...prev, fechaFin: fechaCorregida };
     });
   };
 
   const handleFechaPermisoChange = (fecha: string) => {
     if (!fecha) {
-      setPermisoData(prev => ({
-        ...prev,
-        fechaInicio: fecha
-      }));
+      setPermisoData(prev => ({ ...prev, fechaInicio: fecha }));
       return;
     }
-
     const fechaCorregida = obtenerDiaHabilMasCercano(fecha);
-    
-    setPermisoData(prev => ({
-      ...prev,
-      fechaInicio: fechaCorregida
-    }));
+    setPermisoData(prev => ({ ...prev, fechaInicio: fechaCorregida }));
   };
 
   const handleFechaHorasExtrasChange = (fecha: string) => {
     if (!fecha) {
-      setHorasExtrasData(prev => ({
-        ...prev,
-        fechaInicio: fecha
-      }));
+      setHorasExtrasData(prev => ({ ...prev, fechaInicio: fecha }));
       return;
     }
-
     const fechaCorregida = obtenerDiaHabilMasCercano(fecha);
-    
-    setHorasExtrasData(prev => ({
-      ...prev,
-      fechaInicio: fechaCorregida
-    }));
+    setHorasExtrasData(prev => ({ ...prev, fechaInicio: fechaCorregida }));
   };
 
   const handleFechaInicioInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fecha = e.target.value;
-    handleFechaInicioVacacionesChange(fecha);
+    handleFechaInicioVacacionesChange(e.target.value);
   };
 
   const handleFechaFinInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fecha = e.target.value;
-    handleFechaFinVacacionesChange(fecha);
+    handleFechaFinVacacionesChange(e.target.value);
   };
 
   const handleFechaPermisoInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fecha = e.target.value;
-    handleFechaPermisoChange(fecha);
+    handleFechaPermisoChange(e.target.value);
   };
 
   const handleFechaHorasExtrasInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fecha = e.target.value;
-    handleFechaHorasExtrasChange(fecha);
+    handleFechaHorasExtrasChange(e.target.value);
   };
 
   const exportToExcel = (data: any[], filename: string) => {
@@ -1447,12 +1417,10 @@ const Solicitudes: React.FC = () => {
         setError('No hay datos para exportar');
         return;
       }
-
       const worksheet = XLSX.utils.json_to_sheet(data);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Solicitudes');
       XLSX.writeFile(workbook, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
-      
       setSuccess('Exportación completada exitosamente');
       setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
@@ -1467,9 +1435,7 @@ const Solicitudes: React.FC = () => {
         setError('No hay datos para exportar');
         return;
       }
-
       const doc = new jsPDF();
-      
       doc.setFontSize(18);
       doc.setTextColor(13, 110, 253);
       doc.text(`Reporte de ${filename}`, 14, 22);
@@ -1477,15 +1443,13 @@ const Solicitudes: React.FC = () => {
       doc.setTextColor(44, 62, 80);
       doc.text(`Generado: ${formatDateDisplay(new Date().toISOString())}`, 14, 32);
       doc.text(`Total de registros: ${data.length}`, 14, 38);
-
-      const tableColumn = columns.map(col => col.name);
-      const tableRows = data.map(item => 
-        columns.map(col => {
+      const tableColumn = columns.map((col: any) => col.name);
+      const tableRows = data.map((item: any) =>
+        columns.map((col: any) => {
           const value = col.selector(item);
           return value !== undefined && value !== null ? String(value) : '';
         })
       );
-
       (doc as any).autoTable({
         head: [tableColumn],
         body: tableRows,
@@ -1494,9 +1458,7 @@ const Solicitudes: React.FC = () => {
         headStyles: { fillColor: [13, 110, 253], textColor: 255 },
         alternateRowStyles: { fillColor: [245, 245, 245] }
       });
-
       doc.save(`${filename}_${new Date().toISOString().split('T')[0]}.pdf`);
-      
       setSuccess('Exportación completada exitosamente');
       setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
@@ -1599,23 +1561,16 @@ const Solicitudes: React.FC = () => {
         <ButtonGroup size="sm">
           <Button
             variant="outline-primary"
-            onClick={(e) => {
-              e.stopPropagation();
-              loadDetalleSolicitud(row.ID);
-            }}
+            onClick={(e) => { e.stopPropagation(); loadDetalleSolicitud(row.ID); }}
             title="Ver detalles"
             className="hover-bg-soft"
           >
             <FontAwesomeIcon icon={faEye} />
           </Button>
-          
           {row.Estado === 'pendiente' && (
             <Button
               variant="outline-danger"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCancelarSolicitud(row.ID);
-              }}
+              onClick={(e) => { e.stopPropagation(); handleCancelarSolicitud(row.ID); }}
               title="Cancelar solicitud"
               className="hover-bg-soft"
             >
@@ -1659,9 +1614,7 @@ const Solicitudes: React.FC = () => {
         if (row.Tipo === 'vacaciones') {
           return (
             <div>
-              <div>
-                {formatDateDisplay(row.FechaInicio!)} → {formatDateDisplay(row.FechaFin!)}
-              </div>
+              <div>{formatDateDisplay(row.FechaInicio!)} → {formatDateDisplay(row.FechaFin!)}</div>
               <small className="text-muted">{row.DiasSolicitados} días hábiles</small>
             </div>
           );
@@ -1669,9 +1622,7 @@ const Solicitudes: React.FC = () => {
         if (row.Tipo === 'permiso') {
           return (
             <div>
-              <div>
-                {formatDateDisplay(row.FechaInicio!)}
-              </div>
+              <div>{formatDateDisplay(row.FechaInicio!)}</div>
               <small className="text-muted">{row.ConGoce ? 'Con goce' : 'Sin goce'}</small>
             </div>
           );
@@ -1679,9 +1630,7 @@ const Solicitudes: React.FC = () => {
         if (row.Tipo === 'horas_extras') {
           return (
             <div>
-              <div>
-                {formatDateDisplay(row.FechaInicio!)}
-              </div>
+              <div>{formatDateDisplay(row.FechaInicio!)}</div>
               <small className="text-muted">{row.HorasSolicitadas} horas</small>
             </div>
           );
@@ -1715,22 +1664,15 @@ const Solicitudes: React.FC = () => {
         <ButtonGroup size="sm">
           <Button
             variant="outline-success"
-            onClick={(e) => {
-              e.stopPropagation();
-              openApproveModal(row);
-            }}
+            onClick={(e) => { e.stopPropagation(); openApproveModal(row); }}
             title="Aprobar/Rechazar"
             className="hover-bg-soft"
           >
             <FontAwesomeIcon icon={faCheckCircle} />
           </Button>
-          
           <Button
             variant="outline-warning"
-            onClick={(e) => {
-              e.stopPropagation();
-              openEditAprobacionModal(row);
-            }}
+            onClick={(e) => { e.stopPropagation(); openEditAprobacionModal(row); }}
             title="Editar aprobación"
             className="hover-bg-soft"
           >
@@ -1844,10 +1786,7 @@ const Solicitudes: React.FC = () => {
         <Button
           variant="outline-primary"
           size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            loadDetalleSolicitud(row.ID);
-          }}
+          onClick={(e) => { e.stopPropagation(); loadDetalleSolicitud(row.ID); }}
           title="Ver detalles"
           className="hover-bg-soft"
         >
@@ -1885,8 +1824,8 @@ const Solicitudes: React.FC = () => {
       selector: (row: ReporteHorasExtras) => row.HorasSolicitadas,
       sortable: true,
       cell: (row: ReporteHorasExtras) => {
-        const horas = typeof row.HorasSolicitadas === 'string' 
-          ? parseFloat(row.HorasSolicitadas) 
+        const horas = typeof row.HorasSolicitadas === 'string'
+          ? parseFloat(row.HorasSolicitadas)
           : (row.HorasSolicitadas || 0);
         return (
           <Badge bg="warning" className="fs-6">
@@ -1924,12 +1863,11 @@ const Solicitudes: React.FC = () => {
 
   const renderActionButtons = () => {
     const sinDiasVacaciones = derechosVacacionales?.DiasDisponibles <= 0;
-    
     return (
       <ButtonGroup>
         {canCreateVacaciones && (
-          <Button 
-            variant="primary" 
+          <Button
+            variant="primary"
             onClick={() => setShowVacacionesModal(true)}
             disabled={sinDiasVacaciones}
             title={sinDiasVacaciones ? "No tienes días de vacaciones disponibles" : "Solicitar vacaciones"}
@@ -1943,14 +1881,12 @@ const Solicitudes: React.FC = () => {
             )}
           </Button>
         )}
-        
         {canCreatePermiso && (
           <Button variant="info" onClick={() => setShowPermisoModal(true)}>
             <FontAwesomeIcon icon={faCalendarCheck} className="me-2" />
             Permiso
           </Button>
         )}
-        
         {canCreateHorasExtras && (
           <Button variant="warning" onClick={() => setShowHorasExtrasModal(true)}>
             <FontAwesomeIcon icon={faClock} className="me-2" />
@@ -1970,10 +1906,10 @@ const Solicitudes: React.FC = () => {
               <Card.Body>
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <div>
-                    <FontAwesomeIcon 
-                      icon={faCalendarDay} 
-                      size="2x" 
-                      className={estadisticasVacaciones.disponibles <= 0 ? 'text-danger' : 'text-primary'} 
+                    <FontAwesomeIcon
+                      icon={faCalendarDay}
+                      size="2x"
+                      className={estadisticasVacaciones.disponibles <= 0 ? 'text-danger' : 'text-primary'}
                     />
                   </div>
                   <div className="text-end">
@@ -1984,9 +1920,9 @@ const Solicitudes: React.FC = () => {
                   </div>
                 </div>
                 <div className="progress mb-2" style={{ height: '8px' }}>
-                  <div 
+                  <div
                     className={`progress-bar ${estadisticasVacaciones.disponibles <= 0 ? 'bg-danger' : 'bg-primary'}`}
-                    role="progressbar" 
+                    role="progressbar"
                     style={{ width: `${estadisticasVacaciones.porcentaje}%` }}
                   ></div>
                 </div>
@@ -2011,7 +1947,6 @@ const Solicitudes: React.FC = () => {
             </Card>
           </Col>
         )}
-        
         <Col md={4} className="mb-3">
           <Card className="border-warning border-2 shadow-sm h-100">
             <Card.Body>
@@ -2030,7 +1965,6 @@ const Solicitudes: React.FC = () => {
             </Card.Body>
           </Card>
         </Col>
-        
         <Col md={4} className="mb-3">
           <Card className="border-success border-2 shadow-sm h-100">
             <Card.Body>
@@ -2089,7 +2023,6 @@ const Solicitudes: React.FC = () => {
             </Col>
           </>
         )}
-        
         {activeTab === 'horas-extras' && (
           <>
             <Col md={4}>
@@ -2116,7 +2049,6 @@ const Solicitudes: React.FC = () => {
             </Col>
           </>
         )}
-        
         {(filterEstado || filterTipo || filterFechaDesde || filterFechaHasta) && (
           <Col md={4} className="d-flex align-items-end">
             <Button
@@ -2138,8 +2070,9 @@ const Solicitudes: React.FC = () => {
       </Row>
     );
   };
-  
-  if (!user) {
+
+  // Mostrar spinner mientras se verifica si es aprobador
+  if (!user || loadingAprobador) {
     return (
       <Container fluid className="py-4">
         <div className="text-center py-5">
@@ -2161,11 +2094,10 @@ const Solicitudes: React.FC = () => {
                 Gestión de Solicitudes
               </h2>
             </div>
-            
             <div className="d-flex gap-2">
               <ButtonGroup className="shadow-sm">
-                <Button 
-                  variant="outline-primary" 
+                <Button
+                  variant="outline-primary"
                   onClick={loadTabData}
                   disabled={loading}
                   className="hover-bg-soft"
@@ -2261,7 +2193,6 @@ const Solicitudes: React.FC = () => {
             }>
               <div className="p-3">
                 {renderFilters()}
-                
                 <Card className="shadow-sm border-0 mb-3">
                   <Card.Body className="p-0">
                     <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
@@ -2272,8 +2203,8 @@ const Solicitudes: React.FC = () => {
                         </h6>
                       </div>
                       <div className="d-flex gap-2">
-                        <Button 
-                          variant="outline-success" 
+                        <Button
+                          variant="outline-success"
                           size="sm"
                           onClick={() => {
                             const dataToExport = selectedRows.length > 0 ? selectedRows : filteredMisSolicitudes;
@@ -2296,16 +2227,12 @@ const Solicitudes: React.FC = () => {
                           <FontAwesomeIcon icon={faDownload} className="me-1" />
                           Excel
                         </Button>
-                        <Button 
-                          variant="outline-danger" 
+                        <Button
+                          variant="outline-danger"
                           size="sm"
                           onClick={() => {
                             const dataToExport = selectedRows.length > 0 ? selectedRows : filteredMisSolicitudes;
-                            exportToPDF(
-                              dataToExport,
-                              columnsMisSolicitudes.filter(col => col.name !== 'Acciones'),
-                              'mis_solicitudes'
-                            );
+                            exportToPDF(dataToExport, columnsMisSolicitudes.filter(col => col.name !== 'Acciones'), 'mis_solicitudes');
                           }}
                           className="hover-bg-soft"
                         >
@@ -2324,7 +2251,6 @@ const Solicitudes: React.FC = () => {
                     </div>
                   </Card.Body>
                 </Card>
-
                 <Card className="shadow-sm border-0">
                   <Card.Body className="p-0">
                     {loading ? (
@@ -2337,7 +2263,7 @@ const Solicitudes: React.FC = () => {
                         <FontAwesomeIcon icon={faCalendarAlt} size="3x" className="text-muted mb-3" />
                         <h5>No tienes solicitudes</h5>
                         <p className="text-muted">
-                          {filterText 
+                          {filterText
                             ? 'No se encontraron resultados para tu búsqueda'
                             : 'Crea tu primera solicitud usando los botones de arriba'}
                         </p>
@@ -2356,9 +2282,7 @@ const Solicitudes: React.FC = () => {
                         selectableRowsHighlight
                         onSelectedRowsChange={(state) => setSelectedRows(state.selectedRows)}
                         clearSelectedRows={toggleCleared}
-                        onRowClicked={(row) => {
-                          loadDetalleSolicitud(row.ID);
-                        }}
+                        onRowClicked={(row) => loadDetalleSolicitud(row.ID)}
                         responsive
                         customStyles={customStyles}
                         progressPending={loading}
@@ -2368,9 +2292,7 @@ const Solicitudes: React.FC = () => {
                             <p className="mt-3 text-muted">Cargando datos...</p>
                           </div>
                         }
-                        sortIcon={
-                          <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
-                        }
+                        sortIcon={<FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />}
                         noDataComponent={
                           <div className="text-center py-5">
                             <FontAwesomeIcon icon={faCalendarAlt} size="3x" className="text-muted mb-3" />
@@ -2396,7 +2318,7 @@ const Solicitudes: React.FC = () => {
                 </Card>
               </div>
             </Tab>
-            
+
             {canApprove && (
               <Tab eventKey="pendientes" title={
                 <span>
@@ -2412,7 +2334,6 @@ const Solicitudes: React.FC = () => {
                     <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
                     Tienes {pendientesCount} solicitudes pendientes de aprobación
                   </Alert>
-                  
                   <Card className="shadow-sm border-0 mb-3">
                     <Card.Body className="p-0">
                       <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
@@ -2423,8 +2344,8 @@ const Solicitudes: React.FC = () => {
                           </h6>
                         </div>
                         <div className="d-flex gap-2">
-                          <Button 
-                            variant="outline-success" 
+                          <Button
+                            variant="outline-success"
                             size="sm"
                             onClick={() => {
                               exportToExcel(
@@ -2445,8 +2366,8 @@ const Solicitudes: React.FC = () => {
                             <FontAwesomeIcon icon={faDownload} className="me-1" />
                             Excel
                           </Button>
-                          <Button 
-                            variant="outline-danger" 
+                          <Button
+                            variant="outline-danger"
                             size="sm"
                             onClick={() => {
                               exportToPDF(
@@ -2472,7 +2393,6 @@ const Solicitudes: React.FC = () => {
                       </div>
                     </Card.Body>
                   </Card>
-
                   <Card className="shadow-sm border-0">
                     <Card.Body className="p-0">
                       {loading ? (
@@ -2496,9 +2416,7 @@ const Solicitudes: React.FC = () => {
                           onChangeRowsPerPage={(newPerPage) => setPerPagePendientes(newPerPage)}
                           highlightOnHover
                           pointerOnHover
-                          onRowClicked={(row) => {
-                            openApproveModal(row);
-                          }}
+                          onRowClicked={(row) => openApproveModal(row)}
                           responsive
                           customStyles={customStyles}
                           progressPending={loading}
@@ -2508,9 +2426,7 @@ const Solicitudes: React.FC = () => {
                               <p className="mt-3 text-muted">Cargando datos...</p>
                             </div>
                           }
-                          sortIcon={
-                            <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
-                          }
+                          sortIcon={<FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />}
                           noDataComponent={
                             <div className="text-center py-5">
                               <FontAwesomeIcon icon={faCheckCircle} size="3x" className="text-muted mb-3" />
@@ -2525,7 +2441,7 @@ const Solicitudes: React.FC = () => {
                 </div>
               </Tab>
             )}
-            
+
             {canViewAll && (
               <Tab eventKey="aprobadas" title={
                 <span>
@@ -2536,7 +2452,6 @@ const Solicitudes: React.FC = () => {
               }>
                 <div className="p-3">
                   {renderFilters()}
-                  
                   <Card className="shadow-sm border-0 mb-3">
                     <Card.Body className="p-0">
                       <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
@@ -2547,8 +2462,8 @@ const Solicitudes: React.FC = () => {
                           </h6>
                         </div>
                         <div className="d-flex gap-2">
-                          <Button 
-                            variant="outline-success" 
+                          <Button
+                            variant="outline-success"
                             size="sm"
                             onClick={() => {
                               exportToExcel(
@@ -2571,8 +2486,8 @@ const Solicitudes: React.FC = () => {
                             <FontAwesomeIcon icon={faDownload} className="me-1" />
                             Excel
                           </Button>
-                          <Button 
-                            variant="outline-danger" 
+                          <Button
+                            variant="outline-danger"
                             size="sm"
                             onClick={() => {
                               exportToPDF(
@@ -2598,7 +2513,6 @@ const Solicitudes: React.FC = () => {
                       </div>
                     </Card.Body>
                   </Card>
-
                   <Card className="shadow-sm border-0">
                     <Card.Body className="p-0">
                       {loading ? (
@@ -2622,9 +2536,7 @@ const Solicitudes: React.FC = () => {
                           onChangeRowsPerPage={(newPerPage) => setPerPageAprobadas(newPerPage)}
                           highlightOnHover
                           pointerOnHover
-                          onRowClicked={(row) => {
-                            loadDetalleSolicitud(row.ID);
-                          }}
+                          onRowClicked={(row) => loadDetalleSolicitud(row.ID)}
                           responsive
                           customStyles={customStyles}
                           progressPending={loading}
@@ -2634,9 +2546,7 @@ const Solicitudes: React.FC = () => {
                               <p className="mt-3 text-muted">Cargando datos...</p>
                             </div>
                           }
-                          sortIcon={
-                            <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
-                          }
+                          sortIcon={<FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />}
                           noDataComponent={
                             <div className="text-center py-5">
                               <FontAwesomeIcon icon={faClipboardList} size="3x" className="text-muted mb-3" />
@@ -2662,7 +2572,6 @@ const Solicitudes: React.FC = () => {
               }>
                 <div className="p-3">
                   {renderFilters()}
-                  
                   <Card className="mb-3 shadow-sm border-0">
                     <Card.Body className="bg-light">
                       <Row>
@@ -2676,8 +2585,8 @@ const Solicitudes: React.FC = () => {
                           <div className="text-center">
                             <h4 className="text-success">
                               {reporteHorasExtras.reduce((sum, item) => {
-                                const horas = typeof item.HorasSolicitadas === 'string' 
-                                  ? parseFloat(item.HorasSolicitadas) 
+                                const horas = typeof item.HorasSolicitadas === 'string'
+                                  ? parseFloat(item.HorasSolicitadas)
                                   : (item.HorasSolicitadas || 0);
                                 return sum + horas;
                               }, 0).toFixed(1)}
@@ -2712,7 +2621,6 @@ const Solicitudes: React.FC = () => {
                       </Row>
                     </Card.Body>
                   </Card>
-                  
                   <Card className="shadow-sm border-0 mb-3">
                     <Card.Body className="p-0">
                       <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
@@ -2723,8 +2631,8 @@ const Solicitudes: React.FC = () => {
                           </h6>
                         </div>
                         <div className="d-flex gap-2">
-                          <Button 
-                            variant="outline-success" 
+                          <Button
+                            variant="outline-success"
                             size="sm"
                             onClick={() => {
                               exportToExcel(
@@ -2744,15 +2652,11 @@ const Solicitudes: React.FC = () => {
                             <FontAwesomeIcon icon={faDownload} className="me-1" />
                             Excel
                           </Button>
-                          <Button 
-                            variant="outline-danger" 
+                          <Button
+                            variant="outline-danger"
                             size="sm"
                             onClick={() => {
-                              exportToPDF(
-                                filteredReporteHorasExtras,
-                                columnsHorasExtras,
-                                'horas_extras'
-                              );
+                              exportToPDF(filteredReporteHorasExtras, columnsHorasExtras, 'horas_extras');
                             }}
                             className="hover-bg-soft"
                           >
@@ -2771,7 +2675,6 @@ const Solicitudes: React.FC = () => {
                       </div>
                     </Card.Body>
                   </Card>
-
                   <Card className="shadow-sm border-0">
                     <Card.Body className="p-0">
                       {loading ? (
@@ -2784,7 +2687,7 @@ const Solicitudes: React.FC = () => {
                           <FontAwesomeIcon icon={faBusinessTime} size="3x" className="text-muted mb-3" />
                           <h5>No hay horas extras registradas</h5>
                           <p className="text-muted">
-                            {filterTextHorasExtras 
+                            {filterTextHorasExtras
                               ? 'No se encontraron resultados para tu búsqueda'
                               : 'No hay solicitudes de horas extras en el periodo seleccionado'}
                           </p>
@@ -2808,9 +2711,7 @@ const Solicitudes: React.FC = () => {
                               <p className="mt-3 text-muted">Cargando datos...</p>
                             </div>
                           }
-                          sortIcon={
-                            <FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />
-                          }
+                          sortIcon={<FontAwesomeIcon icon={faSort} className="ms-2 text-muted" />}
                           noDataComponent={
                             <div className="text-center py-5">
                               <FontAwesomeIcon icon={faBusinessTime} size="3x" className="text-muted mb-3" />
@@ -2829,6 +2730,8 @@ const Solicitudes: React.FC = () => {
         </Card.Body>
       </Card>
 
+      {/* ===== MODALES ===== */}
+
       <Modal show={showVacacionesModal} onHide={() => setShowVacacionesModal(false)} size="lg" centered>
         <Modal.Header closeButton className="bg-primary text-white">
           <Modal.Title>
@@ -2838,8 +2741,8 @@ const Solicitudes: React.FC = () => {
         </Modal.Header>
         <Modal.Body>
           {estadisticasVacaciones && (
-            <Alert 
-              variant={estadisticasVacaciones.disponibles <= 0 ? "danger" : "info"} 
+            <Alert
+              variant={estadisticasVacaciones.disponibles <= 0 ? "danger" : "info"}
               className="mb-4"
             >
               <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
@@ -2847,7 +2750,7 @@ const Solicitudes: React.FC = () => {
                 <strong>Resumen de tus vacaciones:</strong>
                 <div className="mt-2">
                   <span className="me-3">
-                    <strong>Días disponibles:</strong> 
+                    <strong>Días disponibles:</strong>
                     <span className={estadisticasVacaciones.disponibles <= 0 ? 'text-danger fw-bold' : ''}>
                       {' '}{estadisticasVacaciones.disponibles}
                     </span>
@@ -2869,14 +2772,12 @@ const Solicitudes: React.FC = () => {
               </div>
             </Alert>
           )}
-          
           <Alert variant="info" className="mb-3">
             <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-            <strong>Importante:</strong> Solo se cuentan días hábiles (lunes a viernes). 
+            <strong>Importante:</strong> Solo se cuentan días hábiles (lunes a viernes).
             Si seleccionas un fin de semana, se ajustará automáticamente al siguiente día hábil.
             Si la fecha fin es anterior a la fecha inicio, se intercambiarán automáticamente.
           </Alert>
-          
           <Form>
             <Row>
               <Col md={6}>
@@ -2918,40 +2819,37 @@ const Solicitudes: React.FC = () => {
                 </Form.Group>
               </Col>
             </Row>
-            
             <Form.Group className="mb-3">
               <Form.Label>Motivo *</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={3}
                 value={vacacionesData.motivo}
-                onChange={(e) => setVacacionesData({...vacacionesData, motivo: e.target.value})}
+                onChange={(e) => setVacacionesData({ ...vacacionesData, motivo: e.target.value })}
                 placeholder="Describe el motivo de tu solicitud de vacaciones..."
                 disabled={estadisticasVacaciones?.disponibles <= 0}
                 required
               />
             </Form.Group>
-            
             <Form.Group className="mb-3">
               <Form.Label>Observaciones (Opcional)</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={2}
                 value={vacacionesData.observaciones}
-                onChange={(e) => setVacacionesData({...vacacionesData, observaciones: e.target.value})}
+                onChange={(e) => setVacacionesData({ ...vacacionesData, observaciones: e.target.value })}
                 placeholder="Observaciones adicionales..."
                 disabled={estadisticasVacaciones?.disponibles <= 0}
               />
             </Form.Group>
           </Form>
-          
           {vacacionesData.fechaInicio && vacacionesData.fechaFin && (
-            <Alert 
+            <Alert
               variant={
-                calcularDiasSolicitados() > (estadisticasVacaciones?.disponibles || 0) 
-                  ? "danger" 
+                calcularDiasSolicitados() > (estadisticasVacaciones?.disponibles || 0)
+                  ? "danger"
                   : "secondary"
-              } 
+              }
               className="mt-3"
             >
               <FontAwesomeIcon icon={faCalculator} className="me-2" />
@@ -2970,12 +2868,12 @@ const Solicitudes: React.FC = () => {
           <Button variant="secondary" onClick={() => setShowVacacionesModal(false)}>
             Cancelar
           </Button>
-          <Button 
-            variant="primary" 
+          <Button
+            variant="primary"
             onClick={handleSolicitarVacaciones}
             disabled={
-              !vacacionesData.fechaInicio || 
-              !vacacionesData.fechaFin || 
+              !vacacionesData.fechaInicio ||
+              !vacacionesData.fechaFin ||
               !vacacionesData.motivo ||
               (estadisticasVacaciones?.disponibles <= 0)
             }
@@ -2986,7 +2884,6 @@ const Solicitudes: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de Permiso CORREGIDO */}
       <Modal show={showPermisoModal} onHide={() => setShowPermisoModal(false)} centered>
         <Modal.Header closeButton className="bg-info text-white">
           <Modal.Title>
@@ -2997,10 +2894,9 @@ const Solicitudes: React.FC = () => {
         <Modal.Body>
           <Alert variant="info" className="mb-3">
             <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-            <strong>Importante:</strong> Los permisos solo pueden solicitarse en días hábiles (lunes a viernes) 
+            <strong>Importante:</strong> Los permisos solo pueden solicitarse en días hábiles (lunes a viernes)
             y con al menos 24 horas de anticipación. La fecha mínima permitida es <strong>{calcularFechaMinimaPermiso()}</strong>.
           </Alert>
-          
           <Form>
             <Form.Group className="mb-3">
               <Form.Label>Fecha *</Form.Label>
@@ -3021,35 +2917,32 @@ const Solicitudes: React.FC = () => {
                 Los permisos deben solicitarse con al menos 24 horas de anticipación en días hábiles
               </Form.Text>
             </Form.Group>
-            
             <Form.Group className="mb-3">
               <Form.Label>Motivo *</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={3}
                 value={permisoData.motivo}
-                onChange={(e) => setPermisoData({...permisoData, motivo: e.target.value})}
+                onChange={(e) => setPermisoData({ ...permisoData, motivo: e.target.value })}
                 placeholder="Describe el motivo de tu permiso..."
                 required
               />
             </Form.Group>
-            
             <Form.Group className="mb-3">
               <Form.Check
                 type="checkbox"
                 label="Con goce de sueldo"
                 checked={permisoData.conGoce}
-                onChange={(e) => setPermisoData({...permisoData, conGoce: e.target.checked})}
+                onChange={(e) => setPermisoData({ ...permisoData, conGoce: e.target.checked })}
               />
             </Form.Group>
-            
             <Form.Group className="mb-3">
               <Form.Label>Observaciones (Opcional)</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={2}
                 value={permisoData.observaciones}
-                onChange={(e) => setPermisoData({...permisoData, observaciones: e.target.value})}
+                onChange={(e) => setPermisoData({ ...permisoData, observaciones: e.target.value })}
                 placeholder="Observaciones adicionales..."
               />
             </Form.Group>
@@ -3059,11 +2952,11 @@ const Solicitudes: React.FC = () => {
           <Button variant="secondary" onClick={() => setShowPermisoModal(false)}>
             Cancelar
           </Button>
-          <Button 
-            variant="info" 
+          <Button
+            variant="info"
             onClick={handleSolicitarPermiso}
             disabled={
-              !permisoData.fechaInicio || 
+              !permisoData.fechaInicio ||
               !permisoData.motivo ||
               !tiene24HorasAnticipacion(permisoData.fechaInicio)
             }
@@ -3084,16 +2977,15 @@ const Solicitudes: React.FC = () => {
         <Modal.Body>
           <Alert variant="warning" className="mb-3">
             <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-            <strong>Importante:</strong> Las horas extras solo pueden solicitarse en días hábiles (lunes a viernes). 
+            <strong>Importante:</strong> Las horas extras solo pueden solicitarse en días hábiles (lunes a viernes).
             Si seleccionas un fin de semana, se ajustará automáticamente al siguiente día hábil.
           </Alert>
-          
           <Form>
             <Form.Group className="mb-3">
               <Form.Label>Colaborador *</Form.Label>
               <Form.Select
                 value={horasExtrasData.empleadoId}
-                onChange={(e) => setHorasExtrasData({...horasExtrasData, empleadoId: e.target.value})}
+                onChange={(e) => setHorasExtrasData({ ...horasExtrasData, empleadoId: e.target.value })}
                 required
               >
                 <option value="">Seleccionar colaborador</option>
@@ -3104,7 +2996,6 @@ const Solicitudes: React.FC = () => {
                 ))}
               </Form.Select>
             </Form.Group>
-            
             <Form.Group className="mb-3">
               <Form.Label>Fecha *</Form.Label>
               <Form.Control
@@ -3121,13 +3012,12 @@ const Solicitudes: React.FC = () => {
                 </Form.Text>
               )}
             </Form.Group>
-            
             <Form.Group className="mb-3">
               <Form.Label>Horas Solicitadas *</Form.Label>
               <Form.Control
                 type="number"
                 value={horasExtrasData.horasSolicitadas}
-                onChange={(e) => setHorasExtrasData({...horasExtrasData, horasSolicitadas: e.target.value})}
+                onChange={(e) => setHorasExtrasData({ ...horasExtrasData, horasSolicitadas: e.target.value })}
                 min="0.5"
                 max="24"
                 step="0.5"
@@ -3135,26 +3025,24 @@ const Solicitudes: React.FC = () => {
                 required
               />
             </Form.Group>
-            
             <Form.Group className="mb-3">
               <Form.Label>Motivo *</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={3}
                 value={horasExtrasData.motivo}
-                onChange={(e) => setHorasExtrasData({...horasExtrasData, motivo: e.target.value})}
+                onChange={(e) => setHorasExtrasData({ ...horasExtrasData, motivo: e.target.value })}
                 placeholder="Describe el motivo de las horas extras..."
                 required
               />
             </Form.Group>
-            
             <Form.Group className="mb-3">
               <Form.Label>Observaciones (Opcional)</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={2}
                 value={horasExtrasData.observaciones}
-                onChange={(e) => setHorasExtrasData({...horasExtrasData, observaciones: e.target.value})}
+                onChange={(e) => setHorasExtrasData({ ...horasExtrasData, observaciones: e.target.value })}
                 placeholder="Observaciones adicionales..."
               />
             </Form.Group>
@@ -3164,11 +3052,11 @@ const Solicitudes: React.FC = () => {
           <Button variant="secondary" onClick={() => setShowHorasExtrasModal(false)}>
             Cancelar
           </Button>
-          <Button 
-            variant="warning" 
+          <Button
+            variant="warning"
             onClick={handleSolicitarHorasExtras}
-            disabled={!horasExtrasData.empleadoId || !horasExtrasData.fechaInicio || 
-                     !horasExtrasData.horasSolicitadas || !horasExtrasData.motivo}
+            disabled={!horasExtrasData.empleadoId || !horasExtrasData.fechaInicio ||
+              !horasExtrasData.horasSolicitadas || !horasExtrasData.motivo}
           >
             <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
             Enviar Solicitud
@@ -3187,14 +3075,12 @@ const Solicitudes: React.FC = () => {
           {selectedAprobacion && (
             <>
               <div className="text-center mb-4">
-                <FontAwesomeIcon 
-                  icon={selectedAprobacion.Tipo === 'vacaciones' ? faCalendarDay : 
-                        selectedAprobacion.Tipo === 'permiso' ? faCalendarCheck : faClock} 
-                  size="3x" 
-                  className={`mb-3 ${
-                    selectedAprobacion.Tipo === 'vacaciones' ? 'text-primary' : 
-                    selectedAprobacion.Tipo === 'permiso' ? 'text-info' : 'text-warning'
-                  }`}
+                <FontAwesomeIcon
+                  icon={selectedAprobacion.Tipo === 'vacaciones' ? faCalendarDay :
+                    selectedAprobacion.Tipo === 'permiso' ? faCalendarCheck : faClock}
+                  size="3x"
+                  className={`mb-3 ${selectedAprobacion.Tipo === 'vacaciones' ? 'text-primary' :
+                    selectedAprobacion.Tipo === 'permiso' ? 'text-info' : 'text-warning'}`}
                 />
                 <h4>{selectedAprobacion.EmpleadoNombre}</h4>
                 <div className="mb-3">
@@ -3203,9 +3089,7 @@ const Solicitudes: React.FC = () => {
                   <Badge bg="secondary">Orden {selectedAprobacion.OrdenAprobacion}°</Badge>
                 </div>
               </div>
-
               {getDetalleSolicitud(selectedAprobacion)}
-
               <Card className="mb-3">
                 <Card.Header className="bg-light">
                   <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
@@ -3260,7 +3144,6 @@ const Solicitudes: React.FC = () => {
                   </Row>
                 </Card.Body>
               </Card>
-
               <Form>
                 <Form.Group className="mb-3">
                   <Form.Label className="fw-bold">
@@ -3271,9 +3154,9 @@ const Solicitudes: React.FC = () => {
                     as="textarea"
                     rows={4}
                     value={aprobacionData.comentarios}
-                    onChange={(e) => setAprobacionData({...aprobacionData, comentarios: e.target.value})}
-                    placeholder={aprobacionData.estado === 'aprobada' 
-                      ? "Agrega comentarios sobre tu aprobación (opcional, pero recomendado)..." 
+                    onChange={(e) => setAprobacionData({ ...aprobacionData, comentarios: e.target.value })}
+                    placeholder={aprobacionData.estado === 'aprobada'
+                      ? "Agrega comentarios sobre tu aprobación (opcional, pero recomendado)..."
                       : "Explica detalladamente el motivo del rechazo (mínimo 5 caracteres)..."}
                     isInvalid={aprobacionData.estado === 'rechazado' && (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5)}
                     required={aprobacionData.estado === 'rechazado'}
@@ -3284,7 +3167,7 @@ const Solicitudes: React.FC = () => {
                     </Form.Control.Feedback>
                   )}
                   <Form.Text className="text-muted">
-                    {aprobacionData.estado === 'aprobada' 
+                    {aprobacionData.estado === 'aprobada'
                       ? 'Puedes dejar comentarios sobre tu aprobación para el colaborador.'
                       : 'Es importante explicar el motivo del rechazo para que el colaborador pueda corregir su solicitud.'}
                   </Form.Text>
@@ -3298,29 +3181,25 @@ const Solicitudes: React.FC = () => {
             Cancelar
           </Button>
           <ButtonGroup>
-            <Button 
-              variant="success" 
-              onClick={() => {
-                setAprobacionData(prev => ({...prev, estado: 'aprobada'}));
-              }}
+            <Button
+              variant="success"
+              onClick={() => setAprobacionData(prev => ({ ...prev, estado: 'aprobada' }))}
               active={aprobacionData.estado === 'aprobada'}
             >
               <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
               Aprobar
             </Button>
-            <Button 
-              variant="danger" 
-              onClick={() => {
-                setAprobacionData(prev => ({...prev, estado: 'rechazado'}));
-              }}
+            <Button
+              variant="danger"
+              onClick={() => setAprobacionData(prev => ({ ...prev, estado: 'rechazado' }))}
               active={aprobacionData.estado === 'rechazado'}
             >
               <FontAwesomeIcon icon={faTimesCircle} className="me-2" />
               Rechazar
             </Button>
           </ButtonGroup>
-          <Button 
-            variant={aprobacionData.estado === 'aprobada' ? 'success' : 'danger'} 
+          <Button
+            variant={aprobacionData.estado === 'aprobada' ? 'success' : 'danger'}
             onClick={handleProcesarAprobacion}
             disabled={
               (aprobacionData.estado === 'rechazado' && (!aprobacionData.comentarios || aprobacionData.comentarios.trim().length < 5))
@@ -3344,7 +3223,6 @@ const Solicitudes: React.FC = () => {
             <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
             <strong>Advertencia:</strong> Solo puedes editar aprobaciones dentro de las primeras 24 horas después de haberlas realizado.
           </Alert>
-          
           {selectedAprobacion && (
             <>
               <div className="text-center mb-4">
@@ -3353,9 +3231,7 @@ const Solicitudes: React.FC = () => {
                   {getTipoBadge(selectedAprobacion.Tipo)}
                 </div>
               </div>
-
               {getDetalleSolicitud(selectedAprobacion)}
-
               <Card className="mb-3">
                 <Card.Body>
                   <p className="mb-2"><strong>Motivo:</strong> {selectedAprobacion.Motivo}</p>
@@ -3365,19 +3241,17 @@ const Solicitudes: React.FC = () => {
                   </p>
                 </Card.Body>
               </Card>
-
               <Form>
                 <Form.Group className="mb-3">
                   <Form.Label className="fw-bold">Nueva Decisión *</Form.Label>
                   <Form.Select
                     value={editAprobacionData.estado}
-                    onChange={(e) => setEditAprobacionData({...editAprobacionData, estado: e.target.value})}
+                    onChange={(e) => setEditAprobacionData({ ...editAprobacionData, estado: e.target.value })}
                   >
                     <option value="aprobada">Aprobar</option>
                     <option value="rechazado">Rechazar</option>
                   </Form.Select>
                 </Form.Group>
-                
                 <Form.Group className="mb-3">
                   <Form.Label className="fw-bold">
                     Comentarios * (mínimo 10 caracteres)
@@ -3386,7 +3260,7 @@ const Solicitudes: React.FC = () => {
                     as="textarea"
                     rows={4}
                     value={editAprobacionData.comentarios}
-                    onChange={(e) => setEditAprobacionData({...editAprobacionData, comentarios: e.target.value})}
+                    onChange={(e) => setEditAprobacionData({ ...editAprobacionData, comentarios: e.target.value })}
                     placeholder="Explica por qué estás cambiando tu decisión..."
                     isInvalid={editAprobacionData.comentarios.trim().length < 10}
                     required
@@ -3403,8 +3277,8 @@ const Solicitudes: React.FC = () => {
           <Button variant="secondary" onClick={() => setShowEditAprobacionModal(false)}>
             Cancelar
           </Button>
-          <Button 
-            variant={editAprobacionData.estado === 'aprobada' ? 'success' : 'danger'} 
+          <Button
+            variant={editAprobacionData.estado === 'aprobada' ? 'success' : 'danger'}
             onClick={handleEditarAprobacion}
             disabled={editAprobacionData.comentarios.trim().length < 10}
           >
@@ -3428,14 +3302,12 @@ const Solicitudes: React.FC = () => {
           {selectedSolicitud ? (
             <>
               <div className="text-center mb-4">
-                <FontAwesomeIcon 
-                  icon={selectedSolicitud.Tipo === 'vacaciones' ? faCalendarDay : 
-                        selectedSolicitud.Tipo === 'permiso' ? faCalendarCheck : faClock} 
-                  size="3x" 
-                  className={`mb-3 ${
-                    selectedSolicitud.Tipo === 'vacaciones' ? 'text-primary' : 
-                    selectedSolicitud.Tipo === 'permiso' ? 'text-info' : 'text-warning'
-                  }`}
+                <FontAwesomeIcon
+                  icon={selectedSolicitud.Tipo === 'vacaciones' ? faCalendarDay :
+                    selectedSolicitud.Tipo === 'permiso' ? faCalendarCheck : faClock}
+                  size="3x"
+                  className={`mb-3 ${selectedSolicitud.Tipo === 'vacaciones' ? 'text-primary' :
+                    selectedSolicitud.Tipo === 'permiso' ? 'text-info' : 'text-warning'}`}
                 />
                 <h4>{selectedSolicitud.EmpleadoNombre || 'Solicitud'}</h4>
                 <div className="mb-3">
@@ -3444,7 +3316,6 @@ const Solicitudes: React.FC = () => {
                   {getEstadoBadge(selectedSolicitud.Estado)}
                 </div>
               </div>
-              
               <Accordion defaultActiveKey="0" className="mb-3">
                 <Accordion.Item eventKey="0">
                   <Accordion.Header>
@@ -3459,7 +3330,6 @@ const Solicitudes: React.FC = () => {
                           <span>{formatDateTimeDisplay(selectedSolicitud.FechaSolicitud)}</span>
                         </div>
                       </ListGroup.Item>
-                      
                       {selectedSolicitud.Tipo === 'vacaciones' && (
                         <>
                           {selectedSolicitud.FechaInicio && (
@@ -3470,7 +3340,6 @@ const Solicitudes: React.FC = () => {
                               </div>
                             </ListGroup.Item>
                           )}
-                          
                           {selectedSolicitud.FechaFin && (
                             <ListGroup.Item>
                               <div className="d-flex justify-content-between">
@@ -3479,7 +3348,6 @@ const Solicitudes: React.FC = () => {
                               </div>
                             </ListGroup.Item>
                           )}
-                          
                           {selectedSolicitud.DiasSolicitados && (
                             <ListGroup.Item>
                               <div className="d-flex justify-content-between">
@@ -3490,7 +3358,6 @@ const Solicitudes: React.FC = () => {
                           )}
                         </>
                       )}
-                      
                       {selectedSolicitud.Tipo === 'permiso' && (
                         <>
                           {selectedSolicitud.FechaInicio && (
@@ -3501,7 +3368,6 @@ const Solicitudes: React.FC = () => {
                               </div>
                             </ListGroup.Item>
                           )}
-                          
                           <ListGroup.Item>
                             <div className="d-flex justify-content-between">
                               <strong><FontAwesomeIcon icon={faMoneyBillWave} className="me-2" /> Tipo:</strong>
@@ -3510,7 +3376,6 @@ const Solicitudes: React.FC = () => {
                           </ListGroup.Item>
                         </>
                       )}
-                      
                       {selectedSolicitud.Tipo === 'horas_extras' && (
                         <>
                           {selectedSolicitud.FechaInicio && (
@@ -3521,7 +3386,6 @@ const Solicitudes: React.FC = () => {
                               </div>
                             </ListGroup.Item>
                           )}
-                          
                           {selectedSolicitud.HorasSolicitadas && (
                             <ListGroup.Item>
                               <div className="d-flex justify-content-between">
@@ -3532,12 +3396,10 @@ const Solicitudes: React.FC = () => {
                           )}
                         </>
                       )}
-                      
                       <ListGroup.Item>
                         <strong><FontAwesomeIcon icon={faComment} className="me-2" /> Motivo:</strong>
                         <div className="mt-2">{selectedSolicitud.Motivo}</div>
                       </ListGroup.Item>
-                      
                       {selectedSolicitud.Observaciones && (
                         <ListGroup.Item>
                           <strong><FontAwesomeIcon icon={faComment} className="me-2" /> Observaciones:</strong>
@@ -3547,7 +3409,6 @@ const Solicitudes: React.FC = () => {
                     </ListGroup>
                   </Accordion.Body>
                 </Accordion.Item>
-                
                 {selectedSolicitudDetalle?.aprobaciones && selectedSolicitudDetalle.aprobaciones.length > 0 && (
                   <Accordion.Item eventKey="1">
                     <Accordion.Header>
@@ -3590,7 +3451,6 @@ const Solicitudes: React.FC = () => {
                     </Accordion.Body>
                   </Accordion.Item>
                 )}
-                
                 {selectedSolicitudDetalle?.historial && selectedSolicitudDetalle.historial.length > 0 && (
                   <Accordion.Item eventKey="2">
                     <Accordion.Header>
@@ -3611,7 +3471,7 @@ const Solicitudes: React.FC = () => {
                               </div>
                             </div>
                             <div className="small">
-                              <strong>{historial.Accion}:</strong> 
+                              <strong>{historial.Accion}:</strong>
                               <div className="mt-1">
                                 {historial.Comentarios && (
                                   <div>{historial.Comentarios}</div>
