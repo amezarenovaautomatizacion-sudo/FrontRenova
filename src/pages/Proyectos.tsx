@@ -496,7 +496,7 @@ const puedeReasignarTarea = useCallback((tarea?: Tarea): boolean => {
       if (filtrosActuales.soloSinAsignar) params.append('soloSinAsignar', 'true');
       if (filtrosActuales.search) params.append('search', filtrosActuales.search);
       
-      const response = await api.get(`/proyectos/${proyectoId}/tareas?${params}`);
+const response = await api.get(`/proyectos/${proyectoId}/tareas?${params}&limit=1000`);
       
       if (response.data.success) {
         const tareasConDatos = (response.data.data.tareas || []).map((t: any) => ({
@@ -1674,7 +1674,7 @@ const openReasignarTareaModal = (tarea: Tarea) => {
   };
 
   const ListaTareasView: React.FC<{ tareas: Tarea[] }> = ({ tareas }) => {
-    const tareasFiltradas = [...tareas].filter(t => t.Activo === true);
+    const tareasFiltradas = [...tareas].filter(t => t.Activo);
 
     if (loadingTareas) {
       return (
